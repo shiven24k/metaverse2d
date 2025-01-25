@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-const router = Router();
+export const router = Router();
 
 router.get('/signup', (req, res) => {
   res.json({ message: 'Hello, world!' });
