@@ -6,7 +6,7 @@ import { SigninSchema, SignupSchema } from "../../types";
 import {hash, compare} from "../../scrypt";
 import client from "@repo/db/client";
 import jwt from "jsonwebtoken";
-import { jwtsecret } from "../../config";
+import { JWT_PASSWORD } from "../../config";
 
 export const router = Router();
 
@@ -15,7 +15,7 @@ router.post("/signup", async (req, res) => {
     // check the user
     const parsedData = SignupSchema.safeParse(req.body)
     if (!parsedData.success) {
-        console.log("parsed data incorrect", parsedData.error)
+        console.log("parsed data incorrect")
         res.status(400).json({message: "Validation failed"})
         return
     }
@@ -34,16 +34,15 @@ router.post("/signup", async (req, res) => {
             userId: user.id
         })
     } catch(e) {
-        console.log("error thrown", e)
+        console.log("erroer thrown")
+        console.log(e)
         res.status(400).json({message: "User already exists"})
     }
 })
 
 router.post("/signin", async (req, res) => {
-    console.log("inside signin")
     const parsedData = SigninSchema.safeParse(req.body)
     if (!parsedData.success) {
-        console.log("parsed data incorrect", parsedData.error)
         res.status(403).json({message: "Validation failed"})
         return
     }
@@ -56,14 +55,12 @@ router.post("/signin", async (req, res) => {
         })
         
         if (!user) {
-            console.log("user not found")
             res.status(403).json({message: "User not found"})
             return
         }
         const isValid = await compare(parsedData.data.password, user.password)
 
         if (!isValid) {
-            console.log("invalid password")
             res.status(403).json({message: "Invalid password"})
             return
         }
@@ -71,13 +68,12 @@ router.post("/signin", async (req, res) => {
         const token = jwt.sign({
             userId: user.id,
             role: user.role
-        }, jwtsecret);
+        }, JWT_PASSWORD);
 
         res.json({
             token
         })
     } catch(e) {
-        console.log("internal server error", e)
         res.status(400).json({message: "Internal server error"})
     }
 })
@@ -85,7 +81,13 @@ router.post("/signin", async (req, res) => {
 router.get("/elements", async (req, res) => {
     const elements = await client.element.findMany()
 
-    
+    res.json({elements: elements.map(e => ({
+        id: e.id,
+        imageUrl: e.imageUrl,
+        width: e.width,
+        height: e.height,
+        static: e.static
+    }))})
 })
 
 router.get("/avatars", async (req, res) => {

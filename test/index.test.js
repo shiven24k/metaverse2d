@@ -40,7 +40,7 @@ const axios = {
 
 describe("Authentication", () => {
     test('User is able to sign up only once', async () => {
-        const username = "kirat" + Math.random(); // kirat0.12331313
+        const username = "shiven" + Math.random(); // shiven0.12331313
         const password = "123456";
         const response = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
             username,
@@ -59,7 +59,7 @@ describe("Authentication", () => {
     });
 
     test('Signup request fails if the username is empty', async () => {
-        const username = `kirat-${Math.random()}` // kirat-0.12312313
+        const username = `shiven-${Math.random()}` // shiven-0.12312313
         const password = "123456"
 
         const response = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -70,7 +70,7 @@ describe("Authentication", () => {
     })
 
     test('Signin succeeds if the username and password are correct', async() => {
-        const username = `kirat-${Math.random()}`
+        const username = `shiven-${Math.random()}`
         const password = "123456"
 
         await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -90,7 +90,7 @@ describe("Authentication", () => {
     })
 
     test('Signin fails if the username and password are incorrect', async() => {
-        const username = `kirat-${Math.random()}`
+        const username = `shiven-${Math.random()}`
         const password = "123456"
 
         await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -113,7 +113,7 @@ describe("Authentication", () => {
 //     let avatarId = ""
 
 //     beforeAll(async () => {
-//        const username = `kirat-${Math.random()}`
+//        const username = `shiven-${Math.random()}`
 //        const password = "123456"
 
 //        await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -186,7 +186,7 @@ describe("Authentication", () => {
 //     let userId;
 
 //     beforeAll(async () => {
-//         const username = `kirat-${Math.random()}`
+//         const username = `shiven-${Math.random()}`
 //         const password = "123456"
  
 //         const signupResponse = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -246,7 +246,7 @@ describe("Authentication", () => {
 //     let userId;
 
 //     beforeAll(async () => {
-//         const username = `kirat-${Math.random()}`
+//         const username = `shiven-${Math.random()}`
 //         const password = "123456"
  
 //         const signupResponse = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -465,7 +465,7 @@ describe("Authentication", () => {
 //     let spaceId;
 
 //     beforeAll(async () => {
-//         const username = `kirat-${Math.random()}`
+//         const username = `shiven-${Math.random()}`
 //         const password = "123456"
  
 //         const signupResponse = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -648,7 +648,7 @@ describe("Authentication", () => {
 //     let userId;
 
 //     beforeAll(async () => {
-//         const username = `kirat-${Math.random()}`
+//         const username = `shiven-${Math.random()}`
 //         const password = "123456"
  
 //         const signupResponse = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -824,7 +824,7 @@ describe("Authentication", () => {
 //     }
 
 //     async function setupHTTP() {
-//         const username = `kirat-${Math.random()}`
+//         const username = `shiven-${Math.random()}`
 //         const password = "123456"
 //         const adminSignupResponse = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
 //             username,
