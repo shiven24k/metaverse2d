@@ -1,4 +1,5 @@
 const axios2 = require("axios");
+
 const BACKEND_URL = "http://localhost:3000"
 const WS_URL = "ws://localhost:3001"
 
@@ -39,7 +40,7 @@ const axios = {
 
 describe("Authentication", () => {
     test('User is able to sign up only once', async () => {
-        const username = "shiven" + Math.random(); // shiven0.12331313
+        const username = "kirat" + Math.random(); // kirat0.12331313
         const password = "123456";
         const response = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
             username,
@@ -58,7 +59,7 @@ describe("Authentication", () => {
     });
 
     test('Signup request fails if the username is empty', async () => {
-        const username = `shiven-${Math.random()}` // shiven-0.12312313
+        const username = `kirat-${Math.random()}` // kirat-0.12312313
         const password = "123456"
 
         const response = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -69,7 +70,7 @@ describe("Authentication", () => {
     })
 
     test('Signin succeeds if the username and password are correct', async() => {
-        const username = `shiven-${Math.random()}`
+        const username = `kirat-${Math.random()}`
         const password = "123456"
 
         await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -89,7 +90,7 @@ describe("Authentication", () => {
     })
 
     test('Signin fails if the username and password are incorrect', async() => {
-        const username = `shiven-${Math.random()}`
+        const username = `kirat-${Math.random()}`
         const password = "123456"
 
         await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -112,7 +113,7 @@ describe("User metadata endpoint", () => {
     let avatarId = ""
 
     beforeAll(async () => {
-       const username = `shiven-${Math.random()}`
+       const username = `kirat-${Math.random()}`
        const password = "123456"
 
        await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -185,7 +186,7 @@ describe("User avatar information", () => {
     let userId;
 
     beforeAll(async () => {
-        const username = `shiven-${Math.random()}`
+        const username = `kirat-${Math.random()}`
         const password = "123456"
  
         const signupResponse = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -245,7 +246,7 @@ describe("Space information", () => {
     let userId;
 
     beforeAll(async () => {
-        const username = `shiven-${Math.random()}`
+        const username = `kirat-${Math.random()}`
         const password = "123456"
  
         const signupResponse = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -464,7 +465,7 @@ describe("Arena endpoints", () => {
     let spaceId;
 
     beforeAll(async () => {
-        const username = `shiven-${Math.random()}`
+        const username = `kirat-${Math.random()}`
         const password = "123456"
  
         const signupResponse = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -647,7 +648,7 @@ describe("Admin Endpoints", () => {
     let userId;
 
     beforeAll(async () => {
-        const username = `shiven-${Math.random()}`
+        const username = `kirat-${Math.random()}`
         const password = "123456"
  
         const signupResponse = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
@@ -823,7 +824,7 @@ describe("Websocket tests", () => {
     }
 
     async function setupHTTP() {
-        const username = `shiven-${Math.random()}`
+        const username = `kirat-${Math.random()}`
         const password = "123456"
         const adminSignupResponse = await axios.post(`${BACKEND_URL}/api/v1/signup`, {
             username,
@@ -942,7 +943,6 @@ describe("Websocket tests", () => {
         await setupHTTP()
         await setupWs()
     })
-    
 
     test("Get back ack for joining the space", async () => {
         console.log("insixce first test")
@@ -989,7 +989,7 @@ describe("Websocket tests", () => {
             type: "move",
             payload: {
                 x: 1000000,
-                y: 1000000000000
+                y: 10000
             }
         }));
 

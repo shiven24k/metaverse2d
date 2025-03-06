@@ -6,11 +6,12 @@ import { userMiddleware } from "../../middleware/user";
 export const userRouter = Router();
 
 userRouter.post("/metadata", userMiddleware, async (req, res) => {
-    const parsedData = UpdateMetadataSchema.safeParse(req.body)
+    const parsedData = UpdateMetadataSchema.safeParse(req.body)       
     if (!parsedData.success) {
+        console.log("parsed data incorrect")
         res.status(400).json({message: "Validation failed"})
         return
-    } 
+    }
     try {
         await client.user.update({
             where: {
@@ -20,33 +21,32 @@ userRouter.post("/metadata", userMiddleware, async (req, res) => {
                 avatarId: parsedData.data.avatarId
             }
         })
-        res.json({message: "Metadata updated successfully"})
-    } catch (e) {
-        res.status(500).json({message: "Internal server error"})
+        res.json({message: "Metadata updated"})
+    } catch(e) {
+        console.log("error")
+        res.status(400).json({message: "Internal server error"})
     }
 })
 
 userRouter.get("/metadata/bulk", async (req, res) => {
-    const userIdString = (req.query.userIds ?? "[]") as string;
-    const userIds = userIdString.slice(1, userIdString.length - 2).split(",");
-    try {
-        const metadata = await client.user.findMany({
-            where: {
-                id: {
-                    in: userIds
-                }
-            },
-            include: {
-                avatar: true
+    const userIdString = (req.query.ids ?? "[]") as string;
+    const userIds = (userIdString).slice(1, userIdString?.length - 1).split(",");
+    console.log(userIds)
+    const metadata = await client.user.findMany({
+        where: {
+            id: {
+                in: userIds
             }
-        })
-        res.json({
-            avatars: metadata.map((m) => ({
-                userId: m.id,
-                avatarUrl: m.avatar?.imageUrl
-            }))
-        })
-    } catch (e) {
-        res.status(500).json({message: "Internal server error"})
-    }
+        }, select: {
+            avatar: true,
+            id: true
+        }
+    })
+
+    res.json({
+        avatars: metadata.map(m => ({
+            userId: m.id,
+            avatarId: m.avatar?.imageUrl
+        }))
+    })
 })

@@ -32,6 +32,7 @@ export const AddElementSchema = z.object({
     y: z.number(),
 })
 
+
 export const CreateElementSchema = z.object({
     imageUrl: z.string(),
     width: z.number(),
