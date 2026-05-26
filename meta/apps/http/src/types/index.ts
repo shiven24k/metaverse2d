@@ -61,6 +61,17 @@ export const CreateMapSchema = z.object({
 })
 
 
+export const CreateItemSchema = z.object({
+    name: z.string(),
+    category: z.string(),
+    rarity: z.string(),
+    imageUrl: z.string(),
+    width: z.number(),
+    height: z.number(),
+    isWallItem: z.boolean().optional(),
+    season: z.string().optional(),
+})
+
 declare global {
     namespace Express {
       export interface Request {

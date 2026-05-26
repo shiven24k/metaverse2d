@@ -5,6 +5,18 @@ import { userMiddleware } from "../../middleware/user";
 
 export const userRouter = Router();
 
+userRouter.get("/me", userMiddleware, async (req, res) => {
+    const user = await client.user.findUnique({
+        where: { id: req.userId },
+        select: { id: true, username: true, name: true, role: true, email: true },
+    });
+    if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+    }
+    res.json({ user });
+});
+
 userRouter.post("/metadata", userMiddleware, async (req, res) => {
     const parsedData = UpdateMetadataSchema.safeParse(req.body)       
     if (!parsedData.success) {

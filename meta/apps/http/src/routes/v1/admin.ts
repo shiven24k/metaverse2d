@@ -1,9 +1,35 @@
 import { Router } from "express";
 import { adminMiddleware } from "../../middleware/admin";
-import { AddElementSchema, CreateAvatarSchema, CreateElementSchema, CreateMapSchema, UpdateElementSchema } from "../../types";
+import { AddElementSchema, CreateAvatarSchema, CreateElementSchema, CreateItemSchema, CreateMapSchema, UpdateElementSchema } from "../../types";
 import client from "@repo/db/client";
 export const adminRouter = Router();
 adminRouter.use(adminMiddleware)
+
+adminRouter.post("/item", async (req, res) => {
+    const parsedData = CreateItemSchema.safeParse(req.body)
+    if (!parsedData.success) {
+        res.status(400).json({message: "Validation failed", errors: parsedData.error.errors})
+        return
+    }
+    const item = await client.item.create({
+        data: {
+            name: parsedData.data.name,
+            category: parsedData.data.category,
+            rarity: parsedData.data.rarity,
+            imageUrl: parsedData.data.imageUrl,
+            width: parsedData.data.width,
+            height: parsedData.data.height,
+            isWallItem: parsedData.data.isWallItem ?? false,
+            season: parsedData.data.season,
+        }
+    })
+    await client.inventoryItem.upsert({
+        where: { userId_itemId: { userId: req.userId!, itemId: item.id } },
+        create: { userId: req.userId!, itemId: item.id, quantity: 1 },
+        update: { quantity: { increment: 1 } },
+    })
+    res.json({ id: item.id, name: item.name })
+})
 
 adminRouter.post("/element", async (req, res) => {
     const parsedData = CreateElementSchema.safeParse(req.body)
@@ -83,4 +109,24 @@ adminRouter.post("/map", async (req, res) => {
     res.json({
         id: map.id
     })
+})
+
+adminRouter.post("/season", async (req, res) => {
+    const { name, startDate, endDate, theme, itemIds } = req.body;
+    if (!name || !startDate || !endDate || !theme) {
+        res.status(400).json({ message: "name, startDate, endDate, theme required" });
+        return;
+    }
+    const season = await client.season.create({
+        data: {
+            name,
+            startDate: new Date(startDate),
+            endDate: new Date(endDate),
+            theme,
+            items: itemIds?.length ? {
+                create: itemIds.map((itemId: string) => ({ itemId })),
+            } : undefined,
+        },
+    });
+    res.json({ id: season.id, name: season.name });
 })

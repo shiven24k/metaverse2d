@@ -1,23 +1,18 @@
-
-import jwt from "jsonwebtoken";
-import { JWT_PASSWORD } from "../config";
 import { NextFunction, Request, Response } from "express";
+import { auth } from "../lib/auth";
+import { fromNodeHeaders } from "better-auth/node";
 
+export const userMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+    const session = await auth.api.getSession({
+        headers: fromNodeHeaders(req.headers),
+    });
 
-export const userMiddleware = (req:Request , res:Response, next:NextFunction) => {
-    const header = req.headers.authorization;
-    const token = header?.split(" ")[1];
-    if (!token) {
+    if (!session) {
         res.status(403).json({ message: "Unauthorized" });
         return;
     }
-    try {
-        const decoded = jwt.verify(token, JWT_PASSWORD) as { role:string,userId: string };
-        req.userId = decoded.userId;
-        next();
-    }
-    catch (e) {
-        res.status(401).json({ message: "Unauthorized" });
-        return
-    }
-}
+
+    req.userId = session.user.id;
+    req.role = session.user.role as "Admin" | "User";
+    next();
+};

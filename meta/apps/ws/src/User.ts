@@ -1,9 +1,8 @@
 import { WebSocket } from "ws";
-import { RoomManager } from "./RoomManager";
+import { getRoomManager } from "./getRoomManager";
 import { OutgoingMessage } from "./types";
 import client from "@repo/db/client";
-import jwt, { JwtPayload } from "jsonwebtoken";
-import { JWT_PASSWORD } from "./config";
+import { auth } from "./lib/auth";
 
 function getRandomString(length: number) {
     const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -18,8 +17,8 @@ export class User {
     public id: string;
     public userId?: string;
     private spaceId?: string;
-    private x: number;
-    private y: number;
+    public x: number;
+    public y: number;
     private ws: WebSocket;
 
     constructor(ws: WebSocket) {
@@ -27,100 +26,155 @@ export class User {
         this.x = 0;
         this.y = 0;
         this.ws = ws;
-        this.initHandlers()
+        this.initHandlers();
     }
 
     initHandlers() {
         this.ws.on("message", async (data) => {
-            console.log(data)
             const parsedData = JSON.parse(data.toString());
-            console.log(parsedData)
-            console.log("parsedData")
+
             switch (parsedData.type) {
-                case "join":
-                    console.log("jouin receiverdfd")
+                case "join": {
                     const spaceId = parsedData.payload.spaceId;
                     const token = parsedData.payload.token;
-                    const userId = (jwt.verify(token, JWT_PASSWORD) as JwtPayload).userId
-                    if (!userId) {
-                        this.ws.close()
-                        return
-                    }
-                    console.log("jouin receiverdfd 2")
-                    this.userId = userId
-                    const space = await client.space.findFirst({
-                        where: {
-                            id: spaceId
-                        }
-                    })
-                    console.log("jouin receiverdfd 3")
-                    if (!space) {
-                        this.ws.close()
+
+                    // Verify session token via Better Auth bearer plugin
+                    let userId: string | undefined;
+                    try {
+                        const session = await auth.api.getSession({
+                            headers: new Headers({
+                                authorization: `Bearer ${token}`,
+                            }),
+                        });
+                        userId = session?.user?.id;
+                    } catch {
+                        this.ws.close();
                         return;
                     }
-                    console.log("jouin receiverdfd 4")
-                    this.spaceId = spaceId
-                    RoomManager.getInstance().addUser(spaceId, this);
-                    this.x = Math.floor(Math.random() * space?.width);
-                    this.y = Math.floor(Math.random() * space?.height);
+
+                    if (!userId) {
+                        this.ws.close();
+                        return;
+                    }
+
+                    this.userId = userId;
+
+                    const banned = await client.bannedUser.findUnique({
+                        where: { userId },
+                    });
+                    if (banned) {
+                        this.ws.close();
+                        return;
+                    }
+
+                    const space = await client.space.findFirst({
+                        where: { id: spaceId },
+                    });
+
+                    if (!space) {
+                        this.ws.close();
+                        return;
+                    }
+
+                    this.spaceId = spaceId;
+                    getRoomManager().addUser(spaceId, this);
+                    this.x = Math.floor(Math.random() * space.width);
+                    this.y = Math.floor(Math.random() * space.height);
+
                     this.send({
                         type: "space-joined",
                         payload: {
-                            spawn: {
-                                x: this.x,
-                                y: this.y
-                            },
-                            users: RoomManager.getInstance().rooms.get(spaceId)?.filter(x => x.id !== this.id)?.map((u) => ({id: u.id})) ?? []
-                        }
-                    });
-                    console.log("jouin receiverdf5")
-                    RoomManager.getInstance().broadcast({
-                        type: "user-joined",
-                        payload: {
+                            spawn: { x: this.x, y: this.y },
                             userId: this.userId,
-                            x: this.x,
-                            y: this.y
-                        }
-                    }, this, this.spaceId!);
+                            users:
+                                getRoomManager()
+                                    .rooms.get(spaceId)
+                                    ?.filter((u) => u.id !== this.id)
+                                    ?.map((u) => ({ userId: u.userId, x: u.x, y: u.y })) ?? [],
+                        },
+                    });
+
+                    getRoomManager().broadcast(
+                        {
+                            type: "user-joined",
+                            payload: { userId: this.userId, x: this.x, y: this.y },
+                        },
+                        this,
+                        this.spaceId!
+                    );
                     break;
-                case "move":
+                }
+
+                case "emote": {
+                    const emoteId = parsedData.payload.emoteId;
+                    if (typeof emoteId === "number" && emoteId >= 1 && emoteId <= 6) {
+                        getRoomManager().broadcast(
+                            {
+                                type: "emote",
+                                payload: { userId: this.userId, emoteId },
+                            },
+                            this,
+                            this.spaceId!
+                        );
+                    }
+                    break;
+                }
+
+                case "interact": {
+                    const { itemId, itemName, x, y } = parsedData.payload;
+                    if (itemId && itemName) {
+                        getRoomManager().broadcast(
+                            {
+                                type: "item-interaction",
+                                payload: { userId: this.userId, itemId, itemName, x, y },
+                            },
+                            this,
+                            this.spaceId!
+                        );
+                    }
+                    break;
+                }
+
+                case "move": {
                     const moveX = parsedData.payload.x;
                     const moveY = parsedData.payload.y;
                     const xDisplacement = Math.abs(this.x - moveX);
                     const yDisplacement = Math.abs(this.y - moveY);
-                    if ((xDisplacement == 1 && yDisplacement== 0) || (xDisplacement == 0 && yDisplacement == 1)) {
+
+                    if (
+                        (xDisplacement === 1 && yDisplacement === 0) ||
+                        (xDisplacement === 0 && yDisplacement === 1)
+                    ) {
                         this.x = moveX;
                         this.y = moveY;
-                        RoomManager.getInstance().broadcast({
-                            type: "movement",
-                            payload: {
-                                x: this.x,
-                                y: this.y
-                            }
-                        }, this, this.spaceId!);
+                        getRoomManager().broadcast(
+                            {
+                                type: "movement",
+                                payload: { userId: this.userId, x: this.x, y: this.y },
+                            },
+                            this,
+                            this.spaceId!
+                        );
                         return;
                     }
-                    
+
                     this.send({
                         type: "movement-rejected",
-                        payload: {
-                            x: this.x,
-                            y: this.y
-                        }
+                        payload: { x: this.x, y: this.y },
                     });
-                    
+                    break;
+                }
             }
         });
     }
 
     destroy() {
-        RoomManager.getInstance().broadcast({
-            type: "user-left",
-            payload: {
-                userId: this.userId
-            }
-        }, this, this.spaceId!);
-        RoomManager.getInstance().removeUser(this, this.spaceId!);
+        getRoomManager().broadcast(
+            { type: "user-left", payload: { userId: this.userId } },
+            this,
+            this.spaceId!
+        );
+        getRoomManager().removeUser(this, this.spaceId!);
     }
 
     send(payload: OutgoingMessage) {

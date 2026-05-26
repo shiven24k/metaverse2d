@@ -14,52 +14,110 @@ datasource db {
 }
 
 model User {
-  id       String  @id @unique @default(cuid())
-  username String  @unique
-  password String
-  avatarId String?
-  role     Role
-  spaces   Space[]
-  avatar    Avatar? @relation(fields: [avatarId], references: [id])
+  id              String           @id @unique @default(cuid())
+  username        String?          @unique
+  displayUsername String?
+  name            String
+  email           String           @unique
+  emailVerified   Boolean          @default(false)
+  image           String?
+  password        String?
+  avatarId        String?
+  role            Role             @default(User)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  spaces          Space[]
+  avatar          Avatar?          @relation(fields: [avatarId], references: [id])
+  sessions        Session[]
+  accounts        Account[]
+  wallet          Wallet?
+  inventory       InventoryItem[]
+  dailyGift       DailyGift?
+  guestbook       GuestbookEntry[]
+  quests          QuestProgress[]
+  reports         Report[]
+  bannedInfo      BannedUser?
+  supporter       Boolean            @default(false)
+  neighbourhood   NeighbourhoodMember[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
 }
 
 model Space {
-  id        String  @id @unique @default(cuid())
-  name      String
-  width     Int
-  height    Int
-  thumbnail String?
-  creatorId String
-  creator     User    @relation(fields: [creatorId], references: [id])
-  elements  spaceElements[]
+  id          String           @id @unique @default(cuid())
+  name        String
+  width       Int
+  height      Int
+  thumbnail   String?
+  creatorId   String
+  creator     User             @relation(fields: [creatorId], references: [id])
+  elements    spaceElements[]
+  placedItems PlacedItem[]
+  guestbook   GuestbookEntry[]
 }
 
 model spaceElements {
-  id        String @id @unique @default(cuid())
+  id        String  @id @unique @default(cuid())
   elementId String
   spaceId   String
   x         Int
   y         Int
-  space     Space  @relation(fields: [spaceId], references: [id])
+  space     Space   @relation(fields: [spaceId], references: [id])
   element   Element @relation(fields: [elementId], references: [id])
 }
 
 model Element {
-  id              String @id @unique @default(cuid())
-  width           Int
-  height          Int
-  static          Boolean
-  imageUrl        String
-  spaces          spaceElements[]
-  mapElements     MapElements[]
+  id          String          @id @unique @default(cuid())
+  width       Int
+  height      Int
+  static      Boolean
+  imageUrl    String
+  spaces      spaceElements[]
+  mapElements MapElements[]
 }
 
 model Map {
-  id     String  @id @unique @default(cuid())
-  width  Int
-  height Int
-  name   String
-  thumbnail String
+  id          String        @id @unique @default(cuid())
+  width       Int
+  height      Int
+  name        String
+  thumbnail   String
   mapElements MapElements[]
 }
 
@@ -78,6 +136,156 @@ model Avatar {
   imageUrl String?
   name     String?
   users    User[]
+}
+
+model Item {
+  id         String          @id @default(cuid())
+  name       String
+  category   String
+  rarity     String
+  imageUrl   String
+  width      Int
+  height     Int
+  isWallItem Boolean         @default(false)
+  season     String?
+  createdAt  DateTime        @default(now())
+  inventory  InventoryItem[]
+  placed     PlacedItem[]
+  seasons    SeasonalItem[]
+}
+
+model InventoryItem {
+  id       String @id @default(cuid())
+  userId   String
+  itemId   String
+  quantity Int    @default(1)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item     Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+}
+
+model PlacedItem {
+  id      String @id @default(cuid())
+  spaceId String
+  itemId  String
+  x       Int
+  y       Int
+  layer   Layer  @default(FLOOR)
+  space   Space  @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  item    Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model DailyGift {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  lastClaim DateTime
+  streak    Int      @default(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Wallet {
+  id     String @id @default(cuid())
+  userId String @unique
+  coins  Int    @default(0)
+  tokens Int    @default(0)
+  stars  Int    @default(0)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GuestbookEntry {
+  id        String   @id @default(cuid())
+  spaceId   String
+  userId    String
+  message   String
+  createdAt DateTime @default(now())
+  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Quest {
+  id          String          @id @default(cuid())
+  title       String
+  description String
+  goalCount   Int
+  rewardType  String
+  rewardValue String
+  week        Int             @default(1)
+  createdAt   DateTime        @default(now())
+  progress    QuestProgress[]
+}
+
+model QuestProgress {
+  id          String    @id @default(cuid())
+  userId      String
+  questId     String
+  progress    Int       @default(0)
+  completedAt DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quest       Quest     @relation(fields: [questId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questId])
+}
+
+model Report {
+  id              String   @id @default(cuid())
+  reporterId      String
+  targetUserId    String?
+  targetMessageId String?
+  reason          String
+  resolved        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  reporter        User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+}
+
+model BannedUser {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("BannedUser")
+}
+
+model Season {
+  id        String         @id @default(cuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  theme     String
+  createdAt DateTime       @default(now())
+  items     SeasonalItem[]
+}
+
+model SeasonalItem {
+  id        String @id @default(cuid())
+  seasonId  String
+  itemId    String
+  season    Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  item      Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, itemId])
+}
+
+model Neighbourhood {
+  id        String                @id @default(cuid())
+  name      String
+  createdAt DateTime              @default(now())
+  members   NeighbourhoodMember[]
+}
+
+model NeighbourhoodMember {
+  id              String        @id @default(cuid())
+  neighbourhoodId String
+  userId          String        @unique
+  neighbourhood   Neighbourhood @relation(fields: [neighbourhoodId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum Layer {
+  FLOOR
+  WALL
 }
 
 enum Role {
