@@ -1,13 +1,20 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useAuthStore } from "./stores/authStore";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+interface Avatar {
+    id: string;
+    imageUrl: string | null;
+    name: string | null;
+}
 
 interface Profile {
     id: string;
     username: string;
     displayUsername: string | null;
-    avatar: { id: string; imageUrl: string | null; name: string | null } | null;
+    avatar: Avatar | null;
     spaceCount: number;
     createdAt: string;
 }
@@ -15,17 +22,50 @@ interface Profile {
 export default function ProfilePage() {
     const { userId } = useParams();
     const navigate = useNavigate();
+    const token = useAuthStore((s) => s.token);
     const [profile, setProfile] = useState<Profile | null>(null);
     const [loading, setLoading] = useState(true);
+    const [avatars, setAvatars] = useState<Avatar[]>([]);
+    const [isOwnProfile, setIsOwnProfile] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [saveMsg, setSaveMsg] = useState("");
 
     useEffect(() => {
         if (!userId) return;
         setLoading(true);
-        fetch(`${API}/api/v1/player/${userId}`)
-            .then(r => r.ok ? r.json() : null)
-            .then(d => setProfile(d))
-            .finally(() => setLoading(false));
-    }, [userId]);
+        Promise.all([
+            fetch(`${API}/api/v1/player/${userId}`).then(r => r.ok ? r.json() : null),
+            fetch(`${API}/api/v1/user/avatars`).then(r => r.ok ? r.json() : { avatars: [] }),
+            fetch(`${API}/api/v1/user/me`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
+        ]).then(([profileData, avatarsData, meData]) => {
+            setProfile(profileData);
+            setAvatars(avatarsData.avatars || []);
+            setIsOwnProfile(meData?.user?.id === userId);
+        }).finally(() => setLoading(false));
+    }, [userId, token]);
+
+    const handleSelectAvatar = async (avatarId: string) => {
+        setSaving(true);
+        setSaveMsg("");
+        try {
+            const res = await fetch(`${API}/api/v1/user/metadata`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ avatarId }),
+            });
+            if (res.ok) {
+                setSaveMsg("Avatar updated!");
+                setProfile(prev => prev ? { ...prev, avatar: avatars.find(a => a.id === avatarId) || prev.avatar } : prev);
+            } else {
+                const d = await res.json();
+                setSaveMsg(d.message || "Failed to update");
+            }
+        } catch {
+            setSaveMsg("Network error");
+        } finally {
+            setSaving(false);
+        }
+    };
 
     if (loading) return <div style={styles.container}><p style={{ padding: 32, textAlign: "center", color: "#888" }}>Loading...</p></div>;
     if (!profile) return <div style={styles.container}><p style={{ padding: 32, textAlign: "center", color: "#888" }}>User not found</p></div>;

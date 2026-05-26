@@ -8,7 +8,7 @@ export const userRouter = Router();
 userRouter.get("/me", userMiddleware, async (req, res) => {
     const user = await client.user.findUnique({
         where: { id: req.userId },
-        select: { id: true, username: true, name: true, role: true, email: true },
+        select: { id: true, username: true, name: true, role: true, email: true, avatarId: true },
     });
     if (!user) {
         res.status(404).json({ message: "User not found" });
@@ -38,6 +38,11 @@ userRouter.post("/metadata", userMiddleware, async (req, res) => {
         console.log("error")
         res.status(400).json({message: "Internal server error"})
     }
+})
+
+userRouter.get("/avatars", async (req, res) => {
+    const avatars = await client.avatar.findMany();
+    res.json({ avatars });
 })
 
 userRouter.get("/metadata/bulk", async (req, res) => {

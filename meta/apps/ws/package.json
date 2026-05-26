@@ -5,12 +5,15 @@
   "scripts": {
     "build": "npx esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --tsconfig=tsconfig.json",
     "start": "node --env-file=.env dist/index.js",
-    "dev": "npm run build && npm run start"
+    "dev": "node_modules/.bin/tsx watch --env-file=.env src/index.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
+  "devDependencies": {
+    "tsx": "^4.22.3"
+  },
   "dependencies": {
     "@repo/db": "workspace:*",
     "@types/jsonwebtoken": "^9.0.7",

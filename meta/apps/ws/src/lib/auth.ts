@@ -9,6 +9,6 @@ export const auth = betterAuth({
     }),
     plugins: [bearer(), username()],
     emailAndPassword: { enabled: true },
-    secret: process.env.BETTER_AUTH_SECRET,
+    secret: process.env.BETTER_AUTH_SECRET ?? "metaverse2d-super-secret-key-change-in-prod",
     baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
 });

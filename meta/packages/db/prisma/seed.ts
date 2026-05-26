@@ -8,49 +8,49 @@ async function main() {
   // ─── Elements ──────────────────────────────────────────────────────────────
   const grass = await client.element.upsert({
     where: { id: "el-grass" },
-    update: {},
+    update: { imageUrl: "/uploads/defaults/grass.png", width: 1, height: 1, static: true },
     create: { id: "el-grass", width: 1, height: 1, static: true, imageUrl: "/uploads/defaults/grass.png" },
   });
 
   const dirt = await client.element.upsert({
     where: { id: "el-dirt" },
-    update: {},
+    update: { imageUrl: "/uploads/defaults/dirt.png", width: 1, height: 1, static: true },
     create: { id: "el-dirt", width: 1, height: 1, static: true, imageUrl: "/uploads/defaults/dirt.png" },
   });
 
   const water = await client.element.upsert({
     where: { id: "el-water" },
-    update: {},
+    update: { imageUrl: "/uploads/defaults/water.png", width: 1, height: 1, static: true },
     create: { id: "el-water", width: 1, height: 1, static: true, imageUrl: "/uploads/defaults/water.png" },
   });
 
   const wall = await client.element.upsert({
     where: { id: "el-wall" },
-    update: {},
+    update: { imageUrl: "/uploads/defaults/wall.png", width: 1, height: 1, static: true },
     create: { id: "el-wall", width: 1, height: 1, static: true, imageUrl: "/uploads/defaults/wall.png" },
   });
 
   const path = await client.element.upsert({
     where: { id: "el-path" },
-    update: {},
+    update: { imageUrl: "/uploads/defaults/path.png", width: 1, height: 1, static: true },
     create: { id: "el-path", width: 1, height: 1, static: true, imageUrl: "/uploads/defaults/path.png" },
   });
 
   const tree = await client.element.upsert({
     where: { id: "el-tree" },
-    update: {},
+    update: { imageUrl: "/uploads/defaults/tree.png", width: 2, height: 2, static: false },
     create: { id: "el-tree", width: 2, height: 2, static: false, imageUrl: "/uploads/defaults/tree.png" },
   });
 
   const fence = await client.element.upsert({
     where: { id: "el-fence" },
-    update: {},
+    update: { imageUrl: "/uploads/defaults/fence.png", width: 1, height: 1, static: true },
     create: { id: "el-fence", width: 1, height: 1, static: true, imageUrl: "/uploads/defaults/fence.png" },
   });
 
   const flower = await client.element.upsert({
     where: { id: "el-flower" },
-    update: {},
+    update: { imageUrl: "/uploads/defaults/flower.png", width: 1, height: 1, static: false },
     create: { id: "el-flower", width: 1, height: 1, static: false, imageUrl: "/uploads/defaults/flower.png" },
   });
 
@@ -59,61 +59,61 @@ async function main() {
   // ─── Items ─────────────────────────────────────────────────────────────────
   const sofa = await client.item.upsert({
     where: { id: "item-sofa" },
-    update: {},
+    update: { name: "Sofa", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/sofa.png", width: 2, height: 1 },
     create: { id: "item-sofa", name: "Sofa", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/sofa.png", width: 2, height: 1 },
   });
 
   const table = await client.item.upsert({
     where: { id: "item-table" },
-    update: {},
+    update: { name: "Table", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/table.png", width: 2, height: 1 },
     create: { id: "item-table", name: "Table", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/table.png", width: 2, height: 1 },
   });
 
   const chair = await client.item.upsert({
     where: { id: "item-chair" },
-    update: {},
+    update: { name: "Chair", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/chair.png", width: 1, height: 1 },
     create: { id: "item-chair", name: "Chair", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/chair.png", width: 1, height: 1 },
   });
 
   const rug = await client.item.upsert({
     where: { id: "item-rug" },
-    update: {},
+    update: { name: "Rug", category: "Floor", rarity: "Common", imageUrl: "/uploads/defaults/rug.png", width: 3, height: 2 },
     create: { id: "item-rug", name: "Rug", category: "Floor", rarity: "Common", imageUrl: "/uploads/defaults/rug.png", width: 3, height: 2 },
   });
 
   const lamp = await client.item.upsert({
     where: { id: "item-lamp" },
-    update: {},
+    update: { name: "Floor Lamp", category: "Decoration", rarity: "Uncommon", imageUrl: "/uploads/defaults/lamp.png", width: 1, height: 1 },
     create: { id: "item-lamp", name: "Floor Lamp", category: "Decoration", rarity: "Uncommon", imageUrl: "/uploads/defaults/lamp.png", width: 1, height: 1 },
   });
 
   const painting = await client.item.upsert({
     where: { id: "item-painting" },
-    update: {},
+    update: { name: "Painting", category: "Wall", rarity: "Uncommon", imageUrl: "/uploads/defaults/painting.png", width: 2, height: 1, isWallItem: true },
     create: { id: "item-painting", name: "Painting", category: "Wall", rarity: "Uncommon", imageUrl: "/uploads/defaults/painting.png", width: 2, height: 1, isWallItem: true },
   });
 
   const plant = await client.item.upsert({
     where: { id: "item-plant" },
-    update: {},
+    update: { name: "Potted Plant", category: "Decoration", rarity: "Common", imageUrl: "/uploads/defaults/plant.png", width: 1, height: 1 },
     create: { id: "item-plant", name: "Potted Plant", category: "Decoration", rarity: "Common", imageUrl: "/uploads/defaults/plant.png", width: 1, height: 1 },
   });
 
   const bookshelf = await client.item.upsert({
     where: { id: "item-bookshelf" },
-    update: {},
+    update: { name: "Bookshelf", category: "Furniture", rarity: "Uncommon", imageUrl: "/uploads/defaults/bookshelf.png", width: 1, height: 2 },
     create: { id: "item-bookshelf", name: "Bookshelf", category: "Furniture", rarity: "Uncommon", imageUrl: "/uploads/defaults/bookshelf.png", width: 1, height: 2 },
   });
 
   const crystal = await client.item.upsert({
     where: { id: "item-crystal" },
-    update: {},
+    update: { name: "Crystal", category: "Decoration", rarity: "Rare", imageUrl: "/uploads/defaults/crystal.png", width: 1, height: 1 },
     create: { id: "item-crystal", name: "Crystal", category: "Decoration", rarity: "Rare", imageUrl: "/uploads/defaults/crystal.png", width: 1, height: 1 },
   });
 
   const throne = await client.item.upsert({
     where: { id: "item-throne" },
-    update: {},
+    update: { name: "Throne", category: "Furniture", rarity: "Legacy", imageUrl: "/uploads/defaults/throne.png", width: 2, height: 2 },
     create: { id: "item-throne", name: "Throne", category: "Furniture", rarity: "Legacy", imageUrl: "/uploads/defaults/throne.png", width: 2, height: 2 },
   });
 
@@ -185,19 +185,19 @@ async function main() {
   // ─── Avatars ────────────────────────────────────────────────────────────────
   await client.avatar.upsert({
     where: { id: "avatar-default" },
-    update: {},
+    update: { name: "Default", imageUrl: "/uploads/defaults/avatar-default.png" },
     create: { id: "avatar-default", name: "Default", imageUrl: "/uploads/defaults/avatar-default.png" },
   });
 
   await client.avatar.upsert({
     where: { id: "avatar-ninja" },
-    update: {},
+    update: { name: "Ninja", imageUrl: "/uploads/defaults/avatar-ninja.png" },
     create: { id: "avatar-ninja", name: "Ninja", imageUrl: "/uploads/defaults/avatar-ninja.png" },
   });
 
   await client.avatar.upsert({
     where: { id: "avatar-wizard" },
-    update: {},
+    update: { name: "Wizard", imageUrl: "/uploads/defaults/avatar-wizard.png" },
     create: { id: "avatar-wizard", name: "Wizard", imageUrl: "/uploads/defaults/avatar-wizard.png" },
   });
 

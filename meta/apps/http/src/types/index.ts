@@ -32,6 +32,25 @@ export const AddElementSchema = z.object({
     y: z.number(),
 })
 
+export const BatchAddElementSchema = z.object({
+    spaceId: z.string(),
+    elements: z.array(z.object({
+        elementId: z.string(),
+        x: z.number(),
+        y: z.number(),
+    })).min(1).max(100),
+})
+
+export const BatchPlaceItemSchema = z.object({
+    spaceId: z.string(),
+    items: z.array(z.object({
+        itemId: z.string(),
+        x: z.number(),
+        y: z.number(),
+        layer: z.enum(["FLOOR", "WALL"]).optional(),
+    })).min(1).max(50),
+})
+
 
 export const CreateElementSchema = z.object({
     imageUrl: z.string(),

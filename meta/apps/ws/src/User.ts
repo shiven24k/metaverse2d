@@ -16,6 +16,7 @@ function getRandomString(length: number) {
 export class User {
     public id: string;
     public userId?: string;
+    public username: string;
     private spaceId?: string;
     public x: number;
     public y: number;
@@ -23,6 +24,7 @@ export class User {
 
     constructor(ws: WebSocket) {
         this.id = getRandomString(10);
+        this.username = 'Unknown';
         this.x = 0;
         this.y = 0;
         this.ws = ws;
@@ -81,23 +83,27 @@ export class User {
                     this.x = Math.floor(Math.random() * space.width);
                     this.y = Math.floor(Math.random() * space.height);
 
+                    const userRecord = await client.user.findUnique({ where: { id: userId }, select: { name: true } });
+                    this.username = userRecord?.name ?? 'Unknown';
+
                     this.send({
                         type: "space-joined",
                         payload: {
                             spawn: { x: this.x, y: this.y },
                             userId: this.userId,
+                            username: this.username,
                             users:
                                 getRoomManager()
                                     .rooms.get(spaceId)
                                     ?.filter((u) => u.id !== this.id)
-                                    ?.map((u) => ({ userId: u.userId, x: u.x, y: u.y })) ?? [],
+                                    ?.map((u) => ({ userId: u.userId, x: u.x, y: u.y, username: u.username })) ?? [],
                         },
                     });
 
                     getRoomManager().broadcast(
                         {
                             type: "user-joined",
-                            payload: { userId: this.userId, x: this.x, y: this.y },
+                            payload: { userId: this.userId, x: this.x, y: this.y, username: this.username },
                         },
                         this,
                         this.spaceId!
@@ -106,12 +112,12 @@ export class User {
                 }
 
                 case "emote": {
-                    const emoteId = parsedData.payload.emoteId;
-                    if (typeof emoteId === "number" && emoteId >= 1 && emoteId <= 6) {
+                    const { emoji, x, y } = parsedData.payload;
+                    if (typeof emoji === "string" && emoji.length > 0) {
                         getRoomManager().broadcast(
                             {
-                                type: "emote",
-                                payload: { userId: this.userId, emoteId },
+                                type: "emoted",
+                                payload: { userId: this.userId, emoji, x, y },
                             },
                             this,
                             this.spaceId!
@@ -125,13 +131,45 @@ export class User {
                     if (itemId && itemName) {
                         getRoomManager().broadcast(
                             {
-                                type: "item-interaction",
+                                type: "interacted",
                                 payload: { userId: this.userId, itemId, itemName, x, y },
                             },
                             this,
                             this.spaceId!
                         );
                     }
+                    break;
+                }
+
+                case "chat": {
+                    const { message, x: chatX, y: chatY } = parsedData.payload;
+                    if (message && typeof message === "string" && message.trim().length > 0) {
+                        getRoomManager().broadcast(
+                            {
+                                type: "chat",
+                                payload: { userId: this.userId, username: this.username, message: message.trim(), x: chatX, y: chatY },
+                            },
+                            this,
+                            this.spaceId!
+                        );
+                    }
+                    break;
+                }
+
+                case "element-placed":
+                case "item-placed":
+                case "element-deleted":
+                case "item-deleted":
+                case "element-moved":
+                case "item-moved": {
+                    getRoomManager().broadcast(
+                        {
+                            type: parsedData.type,
+                            payload: { ...parsedData.payload, userId: this.userId },
+                        },
+                        this,
+                        this.spaceId!
+                    );
                     break;
                 }
 
