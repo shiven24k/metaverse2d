@@ -18,6 +18,7 @@ itemRouter.get("/", async (req, res) => {
             width: i.width,
             height: i.height,
             isWallItem: i.isWallItem,
+            blocking: i.blocking,
             season: i.season,
         })),
     });
@@ -40,19 +41,9 @@ inventoryRouter.get("/", userMiddleware, async (req, res) => {
             imageUrl: i.item.imageUrl,
             width: i.item.width,
             height: i.item.height,
+            blocking: i.item.blocking,
             quantity: i.quantity,
         })),
     });
 });
 
-inventoryRouter.post("/demo", userMiddleware, async (req, res) => {
-    const items = await client.item.findMany();
-    for (const item of items) {
-        await client.inventoryItem.upsert({
-            where: { userId_itemId: { userId: req.userId!, itemId: item.id } },
-            create: { userId: req.userId!, itemId: item.id, quantity: 2 },
-            update: { quantity: { increment: 2 } },
-        });
-    }
-    res.json({ message: "Demo items added" });
-});

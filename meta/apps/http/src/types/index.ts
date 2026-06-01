@@ -57,6 +57,7 @@ export const CreateElementSchema = z.object({
     width: z.number(),
     height: z.number(),
     static: z.boolean(),
+    blocking: z.boolean().optional(),
 })
 
 export const UpdateElementSchema = z.object({
@@ -88,6 +89,7 @@ export const CreateItemSchema = z.object({
     width: z.number(),
     height: z.number(),
     isWallItem: z.boolean().optional(),
+    blocking: z.boolean().optional(),
     season: z.string().optional(),
 })
 

@@ -17,6 +17,7 @@ import { neighbourhoodRouter } from "./neighbourhood";
 import { billingRouter } from "./billing";
 import { mapsRouter } from "./maps";
 import { uploadRouter } from "./upload";
+import { economyRouter } from "./economy";
 import client from "@repo/db/client";
 
 export const router = Router();
@@ -30,6 +31,7 @@ router.get("/elements", async (req, res) => {
             width: e.width,
             height: e.height,
             static: e.static,
+            blocking: e.blocking,
         })),
     });
 });
@@ -64,3 +66,4 @@ router.use("/billing", billingRouter);
 router.use("/maps", mapsRouter);
 router.use("/upload", uploadRouter);
 router.use("/admin", adminBanRouter);
+router.use("/economy", economyRouter);

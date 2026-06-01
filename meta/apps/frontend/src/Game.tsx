@@ -6,7 +6,58 @@ interface DragItem { type: 'inventory-item' | 'element'; itemId?: string; elemen
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const MAX_RECONNECT_ATTEMPTS = 3;
+const MAX_RECONNECT_DELAY_MS = 30_000;
+
+// Frontend-hosted pixel art sprites (Vite public folder, no API prefix)
+const TILE_IMAGE: Record<string, string> = {
+    'el-grass':         '/tiles/grass.png',
+    'el-dirt':          '/tiles/dirt.png',
+    'el-water':         '/tiles/water.png',
+    'el-wall':          '/tiles/wall.png',
+    'el-path':          '/tiles/path.png',
+    'el-tree':          '/tiles/tree.png',
+    'el-fence':         '/tiles/fence.png',
+    'el-flower':        '/tiles/flower.png',
+    'el-sand':          '/tiles/sand.png',
+    'el-snow':          '/tiles/snow.png',
+    'el-lava':          '/tiles/lava.png',
+    'el-cobblestone':   '/tiles/cobblestone.png',
+    'el-wood-floor':    '/tiles/wood-floor.png',
+    'el-cave-floor':    '/tiles/cave-floor.png',
+    'el-bush':          '/tiles/bush.png',
+    'el-cactus':        '/tiles/cactus.png',
+    'el-rock':          '/tiles/rock.png',
+    'el-mushroom':      '/tiles/mushroom.png',
+    'el-pine-tree':     '/tiles/pine-tree.png',
+    'el-shallow-water': '/tiles/shallow-water.png',
+    'el-waterfall':     '/tiles/waterfall.png',
+    'el-brick-wall':    '/tiles/brick-wall.png',
+    'el-window':        '/tiles/window.png',
+    'el-door':          '/tiles/door.png',
+    'el-roof':          '/tiles/roof.png',
+    'el-chest':         '/tiles/chest.png',
+};
+
+const ITEM_IMAGE: Record<string, string> = {
+    'item-sofa':      '/items/sofa.png',
+    'item-table':     '/items/table.png',
+    'item-chair':     '/items/chair.png',
+    'item-rug':       '/items/rug.png',
+    'item-plant':     '/items/plant.png',
+    'item-lamp':      '/items/lamp.png',
+    'item-painting':  '/items/painting.png',
+    'item-bookshelf': '/items/bookshelf.png',
+    'item-crystal':   '/items/crystal.png',
+    'item-throne':    '/items/throne.png',
+    'item-bed':       '/items/bed.png',
+    'item-counter':   '/items/counter.png',
+    'item-barrel':    '/items/barrel.png',
+    'item-sign':      '/items/sign.png',
+    'item-campfire':  '/items/campfire.png',
+    'item-fountain':  '/items/fountain.png',
+};
+
+const ALL_TILE_PATHS = [...Object.values(TILE_IMAGE), ...Object.values(ITEM_IMAGE)];
 
 const EMOTES = ['👋', '💃', '🧘', '😴', '🎉', '❤️'];
 
@@ -19,12 +70,13 @@ interface InventoryItem {
     imageUrl: string;
     width: number;
     height: number;
+    blocking: boolean;
     quantity: number;
 }
 
 interface SpaceElement {
     id: string;
-    element: { id: string; imageUrl: string; width: number; height: number; static: boolean };
+    element: { id: string; imageUrl: string; width: number; height: number; static: boolean; blocking: boolean };
     x: number;
     y: number;
 }
@@ -35,14 +87,25 @@ interface ElementType {
     width: number;
     height: number;
     static: boolean;
+    blocking: boolean;
 }
 
 interface PlacedItem {
     id: string;
-    item: { id: string; name: string; imageUrl: string; width: number; height: number };
+    item: { id: string; name: string; imageUrl: string; width: number; height: number; blocking: boolean };
     x: number;
     y: number;
     layer: string;
+    metadata?: { text?: string } | null;
+}
+
+interface NPC {
+    id: string;
+    name: string;
+    sprite: string;
+    dialogues: string[];
+    x: number;
+    y: number;
 }
 
 
@@ -75,17 +138,20 @@ const ArenaInner = () => {
     const token = useAuthStore((s) => s.token);
     const spaceId = searchParams.get('spaceId') || '';
 
+    const isGuest = useAuthStore((s) => s.isGuest);
+
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectAttempts = useRef(0);
+    const [reconnecting, setReconnecting] = useState(false);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleMessageRef = useRef<(msg: any) => void>(() => {});
 
 
-    const [currentUser, setCurrentUser] = useState<{ x: number; y: number; userId: string; username: string } | null>(null);
-    const [users, setUsers] = useState(new Map<string, { x: number; y: number; userId: string; username: string }>());
+    const [currentUser, setCurrentUser] = useState<{ x: number; y: number; userId: string; username: string; avatarId?: string } | null>(null);
+    const [users, setUsers] = useState(new Map<string, { x: number; y: number; userId: string; username: string; avatarId?: string }>());
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState('');
 
@@ -113,6 +179,7 @@ const ArenaInner = () => {
     const [quests, setQuests] = useState<QuestInfo[]>([]);
     const [questsLoading, setQuestsLoading] = useState(false);
     const [editorError, setEditorError] = useState('');
+    const [toasts, setToasts] = useState<{ id: string; message: string; type: 'info' | 'success' | 'warning' }[]>([]);
     const [spaceName, setSpaceName] = useState('');
     const [showNewMap, setShowNewMap] = useState(false);
     const [newMapName, setNewMapName] = useState('');
@@ -120,7 +187,6 @@ const ArenaInner = () => {
     const [newMapTemplate, setNewMapTemplate] = useState('');
     const [mapTemplates, setMapTemplates] = useState<{ id: string; name: string; dimensions: string }[]>([]);
     const [creatingMap, setCreatingMap] = useState(false);
-    const [demoItemsLoading, setDemoItemsLoading] = useState(false);
     const [renderTick, setRenderTick] = useState(0);
     const [canUndo, setCanUndo] = useState(false);
     const [canRedo, setCanRedo] = useState(false);
@@ -129,29 +195,42 @@ const ArenaInner = () => {
     const [chatBubbles, setChatBubbles] = useState<{ id: string; username: string; message: string; x: number; y: number; createdAt: number }[]>([]);
     const [chatInput, setChatInput] = useState('');
     const [showChatInput, setShowChatInput] = useState(false);
+    const [showEmotePalette, setShowEmotePalette] = useState(false);
     const [playerPopup, setPlayerPopup] = useState<{ userId: string; username: string; x: number; y: number } | null>(null);
+    const [showGiftModal, setShowGiftModal] = useState(false);
+    const [giftTarget, setGiftTarget] = useState<{ userId: string; username: string } | null>(null);
+    const [giftSending, setGiftSending] = useState(false);
+    const [giftMsg, setGiftMsg] = useState("");
+    const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+    const [avatars, setAvatars] = useState<{ id: string; imageUrl: string; name: string }[]>([]);
+    const [savingAvatar, setSavingAvatar] = useState(false);
+
+    // ── Interactable objects ──────────────────────────────────────────────────
+    const [interactionPopup, setInteractionPopup] = useState<{
+        type: 'sign' | 'chest' | 'campfire' | 'fountain';
+        title: string;
+        text: string;
+    } | null>(null);
+    const campfireWarmUntil = useRef<number>(0);
+    // Sign editing in edit mode
+    const [signEditing, setSignEditing] = useState<{ placedItemId: string; text: string } | null>(null);
+
+    // ── NPCs ─────────────────────────────────────────────────────────────────
+    const [npcs, setNpcs] = useState<NPC[]>([]);
+    const npcsRef = useRef<NPC[]>([]);
+    const [npcDialogue, setNpcDialogue] = useState<{ npc: NPC; idx: number } | null>(null);
 
     const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
     const rerender = useCallback(() => setRenderTick(t => t + 1), []);
-
-    const getImage = useCallback((url: string): HTMLImageElement => {
-        if (!url) {
-            const fallback = new Image();
-            return fallback;
-        }
-        const cached = imageCache.current.get(url);
-        if (cached) return cached;
-        const img = new Image();
-        img.src = url.startsWith('http') ? url : `${API}${url}`;
-        imageCache.current.set(url, img);
-        return img;
-    }, []);
+    useEffect(() => { npcsRef.current = npcs; }, [npcs]);
 
     const preloadImages = useCallback((urls: string[]) => {
         urls.forEach(url => {
             if (url && !imageCache.current.has(url)) {
                 const img = new Image();
-                const fullUrl = url.startsWith('http') ? url : `${API}${url}`;
+                // Tiles and items are frontend-hosted (Vite public/), not proxied through API
+                const isLocal = url.startsWith('/tiles/') || url.startsWith('/items/');
+                const fullUrl = url.startsWith('http') ? url : (isLocal ? url : `${API}${url}`);
                 img.onload = () => {
                     rerender();
                 };
@@ -163,6 +242,25 @@ const ArenaInner = () => {
             }
         });
     }, [rerender]);
+
+    const preloadAvatarImage = useCallback((avatarId: string | undefined) => {
+        if (!avatarId) return;
+        const url = `${API}/uploads/defaults/${avatarId}.png`;
+        if (!imageCache.current.has(url)) {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                imageCache.current.set(url, img);
+                rerender();
+            };
+            img.src = url;
+        }
+    }, [rerender]);
+
+    // Preload all tile and item sprites once on mount
+    useEffect(() => {
+        preloadImages(ALL_TILE_PATHS);
+    }, [preloadImages]);
 
     const drawImageOnCanvas = useCallback((ctx: CanvasRenderingContext2D, url: string, x: number, y: number, w: number, h: number, fallbackColor: string, borderColor: string, label?: string) => {
         const img = imageCache.current.get(url);
@@ -210,6 +308,106 @@ const ArenaInner = () => {
     const selectStart = useRef<{ x: number; y: number } | null>(null);
     const moveTarget = useRef<{ type: 'element' | 'item'; id: string; origX: number; origY: number } | null>(null);
     const [movePreview, setMovePreview] = useState<{ x: number; y: number } | null>(null);
+
+    const animPosRef = useRef({ x: 0, y: 0 });
+    const camRef = useRef({ x: 0, y: 0, offsetX: 0, offsetY: 0 });
+    const facingRef = useRef<'down' | 'up' | 'left' | 'right'>('down');
+    const moveAnimRef = useRef<{ fromX: number; fromY: number; toX: number; toY: number; startTime: number; duration: number } | null>(null);
+    const moveQueueRef = useRef<{ x: number; y: number }[]>([]);
+    const walkBobRef = useRef(0);
+    const walkFrameRef = useRef(0);
+    const bumpAnimRef = useRef<{ startTime: number; duration: number } | null>(null);
+    const currentUserRef = useRef(currentUser);
+    useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+
+    function isCellBlocked(x: number, y: number): boolean {
+        for (const e of spaceElements) {
+            if (!e.element.blocking) continue;
+            if (x >= e.x && x < e.x + e.element.width && y >= e.y && y < e.y + e.element.height) return true;
+        }
+        for (const p of placedItems) {
+            if (!p.item.blocking) continue;
+            if (x >= p.x && x < p.x + p.item.width && y >= p.y && y < p.y + p.item.height) return true;
+        }
+        return false;
+    }
+
+    const doMove = useCallback((newX: number, newY: number) => {
+        const user = currentUserRef.current;
+        if (!user || !wsRef.current) return false;
+        const dx = newX - user.x;
+        const dy = newY - user.y;
+        if (Math.abs(dx) + Math.abs(dy) !== 1) return false;
+        if (dx < 0) facingRef.current = 'left';
+        else if (dx > 0) facingRef.current = 'right';
+        else if (dy < 0) facingRef.current = 'up';
+        else if (dy > 0) facingRef.current = 'down';
+        moveAnimRef.current = { fromX: user.x, fromY: user.y, toX: newX, toY: newY, startTime: performance.now(), duration: 150 };
+        wsRef.current.send(JSON.stringify({ type: 'move', payload: { x: newX, y: newY } }));
+        return true;
+    }, []);
+
+    function findPath(sx: number, sy: number, tx: number, ty: number): { x: number; y: number }[] {
+        const dims = spaceDims;
+        const blocked = new Set<string>();
+        spaceElements.forEach(e => { if (e.element.blocking) for (let dy = 0; dy < e.element.height; dy++) for (let dx = 0; dx < e.element.width; dx++) blocked.add(`${e.x + dx},${e.y + dy}`); });
+        placedItems.forEach(i => { if (i.item.blocking) for (let dy = 0; dy < i.item.height; dy++) for (let dx = 0; dx < i.item.width; dx++) blocked.add(`${i.x + dx},${i.y + dy}`); });
+        if (blocked.has(`${tx},${ty}`)) return [];
+        const queue: { x: number; y: number; path: { x: number; y: number }[] }[] = [{ x: sx, y: sy, path: [] }];
+        const visited = new Set<string>([`${sx},${sy}`]);
+        while (queue.length > 0) {
+            const cur = queue.shift()!;
+            if (cur.x === tx && cur.y === ty) return cur.path;
+            for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+                const nx = cur.x + dx, ny = cur.y + dy;
+                const key = `${nx},${ny}`;
+                if (nx >= 0 && nx < dims.width && ny >= 0 && ny < dims.height && !visited.has(key) && !blocked.has(key)) {
+                    visited.add(key);
+                    queue.push({ x: nx, y: ny, path: [...cur.path, { x: nx, y: ny }] });
+                }
+            }
+        }
+        return [];
+    }
+
+    function processWalkQueue() {
+        if (moveAnimRef.current || moveQueueRef.current.length === 0) return;
+        const next = moveQueueRef.current.shift()!;
+        doMove(next.x, next.y);
+    }
+
+    useEffect(() => {
+        let id: number;
+        function tick() {
+            const anim = moveAnimRef.current;
+            if (anim) {
+                const t = Math.min((performance.now() - anim.startTime) / anim.duration, 1);
+                const eased = t * (2 - t);
+                animPosRef.current = { x: anim.fromX + (anim.toX - anim.fromX) * eased, y: anim.fromY + (anim.toY - anim.fromY) * eased };
+                walkBobRef.current = t < 1 ? Math.sin(t * Math.PI) * 3 : 0;
+                walkFrameRef.current = Math.floor((performance.now() - anim.startTime) / 75) % 2;
+                if (t >= 1) {
+                    animPosRef.current = { x: anim.toX, y: anim.toY };
+                    moveAnimRef.current = null;
+                    walkBobRef.current = 0;
+                    walkFrameRef.current = 0;
+                    currentUserRef.current = { ...currentUserRef.current!, x: anim.toX, y: anim.toY };
+                    setCurrentUser(prev => prev ? { ...prev, x: anim.toX, y: anim.toY } : prev);
+                    processWalkQueue();
+                }
+                rerender();
+            }
+            const bump = bumpAnimRef.current;
+            if (bump) {
+                const t = (performance.now() - bump.startTime) / bump.duration;
+                if (t >= 1) { bumpAnimRef.current = null; }
+                rerender();
+            }
+            id = requestAnimationFrame(tick);
+        }
+        id = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(id);
+    }, [rerender, setCurrentUser]);
 
     const authHeaders = useMemo((): Record<string, string> => ({
         "Content-Type": "application/json",
@@ -337,13 +535,11 @@ const ArenaInner = () => {
         const canvas = canvasRef.current;
         if (!canvas) return null;
         const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const canvasX = (clientX - rect.left) * scaleX;
-        const canvasY = (clientY - rect.top) * scaleY;
+        const canvasX = clientX - rect.left;
+        const canvasY = clientY - rect.top;
         return {
-            x: Math.floor(canvasX / 50),
-            y: Math.floor(canvasY / 50),
+            x: Math.floor((canvasX - camRef.current.offsetX + camRef.current.x) / 50),
+            y: Math.floor((canvasY - camRef.current.offsetY + camRef.current.y) / 50),
         };
     };
 
@@ -355,11 +551,12 @@ const ArenaInner = () => {
 
         ws.onopen = () => {
             setConnected(true);
+            setReconnecting(false);
             setError('');
             reconnectAttempts.current = 0;
             ws.send(JSON.stringify({
                 type: 'join',
-                payload: { spaceId, token },
+                payload: { spaceId, token: token || '' },
             }));
         };
 
@@ -370,12 +567,11 @@ const ArenaInner = () => {
 
         ws.onclose = () => {
             setConnected(false);
-            if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
-                reconnectAttempts.current++;
-                setTimeout(connect, 1000 * reconnectAttempts.current);
-            } else {
-                setError('Connection lost. Please refresh to reconnect.');
-            }
+            reconnectAttempts.current++;
+            const delay = Math.min(1000 * reconnectAttempts.current, MAX_RECONNECT_DELAY_MS);
+            setReconnecting(true);
+            setError(`Reconnecting (attempt ${reconnectAttempts.current})...`);
+            setTimeout(connect, delay);
         };
 
         ws.onerror = () => {
@@ -418,28 +614,19 @@ const ArenaInner = () => {
             const canvas = canvasRef.current;
             const container = containerRef.current;
             if (!canvas || !container) return;
-            const parent = container.parentElement;
-            if (!parent) return;
-            const availW = parent.clientWidth - 48;
-            const availH = parent.clientHeight - 48;
-            const aspect = canvas.width / canvas.height;
-            let cssW: number, cssH: number;
-            if (availW / availH > aspect) {
-                cssH = Math.max(200, Math.min(availH, 800));
-                cssW = cssH * aspect;
-            } else {
-                cssW = Math.max(200, Math.min(availW, 1200));
-                cssH = cssW / aspect;
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+                canvas.width = w;
+                canvas.height = h;
+                rerender();
             }
-            canvas.style.width = `${Math.floor(cssW)}px`;
-            canvas.style.height = `${Math.floor(cssH)}px`;
         };
         resize();
         const observer = new ResizeObserver(resize);
-        const parent = containerRef.current?.parentElement;
-        if (parent) observer.observe(parent);
+        if (containerRef.current) observer.observe(containerRef.current);
         return () => observer.disconnect();
-    }, [spaceDims]);
+    }, [rerender]);
 
     const fetchElementsCatalog = useCallback(async () => {
         setElementsLoading(true);
@@ -490,6 +677,7 @@ const ArenaInner = () => {
                 setPlayerPopup(null);
                 setShowChatInput(false);
                 setChatInput('');
+                setShowEmotePalette(false);
             }
             return;
         }
@@ -573,6 +761,16 @@ const ArenaInner = () => {
         }
     }, [authHeaders]);
 
+    const fetchNpcs = useCallback(async () => {
+        try {
+            const res = await fetch(`${API}/api/v1/space/${spaceId}/npcs`);
+            if (res.ok) {
+                const data = await res.json();
+                setNpcs(data.npcs || []);
+            }
+        } catch {}
+    }, [spaceId]);
+
     const handleCreateMap = useCallback(async () => {
         if (!newMapName.trim()) return;
         setCreatingMap(true);
@@ -599,24 +797,6 @@ const ArenaInner = () => {
         }
     }, [newMapName, newMapDims, newMapTemplate, authHeaders, navigate]);
 
-    const fetchDemoItems = useCallback(async () => {
-        setDemoItemsLoading(true);
-        setEditorError('');
-        try {
-            const res = await fetch(`${API}/api/v1/inventory/demo`, { method: 'POST', headers: authHeaders });
-            if (!res.ok) {
-                const data = await res.json();
-                setEditorError(data.message || 'Failed to add demo items');
-                return;
-            }
-            await fetchInventory();
-        } catch (err) {
-            console.error(err);
-            setEditorError('Failed to add demo items');
-        } finally {
-            setDemoItemsLoading(false);
-        }
-    }, [authHeaders]);
 
     useEffect(() => {
         fetchSpace();
@@ -675,6 +855,12 @@ const ArenaInner = () => {
         return () => clearInterval(timer);
     }, [chatBubbles.length]);
 
+    const addToast = useCallback((message: string, type: 'info' | 'success' | 'warning' = 'info') => {
+        const id = Math.random().toString(36).slice(2);
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+    }, []);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleMessage = (message: any) => {
         switch (message.type) {
@@ -684,15 +870,22 @@ const ArenaInner = () => {
                     y: message.payload.spawn.y,
                     userId: message.payload.userId,
                     username: message.payload.username || 'Unknown',
+                    avatarId: message.payload.avatarId,
                 });
-                const userMap = new Map<string, { x: number; y: number; userId: string; username: string }>();
+                animPosRef.current = { x: message.payload.spawn.x, y: message.payload.spawn.y };
+                currentUserRef.current = { x: message.payload.spawn.x, y: message.payload.spawn.y, userId: message.payload.userId, username: message.payload.username || 'Unknown', avatarId: message.payload.avatarId };
+                facingRef.current = 'down';
+                moveAnimRef.current = null;
+                moveQueueRef.current = [];
+                const userMap = new Map<string, { x: number; y: number; userId: string; username: string; avatarId?: string }>();
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 message.payload.users.forEach((u: any) => {
-                    userMap.set(u.userId, { x: u.x, y: u.y, userId: u.userId, username: u.username || 'Unknown' });
+                    userMap.set(u.userId, { x: u.x, y: u.y, userId: u.userId, username: u.username || 'Unknown', avatarId: u.avatarId });
                 });
                 setUsers(userMap);
                 fetchSpace();
                 fetchInventory();
+                fetchNpcs();
                 break;
             }
 
@@ -704,9 +897,13 @@ const ArenaInner = () => {
                         y: message.payload.y,
                         userId: message.payload.userId,
                         username: message.payload.username || 'Unknown',
+                        avatarId: message.payload.avatarId,
                     });
                     return next;
                 });
+                if (message.payload.userId !== currentUserRef.current?.userId) {
+                    addToast(`${message.payload.username || 'Someone'} joined`, 'info');
+                }
                 break;
 
             case 'movement':
@@ -723,21 +920,27 @@ const ArenaInner = () => {
                 break;
 
             case 'movement-rejected':
+                moveAnimRef.current = null;
+                moveQueueRef.current = [];
+                const rx = message.payload.x;
+                const ry = message.payload.y;
+                animPosRef.current = { x: rx, y: ry };
+                walkBobRef.current = 0;
+                currentUserRef.current = { ...currentUserRef.current!, x: rx, y: ry };
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                setCurrentUser((prev: any) => ({
-                    ...prev,
-                    x: message.payload.x,
-                    y: message.payload.y,
-                }));
+                setCurrentUser((prev: any) => ({ ...prev, x: rx, y: ry }));
                 break;
 
-            case 'user-left':
+            case 'user-left': {
+                const leftUser = users.get(message.payload.userId);
                 setUsers(prev => {
                     const next = new Map(prev);
                     next.delete(message.payload.userId);
                     return next;
                 });
+                if (leftUser) addToast(`${leftUser.username} left`, 'warning');
                 break;
+            }
 
             case 'element-placed':
             case 'item-placed':
@@ -779,9 +982,37 @@ const ArenaInner = () => {
                     createdAt: Date.now(),
                 }]);
                 break;
+
+            case 'avatar-changed':
+                setUsers(prev => {
+                    const next = new Map(prev);
+                    const u = next.get(message.payload.userId);
+                    if (u) next.set(message.payload.userId, { ...u, avatarId: message.payload.avatarId });
+                    return next;
+                });
+                break;
+
+            case 'gift-announce':
+                addToast(`🎁 ${message.payload.fromUsername} sent ${message.payload.itemName} to ${message.payload.recipientUsername}!`, 'success');
+                break;
+
+            case 'npc-moved':
+                setNpcs(prev => prev.map(n =>
+                    n.id === message.payload.npcId
+                        ? { ...n, x: message.payload.x, y: message.payload.y }
+                        : n
+                ));
+                break;
         }
     };
     handleMessageRef.current = handleMessage;
+
+    // Auto-dismiss interaction popup after 3 s (chest stays if no coins found)
+    useEffect(() => {
+        if (!interactionPopup) return;
+        const t = setTimeout(() => setInteractionPopup(null), 3500);
+        return () => clearTimeout(t);
+    }, [interactionPopup]);
 
     const sendEmote = (emoteIndex: number) => {
         if (!currentUser || !wsRef.current) return;
@@ -819,10 +1050,12 @@ const ArenaInner = () => {
 
     const handleMove = (newX: number, newY: number) => {
         if (!currentUser || !wsRef.current) return;
-        wsRef.current.send(JSON.stringify({
-            type: 'move',
-            payload: { x: newX, y: newY, userId: currentUser.userId },
-        }));
+        if (isCellBlocked(newX, newY)) {
+            bumpAnimRef.current = { startTime: performance.now(), duration: 200 };
+            return;
+        }
+        moveQueueRef.current = [];
+        doMove(newX, newY);
     };
 
     const placeItem = useCallback(async (itemId: string, x: number, y: number) => {
@@ -1017,6 +1250,20 @@ const ArenaInner = () => {
         if (e.button !== 0) return;
         const pos = canvasToGrid(e.clientX, e.clientY);
         if (!pos) return;
+
+        // Sign editing: click a sign in edit mode to set its text
+        if (!eraserMode && !selectedElement && !selectedItem) {
+            const hitSign = placedItemsRef.current.find(p =>
+                p.item.name.toLowerCase() === 'sign' &&
+                pos.x >= p.x && pos.x < p.x + p.item.width &&
+                pos.y >= p.y && pos.y < p.y + p.item.height
+            );
+            if (hitSign) {
+                setSignEditing({ placedItemId: hitSign.id, text: hitSign.metadata?.text || '' });
+                return;
+            }
+        }
+
         if (eraserMode || selectedElement || selectedItem) {
             isPainting.current = true;
             lastPlacedCell.current = pos;
@@ -1141,11 +1388,51 @@ const ArenaInner = () => {
         const pos = canvasToGrid(e.clientX, e.clientY);
         if (!pos) return;
         if (currentUser && wsRef.current) {
+            // NPC click check
+            const hitNpc = npcsRef.current.find(n => n.x === pos.x && n.y === pos.y);
+            if (hitNpc) {
+                setNpcDialogue({ npc: hitNpc, idx: 0 });
+                return;
+            }
+
             const allItems = [
-                ...placedItems.map(p => ({ type: 'item' as const, id: p.id, itemId: p.item.id, name: p.item.name, x: p.x, y: p.y, w: p.item.width, h: p.item.height })),
+                ...placedItems.map(p => ({ type: 'item' as const, id: p.id, itemId: p.item.id, name: p.item.name, x: p.x, y: p.y, w: p.item.width, h: p.item.height, metadata: p.metadata })),
             ];
             const hitItem = allItems.find(p => pos.x >= p.x && pos.x < p.x + p.w && pos.y >= p.y && pos.y < p.y + p.h);
             if (hitItem) {
+                const nameLow = hitItem.name.toLowerCase();
+                if (nameLow === 'sign') {
+                    const signText = hitItem.metadata?.text || 'Welcome to my space!';
+                    setInteractionPopup({ type: 'sign', title: '📋 Sign', text: signText });
+                    return;
+                }
+                if (nameLow === 'chest') {
+                    const pid = hitItem.id;
+                    (async () => {
+                        try {
+                            const res = await fetch(`${API}/api/v1/economy/interact`, {
+                                method: 'POST',
+                                headers: authHeaders,
+                                body: JSON.stringify({ placedItemId: pid }),
+                            });
+                            const data = await res.json();
+                            setInteractionPopup({ type: 'chest', title: '🎁 Chest', text: data.message || 'Nothing found.' });
+                        } catch {
+                            setInteractionPopup({ type: 'chest', title: '🎁 Chest', text: 'Nothing found.' });
+                        }
+                    })();
+                    return;
+                }
+                if (nameLow === 'campfire') {
+                    setInteractionPopup({ type: 'campfire', title: '🔥 Campfire', text: 'You warm yourself by the fire. +5 mood' });
+                    campfireWarmUntil.current = Date.now() + 3000;
+                    return;
+                }
+                if (nameLow === 'fountain') {
+                    setInteractionPopup({ type: 'fountain', title: '💧 Fountain', text: 'You drink from the fountain. Refreshing!' });
+                    return;
+                }
+                // Generic interact broadcast
                 wsRef.current.send(JSON.stringify({
                     type: 'interact',
                     payload: { itemId: hitItem.itemId, itemName: hitItem.name, x: pos.x, y: pos.y },
@@ -1158,6 +1445,13 @@ const ArenaInner = () => {
             if (targetUser) {
                 setPlayerPopup({ userId: targetUser.userId, username: targetUser.username, x: targetUser.x, y: targetUser.y });
                 return;
+            }
+            if (pos.x !== currentUser.x || pos.y !== currentUser.y) {
+                const path = findPath(currentUser.x, currentUser.y, pos.x, pos.y);
+                if (path.length > 0) {
+                    moveQueueRef.current = path;
+                    processWalkQueue();
+                }
             }
         }
     };
@@ -1181,32 +1475,79 @@ const ArenaInner = () => {
         }
     };
 
+    const handleSendGift = async (itemId: string) => {
+        if (!giftTarget) return;
+        setGiftSending(true);
+        setGiftMsg("");
+        try {
+            const res = await fetch(`${API}/api/v1/gift/send`, {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ itemId, recipientId: giftTarget.userId }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setGiftMsg(`Sent ${data.item?.name || "item"} to ${giftTarget.username}!`);
+                if (wsRef.current) {
+                    wsRef.current.send(JSON.stringify({ type: 'gift', payload: { itemName: data.item?.name, recipientUsername: giftTarget.username } }));
+                }
+                fetchInventory();
+            } else {
+                setGiftMsg(data.message || "Failed to send");
+            }
+        } catch {
+            setGiftMsg("Network error");
+        } finally {
+            setGiftSending(false);
+        }
+    };
+
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        const cw = canvas.width;
-        const ch = canvas.height;
+        const vpW = canvas.width;
+        const vpH = canvas.height;
+        const worldW = spaceDims.width * 50;
+        const worldH = spaceDims.height * 50;
 
-        ctx.clearRect(0, 0, cw, ch);
+        // When the world fits inside the viewport, center it; otherwise pan to follow player.
+        const offsetX = worldW < vpW ? Math.floor((vpW - worldW) / 2) : 0;
+        const offsetY = worldH < vpH ? Math.floor((vpH - worldH) / 2) : 0;
+        const playerCX = (currentUser ? animPosRef.current.x : 0) * 50 + 25;
+        const playerCY = (currentUser ? animPosRef.current.y : 0) * 50 + 25;
+        const camX = worldW < vpW ? 0 : Math.round(Math.max(0, Math.min(worldW - vpW, playerCX - vpW / 2)));
+        const camY = worldH < vpH ? 0 : Math.round(Math.max(0, Math.min(worldH - vpH, playerCY - vpH / 2)));
+        camRef.current = { x: camX, y: camY, offsetX, offsetY };
 
-        ctx.fillStyle = '#f0fdf4';
-        ctx.fillRect(0, 0, cw, ch);
+        ctx.clearRect(0, 0, vpW, vpH);
+        ctx.fillStyle = '#1a2e1a';
+        ctx.fillRect(0, 0, vpW, vpH);
+        ctx.save();
+        ctx.translate(offsetX - camX, offsetY - camY);
 
-        ctx.strokeStyle = '#d1d5db';
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= cw; i += 50) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, ch);
-            ctx.stroke();
+        // Background: tile grass sprite across all cells, fallback to solid color
+        const grassImg = imageCache.current.get('/tiles/grass.png');
+        if (grassImg) {
+            for (let gy = 0; gy < spaceDims.height; gy++) {
+                for (let gx = 0; gx < spaceDims.width; gx++) {
+                    try { ctx.drawImage(grassImg, gx * 50, gy * 50, 50, 50); } catch {}
+                }
+            }
+        } else {
+            ctx.fillStyle = '#f0fdf4';
+            ctx.fillRect(0, 0, worldW, worldH);
         }
-        for (let i = 0; i <= ch; i += 50) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(cw, i);
-            ctx.stroke();
+
+        // Grid lines (subtle, on top of grass)
+        ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= worldW; i += 50) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, worldH); ctx.stroke();
+        }
+        for (let i = 0; i <= worldH; i += 50) {
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(worldW, i); ctx.stroke();
         }
 
         spaceElements.forEach(e => {
@@ -1214,7 +1555,9 @@ const ArenaInner = () => {
             const y = e.y * 50;
             const w = e.element.width * 50;
             const h = e.element.height * 50;
-            drawImageOnCanvas(ctx, e.element.imageUrl, x, y, w, h, '#ede9fe', '#7c3aed');
+            // Prefer frontend-hosted tile sprite, fall back to API-hosted imageUrl
+            const tileUrl = TILE_IMAGE[e.element.id] || e.element.imageUrl;
+            drawImageOnCanvas(ctx, tileUrl, x, y, w, h, '#ede9fe', 'rgba(0,0,0,0.15)');
         });
 
         placedItems.forEach(p => {
@@ -1222,7 +1565,8 @@ const ArenaInner = () => {
             const y = p.y * 50;
             const w = p.item.width * 50;
             const h = p.item.height * 50;
-            drawImageOnCanvas(ctx, p.item.imageUrl, x, y, w, h, '#fef3c7', '#d97706', p.item.name);
+            const itemUrl = ITEM_IMAGE[p.item.id] || p.item.imageUrl;
+            drawImageOnCanvas(ctx, itemUrl, x, y, w, h, '#fef3c7', 'rgba(0,0,0,0.20)', editMode ? p.item.name : undefined);
         });
 
         if (editMode && currentUser) {
@@ -1252,32 +1596,93 @@ const ArenaInner = () => {
         });
 
         if (currentUser) {
-            ctx.beginPath();
-            ctx.fillStyle = '#FF6B6B';
-            ctx.arc(currentUser.x * 50, currentUser.y * 50, 20, 0, Math.PI * 2);
-            ctx.fill();
+            preloadAvatarImage(currentUser.avatarId);
+            const avatarUrl = currentUser.avatarId ? `${API}/uploads/defaults/${currentUser.avatarId}.png` : '';
+            const img = avatarUrl ? imageCache.current.get(avatarUrl) : null;
+            const bump = bumpAnimRef.current;
+            const bumpOff = bump ? Math.sin((performance.now() - bump.startTime) / bump.duration * Math.PI * 4) * 4 * Math.max(0, 1 - (performance.now() - bump.startTime) / bump.duration) : 0;
+            const cx = animPosRef.current.x * 50 + bumpOff;
+            const cy = animPosRef.current.y * 50 - walkBobRef.current;
+            if (img) {
+                const dirCol = { down: 0, left: 1, right: 2, up: 3 }[facingRef.current] ?? 0;
+                const sx = dirCol * 32;
+                const sy = walkFrameRef.current * 48;
+                ctx.drawImage(img, sx, sy, 32, 48, cx - 16, cy - 24, 32, 48);
+            } else {
+                ctx.beginPath();
+                ctx.fillStyle = '#FF6B6B';
+                ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+                ctx.fill();
+            }
             ctx.fillStyle = '#000';
             ctx.font = 'bold 11px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(currentUser.username, currentUser.x * 50, currentUser.y * 50 + 45);
+            ctx.fillText(currentUser.username, cx, cy + 28);
         }
 
         users.forEach(user => {
-            ctx.beginPath();
-            ctx.fillStyle = '#4ECDC4';
-            ctx.arc(user.x * 50, user.y * 50, 20, 0, Math.PI * 2);
-            ctx.fill();
+            preloadAvatarImage(user.avatarId);
+            const avatarUrl = user.avatarId ? `${API}/uploads/defaults/${user.avatarId}.png` : '';
+            const img = avatarUrl ? imageCache.current.get(avatarUrl) : null;
+            if (img) {
+                ctx.drawImage(img, 0, 0, 32, 48, user.x * 50 - 16, user.y * 50 - 24, 32, 48);
+            } else {
+                ctx.beginPath();
+                ctx.fillStyle = '#4ECDC4';
+                ctx.arc(user.x * 50, user.y * 50, 20, 0, Math.PI * 2);
+                ctx.fill();
+            }
             ctx.fillStyle = '#000';
             ctx.font = 'bold 11px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(user.username, user.x * 50, user.y * 50 + 45);
+            ctx.fillText(user.username, user.x * 50, user.y * 50 + 28);
+            // 👂 proximity indicator when we're typing a chat message
+            if (currentUser && showChatInput) {
+                const dist = Math.sqrt((user.x - currentUser.x) ** 2 + (user.y - currentUser.y) ** 2);
+                if (dist <= 4) {
+                    ctx.font = '14px sans-serif';
+                    ctx.globalAlpha = 1;
+                    ctx.fillText('👂', user.x * 50, user.y * 50 - 38);
+                }
+            }
         });
 
+        // NPCs
+        npcs.forEach(npc => {
+            preloadAvatarImage(npc.sprite);
+            const avatarUrl = `${API}/uploads/defaults/${npc.sprite}.png`;
+            const img = imageCache.current.get(avatarUrl);
+            if (img) {
+                ctx.drawImage(img, 0, 0, 32, 48, npc.x * 50 - 16, npc.y * 50 - 24, 32, 48);
+            } else {
+                ctx.beginPath();
+                ctx.fillStyle = '#FFD700';
+                ctx.arc(npc.x * 50, npc.y * 50, 20, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 3;
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(npc.name, npc.x * 50, npc.y * 50 + 28);
+            ctx.font = '14px sans-serif';
+            ctx.fillText('💬', npc.x * 50, npc.y * 50 - 40);
+            ctx.shadowBlur = 0;
+        });
+
+        // Proximity chat: full opacity within 4 tiles, 40% for 5-10, hidden beyond 10
         chatBubbles.forEach(b => {
-            const alpha = Math.max(0, 1 - (Date.now() - b.createdAt) / 4000);
-            ctx.globalAlpha = alpha;
+            const dist = currentUser
+                ? Math.sqrt((b.x - currentUser.x) ** 2 + (b.y - currentUser.y) ** 2)
+                : 0;
+            if (dist > 10) return;
+            const proximity = dist <= 4 ? 1 : 0.4;
+            const fade = Math.max(0, 1 - (Date.now() - b.createdAt) / 4000);
+            ctx.globalAlpha = fade * proximity;
+            const fontSize = dist <= 4 ? 12 : 10;
             const text = `${b.username}: ${b.message}`;
-            ctx.font = '12px sans-serif';
+            ctx.font = `${fontSize}px sans-serif`;
             ctx.textAlign = 'center';
             const metrics = ctx.measureText(text);
             const pad = 6;
@@ -1368,103 +1773,229 @@ const ArenaInner = () => {
             ctx.fillStyle = 'rgba(79, 70, 229, 0.1)';
             ctx.fillRect(x, y, w, h);
         }
-    }, [currentUser, users, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles]);
+
+        ctx.restore();
+
+        // Campfire warm overlay (viewport-space, after restore)
+        if (Date.now() < campfireWarmUntil.current) {
+            const progress = (campfireWarmUntil.current - Date.now()) / 3000;
+            ctx.globalAlpha = 0.15 * progress;
+            ctx.fillStyle = '#ff6a00';
+            ctx.fillRect(0, 0, vpW, vpH);
+            ctx.globalAlpha = 1;
+        }
+    }, [currentUser, users, npcs, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, showChatInput]);
 
     return (
-        <div style={{ fontFamily: 'system-ui', background: '#f0f2f5', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ background: '#fff', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-                <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#1a1a2e' }}>{spaceName || 'Arena'}</h1>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <span style={{ fontSize: 13, color: connected ? '#10b981' : '#ef4444' }}>
-                        {connected ? '● Connected' : '○ Disconnected'}
+        <div style={{ fontFamily: 'system-ui', background: '#0a0a14', position: 'fixed', inset: 0, width: '100vw', height: '100vh', overflow: 'hidden' }}>
+            {/* ── Header ── */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 52, background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', zIndex: 10, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#fff', letterSpacing: '-0.3px' }}>{spaceName || 'Arena'}</h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: connected ? '#4ade80' : '#f87171', fontWeight: 600 }}>
+                        {connected ? '● Connected' : '○ Offline'}
                     </span>
-                    <span style={{ fontSize: 13, color: '#555' }}>
-                        Users: {users.size + (currentUser ? 1 : 0)}
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', padding: '2px 8px', background: 'rgba(255,255,255,0.07)', borderRadius: 10, marginRight: 4 }}>
+                        {users.size + (currentUser ? 1 : 0)} online
                     </span>
-                    <button onClick={() => { setShowGuestbook(!showGuestbook); setShowQuests(false); }} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: showGuestbook ? '#4f46e5' : '#fff', color: showGuestbook ? '#fff' : '#333', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                        {showGuestbook ? 'Close' : 'Guestbook'}
+                    <button onClick={() => { setShowGuestbook(!showGuestbook); setShowQuests(false); }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: showGuestbook ? '#4f46e5' : 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                        Guestbook
                     </button>
-                    <button onClick={() => { setShowQuests(!showQuests); setShowGuestbook(false); }} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: showQuests ? '#4f46e5' : '#fff', color: showQuests ? '#fff' : '#333', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                        {showQuests ? 'Close' : 'Quests'}
+                    <button onClick={() => { setShowQuests(!showQuests); setShowGuestbook(false); }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: showQuests ? '#4f46e5' : 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                        Quests
                     </button>
-                    <button onClick={() => setEditMode(!editMode)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: editMode ? '#4f46e5' : '#fff', color: editMode ? '#fff' : '#333', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                        {editMode ? 'Exit Edit' : 'Edit'}
-                    </button>
+                    {!isGuest && (
+                        <button onClick={() => setEditMode(!editMode)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: editMode ? '#4f46e5' : 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                            {editMode ? 'Exit Edit' : 'Edit'}
+                        </button>
+                    )}
+                    {!isGuest && (
+                        <button onClick={() => { fetch(`${API}/api/v1/user/avatars`).then(r => r.json()).then(d => setAvatars(d.avatars || [])).catch(() => setAvatars([])); setShowAvatarPicker(true); }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12 }}>
+                            Avatar
+                        </button>
+                    )}
                     {!editMode && (
-                        <button onClick={() => setShowChatInput(!showChatInput)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: showChatInput ? '#4f46e5' : '#fff', color: showChatInput ? '#fff' : '#333', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                        <button onClick={() => setShowChatInput(!showChatInput)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: showChatInput ? '#4f46e5' : 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                             Chat
                         </button>
                     )}
-                    <button onClick={() => navigate('/lobby')} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 13 }}>
+                    <button onClick={() => navigate('/lobby')} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12 }}>
                         ← Leave
                     </button>
                 </div>
             </div>
 
-            {error && (
-                <div style={{ padding: '8px 24px', background: '#fef2f2', color: '#dc2626', fontSize: 13, textAlign: 'center' }}>{error}</div>
-            )}
+            {/* ── Canvas area: position absolute fills the area below the header ── */}
+                <div
+                    ref={containerRef}
+                    style={{ position: 'absolute', top: 52, left: 0, right: 0, bottom: 0, overflow: 'hidden', outline: 'none' }}
+                    onKeyDown={handleKeyDown}
+                    onClick={() => setShowEmotePalette(false)}
+                    tabIndex={0}
+                >
+                    <canvas
+                        ref={canvasRef}
+                        onMouseDown={startPaint}
+                        onMouseUp={handleCanvasMouseUp}
+                        onMouseLeave={() => { stopPaint(); setHoverPos(null); }}
+                        onMouseMove={handleCanvasMouseMove}
+                        onContextMenu={handleCanvasContextMenu}
+                        onDragOver={e => { e.preventDefault(); setCanvasIsOver(true); }}
+                        onDragLeave={() => { setCanvasIsOver(false); setHoverPos(null); }}
+                        onDrop={handleCanvasDrop}
+                        style={{ display: 'block', width: '100%', height: '100%', cursor: editMode ? (selectedElement || selectedItem ? 'cell' : 'crosshair') : 'default', outline: canvasIsOver ? '2px solid #4f46e5' : 'none' }}
+                    />
 
-            <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
-                <div style={{ flex: 1 }}>
-                    <div ref={containerRef} style={{ padding: 24, outline: 'none' }} onKeyDown={handleKeyDown} tabIndex={0}>
-                        <p style={{ margin: '0 0 12px', fontSize: 13, color: '#666' }}>
-                            {editMode ? '[E] Eraser · [Esc] Deselect · [Ctrl+Z] Undo · Click/drag to place' : 'Arrow keys to move · 1-6 for emotes · Enter to chat · Click items to interact'}
-                        </p>
-                        {!editMode && showChatInput && (
-                            <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
-                                <input
-                                    value={chatInput}
-                                    onChange={e => setChatInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') sendChat(); if (e.key === 'Escape') { setShowChatInput(false); setChatInput(''); } }}
-                                    placeholder="Type a message..."
-                                    autoFocus
-                                    maxLength={100}
-                                    style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1px solid #4f46e5', fontSize: 13, outline: 'none' }}
-                                />
-                                <button onClick={sendChat} disabled={!chatInput.trim()} style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: chatInput.trim() ? '#4f46e5' : '#d1d5db', color: '#fff', fontSize: 13, cursor: chatInput.trim() ? 'pointer' : 'not-allowed', fontWeight: 600 }}>Send</button>
-                            </div>
-                        )}
-                        {playerPopup && (
-                            <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.15)', zIndex: 1100, textAlign: 'center' }}>
-                                <p style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', margin: '0 0 16px' }}>{playerPopup.username}</p>
-                                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                                    <button onClick={() => navigate(`/profile/${playerPopup.userId}`)} style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>View Profile</button>
-                                    <button onClick={() => { setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#333', fontSize: 13, cursor: 'pointer' }}>Close</button>
-                                </div>
-                            </div>
-                        )}
-                        {playerPopup && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 1099 }} onClick={() => setPlayerPopup(null)} />}
-                        <div style={{ borderRadius: 8, overflow: 'hidden', display: 'inline-block' }}>
-                            <canvas
-                                ref={canvasRef}
-                                width={spaceDims.width * 50}
-                                height={spaceDims.height * 50}
-                                onMouseDown={startPaint}
-                                onMouseUp={handleCanvasMouseUp}
-                                onMouseLeave={() => { stopPaint(); setHoverPos(null); }}
-                                onMouseMove={handleCanvasMouseMove}
-                                onContextMenu={handleCanvasContextMenu}
-                                onDragOver={e => { e.preventDefault(); setCanvasIsOver(true); }}
-                                onDragLeave={() => { setCanvasIsOver(false); setHoverPos(null); }}
-                                onDrop={handleCanvasDrop}
-                                style={{ background: '#fff', display: 'block', cursor: editMode ? (selectedElement || selectedItem ? 'cell' : 'crosshair') : 'default', border: `1px solid ${canvasIsOver ? '#4f46e5' : '#e5e7eb'}`, transition: 'border-color 0.15s' }}
-                            />
+                    {/* ── Error / reconnect banner ── */}
+                    {error && (
+                        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '6px 20px', background: reconnecting ? '#78350f' : '#7f1d1d', color: reconnecting ? '#fde68a' : '#fca5a5', fontSize: 12, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, zIndex: 20 }}>
+                            {error}
+                            {reconnecting && <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', fontSize: 14 }}>↻</span>}
                         </div>
-                        {!editMode && (
-                            <div style={{ marginTop: 12, display: 'flex', gap: 6 }}>
-                                {EMOTES.map((emoji, i) => (
-                                    <button key={i} onClick={() => sendEmote(i + 1)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>
-                                        {emoji}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    )}
+
+                {/* Hint text overlay */}
+                <div style={{ position: 'absolute', top: 8, left: 12, pointerEvents: 'none', zIndex: 10 }}>
+                    <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.7)', background: 'rgba(0,0,0,0.5)', padding: '3px 10px', borderRadius: 6 }}>
+                        {editMode ? '[E] Eraser · [Esc] Deselect · [Ctrl+Z] Undo · Click/drag to place' : 'Arrow keys or click to move · 1-6 emotes · Enter chat'}
+                    </p>
                 </div>
 
+                {/* Chat input */}
+                {!editMode && showChatInput && (
+                    <div style={{ position: 'absolute', bottom: 56, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, zIndex: 50 }}>
+                        <input
+                            value={chatInput}
+                            onChange={e => setChatInput(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') sendChat(); if (e.key === 'Escape') { setShowChatInput(false); setChatInput(''); } }}
+                            placeholder="Type a message..."
+                            autoFocus
+                            maxLength={100}
+                            style={{ width: 280, padding: '8px 12px', borderRadius: 6, border: '1px solid #4f46e5', fontSize: 13, outline: 'none', background: 'rgba(10,10,20,0.9)', color: '#fff' }}
+                        />
+                        <button onClick={sendChat} disabled={!chatInput.trim()} style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: chatInput.trim() ? '#4f46e5' : '#374151', color: '#fff', fontSize: 13, cursor: chatInput.trim() ? 'pointer' : 'not-allowed', fontWeight: 600 }}>Send</button>
+                    </div>
+                )}
+
+                {/* Emote toolbar */}
+                {!editMode && (
+                    <div style={{ position: 'absolute', bottom: 12, left: 12, display: 'flex', gap: 6, zIndex: 50 }}>
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                onClick={() => setShowEmotePalette(!showEmotePalette)}
+                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: showEmotePalette ? '#4f46e5' : 'rgba(0,0,0,0.65)', cursor: 'pointer', fontSize: 14, lineHeight: 1, color: '#fff', fontWeight: 600 }}
+                                title="Emotes"
+                            >
+                                😊 ▾
+                            </button>
+                            {showEmotePalette && (
+                                <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 6, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, padding: 8, borderRadius: 10, background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', zIndex: 100 }}>
+                                    {EMOTES.map((emoji, i) => (
+                                        <button key={i} onClick={() => { sendEmote(i + 1); setShowEmotePalette(false); }} style={{ padding: 8, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.08)', cursor: 'pointer', fontSize: 22, lineHeight: 1, transition: 'transform 0.1s' }}
+                                            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.2)')}
+                                            onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                                        >
+                                            {emoji}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            {EMOTES.slice(0, 3).map((emoji, i) => (
+                                <button key={i} onClick={() => sendEmote(i + 1)} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.65)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>
+                                    {emoji}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Player popup */}
+                {/* ── Interaction popup ── */}
+                {interactionPopup && (
+                    <div style={{ position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', borderRadius: 12, padding: '14px 20px', minWidth: 220, maxWidth: 320, zIndex: 200, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 6 }}>{interactionPopup.title}</div>
+                        <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>{interactionPopup.text}</div>
+                        <button onClick={() => setInteractionPopup(null)} style={{ marginTop: 10, padding: '4px 14px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 11, cursor: 'pointer' }}>Dismiss</button>
+                    </div>
+                )}
+
+                {/* ── NPC dialogue ── */}
+                {npcDialogue && (
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,200,0,0.25)', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '24px 28px', width: 340, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                            <span style={{ fontSize: 22 }}>💬</span>
+                            <span style={{ fontSize: 17, fontWeight: 700, color: '#FFD700' }}>{npcDialogue.npc.name}</span>
+                        </div>
+                        <p style={{ margin: '0 0 16px', fontSize: 14, color: '#e2e8f0', lineHeight: 1.6, minHeight: 48 }}>
+                            {npcDialogue.npc.dialogues[npcDialogue.idx % npcDialogue.npc.dialogues.length]}
+                        </p>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            {npcDialogue.npc.dialogues.length > 1 && (
+                                <button onClick={() => setNpcDialogue(prev => prev ? { ...prev, idx: prev.idx + 1 } : null)} style={{ padding: '7px 16px', borderRadius: 6, border: '1px solid rgba(255,200,0,0.3)', background: 'rgba(255,200,0,0.1)', color: '#FFD700', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                                    Next →
+                                </button>
+                            )}
+                            <button onClick={() => setNpcDialogue(null)} style={{ padding: '7px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>Close</button>
+                        </div>
+                    </div>
+                )}
+                {npcDialogue && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1199 }} onClick={() => setNpcDialogue(null)} />}
+
+                {/* ── Sign editor (edit mode) ── */}
+                {signEditing && (
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '20px 24px', width: 320, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
+                        <div style={{ fontWeight: 700, color: '#f1f5f9', marginBottom: 12 }}>📋 Edit Sign Text</div>
+                        <input
+                            autoFocus
+                            value={signEditing.text}
+                            onChange={e => setSignEditing({ ...signEditing, text: e.target.value })}
+                            onKeyDown={e => { if (e.key === 'Escape') setSignEditing(null); }}
+                            maxLength={120}
+                            placeholder="Welcome to my space!"
+                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                        />
+                        <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        await fetch(`${API}/api/v1/space/placed/${signEditing.placedItemId}/metadata`, {
+                                            method: 'PUT',
+                                            headers: authHeaders,
+                                            body: JSON.stringify({ metadata: { text: signEditing.text } }),
+                                        });
+                                        setPlacedItems(prev => prev.map(p =>
+                                            p.id === signEditing.placedItemId ? { ...p, metadata: { text: signEditing.text } } : p
+                                        ));
+                                    } catch {}
+                                    setSignEditing(null);
+                                }}
+                                style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                            >
+                                Save
+                            </button>
+                            <button onClick={() => setSignEditing(null)} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                        </div>
+                    </div>
+                )}
+                {signEditing && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 1199 }} onClick={() => setSignEditing(null)} />}
+
+                {playerPopup && (
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.15)', zIndex: 1100, textAlign: 'center' }}>
+                        <p style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', margin: '0 0 16px' }}>{playerPopup.username}</p>
+                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                            <button onClick={() => navigate(`/profile/${playerPopup.userId}`)} style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>View Profile</button>
+                            <button onClick={() => { setGiftTarget({ userId: playerPopup.userId, username: playerPopup.username }); setShowGiftModal(true); setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#333', fontSize: 13, cursor: 'pointer' }}>Send Gift</button>
+                            <button onClick={() => { setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#333', fontSize: 13, cursor: 'pointer' }}>Close</button>
+                        </div>
+                    </div>
+                )}
+                {playerPopup && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 1099 }} onClick={() => setPlayerPopup(null)} />}
+
+                {/* ── Editor sidebar (overlays canvas) ── */}
                 {editMode && (
-                    <div style={{ width: 280, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 280, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
                         <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15, color: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <span>Editor</span>
                             <div style={{ display: 'flex', gap: 6 }}>
@@ -1606,7 +2137,7 @@ const ArenaInner = () => {
                                                         <img src={imgUrl} alt={el.id} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                                                     </div>
                                                     <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#333' }}>{el.id.replace('el-', '').charAt(0).toUpperCase() + el.id.replace('el-', '').slice(1)}</p>
-                                                    <p style={{ margin: '2px 0 0', fontSize: 9, color: '#999' }}>{el.static ? 'static' : 'deco'}</p>
+                                                    <p style={{ margin: '2px 0 0', fontSize: 9, color: '#999' }}>{el.blocking ? 'block' : 'walk'}</p>
                                                 </div>
                                             );
                                         })}
@@ -1618,13 +2149,7 @@ const ArenaInner = () => {
                                     {inventory.filter(i => i.quantity > 0).length === 0 ? (
                                         <div style={{ textAlign: 'center' }}>
                                             <p style={{ fontSize: 13, color: '#888' }}>No items in inventory.</p>
-                                            <button
-                                                onClick={fetchDemoItems}
-                                                disabled={demoItemsLoading}
-                                                style={{ marginTop: 8, padding: '8px 16px', borderRadius: 6, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 12, cursor: demoItemsLoading ? 'wait' : 'pointer', fontWeight: 600 }}
-                                            >
-                                                {demoItemsLoading ? 'Adding...' : 'Load Demo Items'}
-                                            </button>
+                                            <p style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>Claim daily gifts or buy from the shop to get items.</p>
                                         </div>
                                     ) : (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1648,6 +2173,7 @@ const ArenaInner = () => {
                                                     <div style={{ flex: 1, minWidth: 0 }}>
                                                         <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</p>
                                                         <p style={{ margin: '2px 0 0', fontSize: 10, color: '#888' }}>x{item.quantity} · {item.rarity}</p>
+                                                        <p style={{ margin: '2px 0 0', fontSize: 9, color: '#999' }}>{item.blocking ? 'block' : 'walk'}</p>
                                                     </div>
                                                 </div>
                                                 );
@@ -1673,7 +2199,7 @@ const ArenaInner = () => {
                 )}
 
                 {!editMode && showGuestbook && (
-                    <div style={{ width: 320, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 320, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
                         <div style={{ padding: 16, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 15 }}>Guestbook</div>
                         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
                             {gbLoading ? (
@@ -1702,7 +2228,7 @@ const ArenaInner = () => {
                 )}
 
                 {!editMode && showQuests && (
-                    <div style={{ width: 320, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 320, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
                         <div style={{ padding: 16, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 15 }}>Quests</div>
                         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
                             {questsLoading ? (
@@ -1769,7 +2295,93 @@ const ArenaInner = () => {
                         </div>
                     </div>
                 )}
+
+                {showAvatarPicker && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }} onClick={() => setShowAvatarPicker(false)}>
+                        <div style={{ background: '#fff', borderRadius: 16, padding: 28, maxWidth: 400, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
+                            <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Choose Your Character</h3>
+                            <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+                                {avatars.map(a => {
+                                    const selected = currentUser?.avatarId === a.id;
+                                    return (
+                                        <button key={a.id} onClick={async () => {
+                                            setSavingAvatar(true);
+                                            try {
+                                                const res = await fetch(`${API}/api/v1/user/metadata`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders }, body: JSON.stringify({ avatarId: a.id }) });
+                                                if (res.ok) {
+                                                    setCurrentUser(prev => prev ? { ...prev, avatarId: a.id } : prev);
+                                                    currentUserRef.current = currentUserRef.current ? { ...currentUserRef.current, avatarId: a.id } : currentUserRef.current;
+                                                    if (wsRef.current?.readyState === WebSocket.OPEN) {
+                                                        wsRef.current.send(JSON.stringify({ type: 'avatar-changed', payload: { avatarId: a.id } }));
+                                                    }
+                                                    setShowAvatarPicker(false);
+                                                }
+                                            } finally { setSavingAvatar(false); }
+                                        }} disabled={savingAvatar || selected} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 16, borderRadius: 12, border: selected ? '2px solid #4f46e5' : '2px solid #e5e7eb', background: selected ? '#eef2ff' : '#fff', cursor: 'pointer', transition: 'all 0.15s', opacity: savingAvatar ? 0.6 : 1 }} >
+                                            <img src={`${API}${a.imageUrl}`} alt={a.name} style={{ width: 64, height: 96, imageRendering: 'pixelated' }} />
+                                            <span style={{ fontSize: 13, fontWeight: 600, color: selected ? '#4f46e5' : '#333' }}>{a.name}</span>
+                                            {selected && <span style={{ fontSize: 11, color: '#4f46e5' }}>Current</span>}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showGiftModal && giftTarget && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }} onClick={() => { setShowGiftModal(false); setGiftMsg(""); }}>
+                        <div style={{ background: '#fff', borderRadius: 16, padding: 24, maxWidth: 380, width: '90%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
+                            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Send Gift to {giftTarget.username}</h3>
+                            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#888' }}>Choose an item from your inventory</p>
+                            {giftMsg && (
+                                <p style={{ margin: '0 0 12px', padding: '8px 12px', borderRadius: 6, background: giftMsg.includes('Sent') ? '#f0fdf4' : '#fef2f2', color: giftMsg.includes('Sent') ? '#059669' : '#ef4444', fontSize: 13 }}>{giftMsg}</p>
+                            )}
+                            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {inventory.filter(i => i.quantity > 0).length === 0 ? (
+                                    <p style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>No items to gift.</p>
+                                ) : (
+                                    inventory.filter(i => i.quantity > 0).map(item => (
+                                        <button key={item.itemId} onClick={() => handleSendGift(item.itemId)} disabled={giftSending} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fafafa', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', opacity: giftSending ? 0.5 : 1 }}>
+                                            <div style={{ width: 36, height: 36, borderRadius: 4, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                                                <img src={item.imageUrl.startsWith('http') ? item.imageUrl : `${API}${item.imageUrl}`} alt={item.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#333' }}>{item.name}</p>
+                                                <p style={{ margin: '2px 0 0', fontSize: 11, color: '#888' }}>x{item.quantity} · {item.rarity}</p>
+                                            </div>
+                                            <span style={{ fontSize: 12, color: '#4f46e5', fontWeight: 600 }}>Gift →</span>
+                                        </button>
+                                    ))
+                                )}
+                            </div>
+                            <button onClick={() => { setShowGiftModal(false); setGiftMsg(""); }} style={{ marginTop: 12, padding: '10px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#333', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                        </div>
+                    </div>
+                )}
             </div>
+
+                {toasts.length > 0 && (
+                    <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 5000, display: 'flex', flexDirection: 'column', gap: 6, pointerEvents: 'none' }}>
+                        {toasts.map(t => (
+                            <div key={t.id} style={{
+                                padding: '10px 18px',
+                                borderRadius: 8,
+                                background: t.type === 'success' ? '#059669' : t.type === 'warning' ? '#d97706' : '#4f46e5',
+                                color: '#fff',
+                                fontSize: 13,
+                                fontWeight: 500,
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                animation: 'slideIn 0.2s ease-out',
+                                pointerEvents: 'auto',
+                            }}>
+                                {t.message}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         </div>
     );
 };

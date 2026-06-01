@@ -1,6 +1,6 @@
 import { WebSocket } from "ws";
 import { getRoomManager } from "./getRoomManager";
-import { OutgoingMessage } from "./types";
+import { IncomingMessage, OutgoingMessage } from "./types";
 import client from "@repo/db/client";
 import { auth } from "./lib/auth";
 
@@ -17,6 +17,8 @@ export class User {
     public id: string;
     public userId?: string;
     public username: string;
+    public avatarId?: string;
+    public isGuest: boolean;
     private spaceId?: string;
     public x: number;
     public y: number;
@@ -27,46 +29,65 @@ export class User {
         this.username = 'Unknown';
         this.x = 0;
         this.y = 0;
+        this.isGuest = false;
         this.ws = ws;
         this.initHandlers();
     }
 
     initHandlers() {
         this.ws.on("message", async (data) => {
-            const parsedData = JSON.parse(data.toString());
+            let parsedData: IncomingMessage;
+            try {
+                parsedData = JSON.parse(data.toString()) as IncomingMessage;
+            } catch {
+                return;
+            }
 
             switch (parsedData.type) {
                 case "join": {
                     const spaceId = parsedData.payload.spaceId;
                     const token = parsedData.payload.token;
 
-                    // Verify session token via Better Auth bearer plugin
-                    let userId: string | undefined;
-                    try {
-                        const session = await auth.api.getSession({
-                            headers: new Headers({
-                                authorization: `Bearer ${token}`,
-                            }),
+                    if (!token) {
+                        // Guest: no token → assign temp identity, skip DB auth
+                        this.isGuest = true;
+                        this.userId = `guest-${this.id}`;
+                        this.username = `Guest-${getRandomString(4)}`;
+                    } else {
+                        let userId: string | undefined;
+                        try {
+                            const session = await auth.api.getSession({
+                                headers: new Headers({
+                                    authorization: `Bearer ${token}`,
+                                }),
+                            });
+                            userId = session?.user?.id;
+                        } catch {
+                            this.ws.close();
+                            return;
+                        }
+
+                        if (!userId) {
+                            this.ws.close();
+                            return;
+                        }
+
+                        this.userId = userId;
+
+                        const banned = await client.bannedUser.findUnique({
+                            where: { userId },
                         });
-                        userId = session?.user?.id;
-                    } catch {
-                        this.ws.close();
-                        return;
-                    }
+                        if (banned) {
+                            this.ws.close();
+                            return;
+                        }
 
-                    if (!userId) {
-                        this.ws.close();
-                        return;
-                    }
-
-                    this.userId = userId;
-
-                    const banned = await client.bannedUser.findUnique({
-                        where: { userId },
-                    });
-                    if (banned) {
-                        this.ws.close();
-                        return;
+                        const userRecord = await client.user.findUnique({
+                            where: { id: userId },
+                            select: { name: true, avatarId: true },
+                        });
+                        this.username = userRecord?.name ?? 'Unknown';
+                        this.avatarId = userRecord?.avatarId ?? undefined;
                     }
 
                     const space = await client.space.findFirst({
@@ -83,27 +104,27 @@ export class User {
                     this.x = Math.floor(Math.random() * space.width);
                     this.y = Math.floor(Math.random() * space.height);
 
-                    const userRecord = await client.user.findUnique({ where: { id: userId }, select: { name: true } });
-                    this.username = userRecord?.name ?? 'Unknown';
+                    const allUsers =
+                        getRoomManager()
+                            .rooms.get(spaceId)
+                            ?.filter((u) => u.id !== this.id)
+                            ?.map((u) => ({ userId: u.userId ?? u.id, x: u.x, y: u.y, username: u.username, avatarId: u.avatarId })) ?? [];
 
                     this.send({
                         type: "space-joined",
                         payload: {
                             spawn: { x: this.x, y: this.y },
-                            userId: this.userId,
+                            userId: this.userId!,
                             username: this.username,
-                            users:
-                                getRoomManager()
-                                    .rooms.get(spaceId)
-                                    ?.filter((u) => u.id !== this.id)
-                                    ?.map((u) => ({ userId: u.userId, x: u.x, y: u.y, username: u.username })) ?? [],
+                            avatarId: this.avatarId,
+                            users: allUsers,
                         },
                     });
 
                     getRoomManager().broadcast(
                         {
                             type: "user-joined",
-                            payload: { userId: this.userId, x: this.x, y: this.y, username: this.username },
+                            payload: { userId: this.userId!, x: this.x, y: this.y, username: this.username, avatarId: this.avatarId },
                         },
                         this,
                         this.spaceId!
@@ -156,6 +177,22 @@ export class User {
                     break;
                 }
 
+                case "avatar-changed": {
+                    const { avatarId } = parsedData.payload;
+                    if (typeof avatarId === "string" && avatarId.length > 0) {
+                        this.avatarId = avatarId;
+                        getRoomManager().broadcast(
+                            {
+                                type: "avatar-changed",
+                                payload: { userId: this.userId, avatarId },
+                            },
+                            this,
+                            this.spaceId!
+                        );
+                    }
+                    break;
+                }
+
                 case "element-placed":
                 case "item-placed":
                 case "element-deleted":
@@ -166,10 +203,25 @@ export class User {
                         {
                             type: parsedData.type,
                             payload: { ...parsedData.payload, userId: this.userId },
-                        },
+                        } as OutgoingMessage,
                         this,
                         this.spaceId!
                     );
+                    break;
+                }
+
+                case "gift": {
+                    const { itemName, recipientUsername } = parsedData.payload;
+                    if (itemName && recipientUsername && this.userId) {
+                        getRoomManager().broadcast(
+                            {
+                                type: "gift-announce",
+                                payload: { fromUsername: this.username, itemName, recipientUsername },
+                            },
+                            this,
+                            this.spaceId!
+                        );
+                    }
                     break;
                 }
 

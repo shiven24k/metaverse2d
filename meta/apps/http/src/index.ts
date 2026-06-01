@@ -8,10 +8,8 @@ import { auth } from './lib/auth';
 const app = express();
 
 const corsOptions = {
-    origin: "http://localhost:5173",
+    origin: process.env.CORS_ORIGIN?.split(",") ?? ["http://localhost:5173", "http://localhost:5174"],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
 };
 
 // Apply CORS globally — must be before all route handlers

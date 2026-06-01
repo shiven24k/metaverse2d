@@ -20,6 +20,7 @@ adminRouter.post("/item", async (req, res) => {
             width: parsedData.data.width,
             height: parsedData.data.height,
             isWallItem: parsedData.data.isWallItem ?? false,
+            blocking: parsedData.data.blocking ?? true,
             season: parsedData.data.season,
         }
     })
@@ -44,6 +45,7 @@ adminRouter.post("/element", async (req, res) => {
             height: parsedData.data.height,
             static: parsedData.data.static,
             imageUrl: parsedData.data.imageUrl,
+            blocking: parsedData.data.blocking ?? true,
         }
     })
 

@@ -120,3 +120,50 @@ giftRouter.post("/claim", userMiddleware, async (req, res) => {
         streak: gift.streak,
     });
 });
+
+giftRouter.post("/send", userMiddleware, async (req, res) => {
+    const { itemId, recipientId } = req.body;
+    if (!itemId || !recipientId) {
+        res.status(400).json({ message: "itemId and recipientId required" });
+        return;
+    }
+
+    if (recipientId === req.userId) {
+        res.status(400).json({ message: "Cannot gift to yourself" });
+        return;
+    }
+
+    const recipient = await client.user.findUnique({ where: { id: recipientId } });
+    if (!recipient) {
+        res.status(404).json({ message: "Recipient not found" });
+        return;
+    }
+
+    const inv = await client.inventoryItem.findUnique({
+        where: { userId_itemId: { userId: req.userId!, itemId } },
+    });
+    if (!inv || inv.quantity < 1) {
+        res.status(400).json({ message: "You don't own this item" });
+        return;
+    }
+
+    const item = await client.item.findUnique({ where: { id: itemId } });
+    if (!item) {
+        res.status(404).json({ message: "Item not found" });
+        return;
+    }
+
+    await client.$transaction(async (tx) => {
+        await tx.inventoryItem.update({
+            where: { userId_itemId: { userId: req.userId!, itemId } },
+            data: { quantity: { decrement: 1 } },
+        });
+        await tx.inventoryItem.upsert({
+            where: { userId_itemId: { userId: recipientId, itemId } },
+            create: { userId: recipientId, itemId, quantity: 1 },
+            update: { quantity: { increment: 1 } },
+        });
+    });
+
+    res.json({ message: `Gifted ${item.name}`, item: { id: item.id, name: item.name } });
+});

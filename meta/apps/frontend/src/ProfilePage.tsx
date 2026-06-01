@@ -96,6 +96,27 @@ export default function ProfilePage() {
                     </div>
                 </div>
             </div>
+            {isOwnProfile && avatars.length > 0 && (
+                <div style={styles.card}>
+                    <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 600, color: "#1a1a2e" }}>Choose Avatar</h3>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                        {avatars.map(a => {
+                            const selected = profile.avatar?.id === a.id;
+                            return (
+                                <button key={a.id} onClick={() => handleSelectAvatar(a.id)} disabled={saving || selected} style={{
+                                    ...styles.avatarBtn,
+                                    outline: selected ? "3px solid #6366f1" : "3px solid transparent",
+                                    opacity: saving ? 0.6 : 1,
+                                }}>
+                                    <img src={a.imageUrl || ""} alt={a.name || "Avatar"} style={{ width: 56, height: 56, borderRadius: "50%" }} />
+                                    <span style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{a.name}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {saveMsg && <p style={{ margin: "12px 0 0", fontSize: 13, color: "#059669" }}>{saveMsg}</p>}
+                </div>
+            )}
         </div>
     );
 }
@@ -115,5 +136,10 @@ const styles: Record<string, React.CSSProperties> = {
     card: {
         maxWidth: 500, margin: "32px auto", padding: "28px 32px",
         background: "#fff", borderRadius: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
+    },
+    avatarBtn: {
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+        padding: 8, border: "none", borderRadius: 10, background: "#f3f4f6",
+        cursor: "pointer", transition: "all 0.15s",
     },
 };

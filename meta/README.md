@@ -60,16 +60,42 @@ Token is returned in the `set-auth-token` response header.
 | GET | `/api/v1/inventory` | Get user's inventory (auth) |
 | POST | `/api/v1/inventory/demo` | Add demo items (auth, dev only) |
 | GET | `/api/v1/maps` | List map templates |
+| GET | `/api/v1/user/me` | Get current user profile (auth, includes avatarId) |
+| GET | `/api/v1/user/avatars` | List all available avatars |
+| POST | `/api/v1/user/metadata` | Set user's avatarId (auth) |
 
-## Editor Features (frontend)
+## In-Game Controls (frontend)
 
+### Movement
+- **Arrow keys** — Move character one cell per press
+- **Click on empty ground** — Click-to-walk: BFS pathfinding, walks tile-by-tile around obstacles
+- **Smooth animation** — 150ms ease-out lerp between cells, direction-facing sprites, walk cycle
+- **3px walk bob** — Vertical bounce during movement
+
+### Avatar Customization
+- **Avatar button** — In header bar (between Edit and Chat), opens a modal to pick character
+- **3 characters** — Default (blue shirt), Ninja (black suit + headband), Wizard (purple robe + staff)
+- **Pixel sprite sheets** — Each character has 4-direction sprites with 2-frame walk cycle (32x48 per frame)
+- Sprites regenerated via `node scripts/generate-avatars.mjs` (uses `@napi-rs/canvas`)
+
+### Player Interactions
+- **Chat** — Enter to open input, Enter to send, Esc to cancel (4-second bubble display)
+- **Emotes** — Keys 1-6, floating emoji above character
+- **Item interaction** — Click placed items in explore mode → floating text + WS broadcast
+- **Player click** — Click another player → popup with "View Profile"
+- **Usernames** — Displayed above avatars at all times
+
+### Editor Features (frontend)
 - **Paint brush** — Click/drag selected element or item to paint continuously (120ms throttle)
 - **Eraser** — `E` key or 🧹 button, click/drag to delete
-- **Move** — Click selected element/item and drag to reposition
+- **Move tool** — Click selected element/item and drag to reposition (green dashed preview)
 - **Layer toggle** — FLOOR/WALL for item placement
-- **Undo/Redo** — `Ctrl+Z` / `Ctrl+Shift+Z`, snapshot-based with server sync
-- **In-editor map creation** — "+ New Map" button with dimensions and templates
+- **Selection rectangle** — Click+drag empty space for rubber-band multi-select, purple dashed highlights
+- **Undo/Redo** — `Ctrl+Z` / `Ctrl+Shift+Z`, snapshot-based with diff reconciliation & API sync
+- **In-editor map creation** — "+ New Map" button with dimensions drop-down and template picker
 - **Right-click** — Delete element/item under cursor
+- **Delete/Backspace** — Delete selected items (single or group)
+- **Escape** — Deselect / clear selection rectangle
 - **WS broadcast** — Real-time sync of placements, deletions, moves to other users
 
 ## DB Commands

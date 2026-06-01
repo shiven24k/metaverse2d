@@ -4,17 +4,28 @@ import SpacePage from './SpacePage';
 import ProfilePage from './ProfilePage';
 import Arena from './Game';
 import ProtectedRoute from './components/ProtectedRoute';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
     return (
-        <Routes>
-            <Route path="/login" element={<AuthPage />} />
-            <Route element={<ProtectedRoute />}>
-                <Route path="/lobby" element={<SpacePage />} />
-                <Route path="/arena" element={<Arena />} />
-                <Route path="/profile/:userId" element={<ProfilePage />} />
-            </Route>
-            <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+        <ErrorBoundary>
+            <Routes>
+                <Route path="/login" element={<AuthPage />} />
+                <Route element={<ProtectedRoute />}>
+                    <Route path="/lobby" element={
+                        <ErrorBoundary>
+                            <SpacePage />
+                        </ErrorBoundary>
+                    } />
+                    <Route path="/arena" element={
+                        <ErrorBoundary>
+                            <Arena />
+                        </ErrorBoundary>
+                    } />
+                    <Route path="/profile/:userId" element={<ProfilePage />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+        </ErrorBoundary>
     );
 }

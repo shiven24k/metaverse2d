@@ -63,7 +63,7 @@ userRouter.get("/metadata/bulk", async (req, res) => {
     res.json({
         avatars: metadata.map(m => ({
             userId: m.id,
-            avatarId: m.avatar?.imageUrl
+            avatar: m.avatar
         }))
     })
 })

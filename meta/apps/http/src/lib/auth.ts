@@ -25,6 +25,22 @@ export const auth = betterAuth({
             },
         },
     },
+    databaseHooks: {
+        user: {
+            create: {
+                after: async (user) => {
+                    const commonItems = await client.item.findMany({ where: { rarity: "Common" } });
+                    for (const item of commonItems) {
+                        await client.inventoryItem.upsert({
+                            where: { userId_itemId: { userId: user.id, itemId: item.id } },
+                            create: { userId: user.id, itemId: item.id, quantity: 2 },
+                            update: {},
+                        });
+                    }
+                },
+            },
+        },
+    },
     trustedOrigins: ["http://localhost:5173"],
 });
 

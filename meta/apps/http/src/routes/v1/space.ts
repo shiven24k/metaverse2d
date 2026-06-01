@@ -85,11 +85,6 @@ spaceRouter.post("/element", userMiddleware, async (req, res) => {
         return;
     }
 
-    if (req.body.x < 0 || req.body.y < 0 || req.body.x >= space.width || req.body.y >= space.height) {
-        res.status(400).json({ message: "Point is outside of the boundary" });
-        return;
-    }
-
     const element = await client.element.findUnique({
         where: { id: req.body.elementId },
         select: { width: true, height: true },
@@ -99,10 +94,14 @@ spaceRouter.post("/element", userMiddleware, async (req, res) => {
         return;
     }
 
-    const existing = await client.spaceElements.findFirst({
-        where: { spaceId: req.body.spaceId },
-        select: { x: true, y: true },
-    });
+    const ew = element.width;
+    const eh = element.height;
+
+    if (req.body.x < 0 || req.body.y < 0 || req.body.x + ew > space.width || req.body.y + eh > space.height) {
+        res.status(400).json({ message: "Element footprint is outside of the boundary" });
+        return;
+    }
+
     const allExistingElements = await client.spaceElements.findMany({
         where: { spaceId: req.body.spaceId },
         select: { x: true, y: true, element: { select: { width: true, height: true } } },
@@ -111,8 +110,6 @@ spaceRouter.post("/element", userMiddleware, async (req, res) => {
         where: { spaceId: req.body.spaceId },
         select: { x: true, y: true, item: { select: { width: true, height: true } } },
     });
-    const ew = element.width;
-    const eh = element.height;
     for (const e of allExistingElements) {
         if (req.body.x < e.x + e.element.width && req.body.x + ew > e.x && req.body.y < e.y + e.element.height && req.body.y + eh > e.y) {
             res.status(409).json({ message: "Position overlaps with existing element" });
@@ -228,11 +225,11 @@ spaceRouter.post("/element/batch", userMiddleware, async (req, res) => {
 
     const toCreate: { spaceId: string; elementId: string; x: number; y: number }[] = [];
     for (const el of elements) {
-        if (el.x < 0 || el.y < 0 || el.x >= space.width || el.y >= space.height) continue;
-        const type = typeMap.get(el.elementId);
-        if (!type) continue;
-        const ew = type.width;
-        const eh = type.height;
+        const elType = typeMap.get(el.elementId);
+        if (!elType) continue;
+        const ew = elType.width;
+        const eh = elType.height;
+        if (el.x < 0 || el.y < 0 || el.x + ew > space.width || el.y + eh > space.height) continue;
         let collides = false;
         for (const e of existingElements) {
             if (el.x < e.x + e.element.width && el.x + ew > e.x && el.y < e.y + e.element.height && el.y + eh > e.y) { collides = true; break; }
@@ -243,7 +240,7 @@ spaceRouter.post("/element/batch", userMiddleware, async (req, res) => {
         }
         if (collides) continue;
         toCreate.push({ spaceId, elementId: el.elementId, x: el.x, y: el.y });
-        existingElements.push({ x: el.x, y: el.y, element: type });
+        existingElements.push({ x: el.x, y: el.y, element: elType });
     }
 
     if (toCreate.length === 0) {
@@ -301,9 +298,9 @@ spaceRouter.post("/place/batch", userMiddleware, async (req, res) => {
     const toDeduct = new Map<string, number>();
 
     for (const it of items) {
-        if (it.x < 0 || it.y < 0 || it.x >= space.width || it.y >= space.height) continue;
         const type = typeMap.get(it.itemId);
         if (!type) continue;
+        if (it.x < 0 || it.y < 0 || it.x + type.width > space.width || it.y + type.height > space.height) continue;
         const needed = (toDeduct.get(it.itemId) || 0) + 1;
         if ((invMap.get(it.itemId) || 0) < needed) continue;
         const iw = type.width;
@@ -357,17 +354,17 @@ spaceRouter.post("/place", userMiddleware, async (req, res) => {
         return;
     }
 
-    if (x < 0 || y < 0 || x >= space.width || y >= space.height) {
-        res.status(400).json({ message: "Position out of bounds" });
-        return;
-    }
-
     const itemType = await client.item.findUnique({
         where: { id: itemId },
         select: { width: true, height: true },
     });
     if (!itemType) {
         res.status(400).json({ message: "Item not found" });
+        return;
+    }
+
+    if (x < 0 || y < 0 || x + itemType.width > space.width || y + itemType.height > space.height) {
+        res.status(400).json({ message: "Item footprint is outside of the boundary" });
         return;
     }
 
@@ -436,6 +433,32 @@ spaceRouter.delete("/placed/:id", userMiddleware, async (req, res) => {
     });
 
     res.json({ message: "Item returned to inventory" });
+});
+
+// PUT /space/placed/:id/metadata — update sign/item metadata (owner only)
+spaceRouter.put("/placed/:id/metadata", userMiddleware, async (req, res) => {
+    const { metadata } = req.body;
+    if (!metadata || typeof metadata !== "object") {
+        res.status(400).json({ message: "metadata object required" });
+        return;
+    }
+
+    const placed = await client.placedItem.findUnique({
+        where: { id: req.params.id },
+        include: { space: { select: { creatorId: true } } },
+    });
+
+    if (!placed || placed.space.creatorId !== req.userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+    }
+
+    await client.placedItem.update({
+        where: { id: req.params.id },
+        data: { metadata },
+    });
+
+    res.json({ message: "Metadata updated" });
 });
 
 // ─── Move routes ────────────────────────────────────────────────────────────────
@@ -538,6 +561,13 @@ spaceRouter.put("/placed/:id/move", userMiddleware, async (req, res) => {
     res.json({ message: "Item moved" });
 });
 
+// ─── NPC routes ────────────────────────────────────────────────────────────────
+
+spaceRouter.get("/:spaceId/npcs", async (req, res) => {
+    const npcs = await client.nPC.findMany({ where: { spaceId: req.params.spaceId } });
+    res.json({ npcs });
+});
+
 // ─── Dynamic routes last ──────────────────────────────────────────────────────
 
 // DELETE /space/:spaceId — owner only
@@ -587,6 +617,7 @@ spaceRouter.get("/:spaceId", async (req, res) => {
                 width: e.element.width,
                 height: e.element.height,
                 static: e.element.static,
+                blocking: e.element.blocking,
             },
             x: e.x,
             y: e.y,
@@ -599,10 +630,12 @@ spaceRouter.get("/:spaceId", async (req, res) => {
                 imageUrl: p.item.imageUrl,
                 width: p.item.width,
                 height: p.item.height,
+                blocking: p.item.blocking,
             },
             x: p.x,
             y: p.y,
             layer: p.layer,
+            metadata: p.metadata ?? null,
         })),
     });
 });

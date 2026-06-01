@@ -90,6 +90,7 @@ model Space {
   elements    spaceElements[]
   placedItems PlacedItem[]
   guestbook   GuestbookEntry[]
+  npcs        NPC[]
 }
 
 model spaceElements {
@@ -108,6 +109,7 @@ model Element {
   height      Int
   static      Boolean
   imageUrl    String
+  blocking    Boolean         @default(true)
   spaces      spaceElements[]
   mapElements MapElements[]
 }
@@ -147,6 +149,7 @@ model Item {
   width      Int
   height     Int
   isWallItem Boolean         @default(false)
+  blocking   Boolean         @default(true)
   season     String?
   createdAt  DateTime        @default(now())
   inventory  InventoryItem[]
@@ -166,14 +169,16 @@ model InventoryItem {
 }
 
 model PlacedItem {
-  id      String @id @default(cuid())
-  spaceId String
-  itemId  String
-  x       Int
-  y       Int
-  layer   Layer  @default(FLOOR)
-  space   Space  @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  item    Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  id               String             @id @default(cuid())
+  spaceId          String
+  itemId           String
+  x                Int
+  y                Int
+  layer            Layer              @default(FLOOR)
+  metadata         Json?
+  space            Space              @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  item             Item               @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  chestInteractions ChestInteraction[]
 }
 
 model DailyGift {
@@ -281,6 +286,28 @@ model NeighbourhoodMember {
   userId          String        @unique
   neighbourhood   Neighbourhood @relation(fields: [neighbourhoodId], references: [id], onDelete: Cascade)
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model NPC {
+  id         String   @id @default(cuid())
+  spaceId    String
+  name       String
+  sprite     String   @default("avatar-default")
+  dialogues  String[]
+  x          Int
+  y          Int
+  patrolPath Json     @default("[]")
+  space      Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+}
+
+model ChestInteraction {
+  id           String     @id @default(cuid())
+  userId       String
+  placedItemId String
+  lastAt       DateTime   @default(now())
+  placedItem   PlacedItem @relation(fields: [placedItemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, placedItemId])
 }
 
 enum Layer {

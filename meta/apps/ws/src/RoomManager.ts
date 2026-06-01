@@ -41,4 +41,8 @@ export class RoomManager {
             }
         });
     }
+
+    public broadcastToRoom(message: OutgoingMessage, roomId: string) {
+        this.rooms.get(roomId)?.forEach((u) => u.send(message));
+    }
 }

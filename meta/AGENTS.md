@@ -37,6 +37,8 @@ cd meta/apps/ws && node_modules/.bin/tsx watch --env-file=.env src/index.ts
 - WS User.ts emote protocol: accepts {emoji, x, y} instead of emoteId, broadcasts "emoted"
 - WS User.ts interaction type: broadcasts "interacted" instead of "item-interaction"
 - WS auth.ts: missing BETTER_AUTH_SECRET fallback (caused token verification failure → rapid disconnect loop)
+- Game.tsx: `currentUser` position never updated locally after WS move (server excluded sender from broadcast). Fixed by updating `currentUser` state in animation completion callback.
+- Game.tsx: removed unused `getImage` function (TS build error)
 
 ### Assets & Rendering
 - Generated 20 real PNG image assets (replacing SVGs misnamed as .png)
@@ -98,19 +100,13 @@ cd meta/apps/ws && node_modules/.bin/tsx watch --env-file=.env src/index.ts
 - Editor header shows `[E] Eraser · [Esc] Deselect · [Ctrl+Z] Undo · Click/drag to place`
 - Sidebar status bar shows `Ctrl+Z Undo · Ctrl+Shift+Z Redo`
 
-### Selection Rectangle
-- Click+drag on empty canvas space to draw a blue rubber-band selection rectangle
-- All items/elements intersecting the rectangle are highlighted with purple dashed borders
-- Group count shown in editor sidebar ("N items selected") with Delete all / Clear buttons
-- Del/Backspace deletes all selected items, Escape clears the selection
-
 ### Player Names & Interaction
 - Usernames displayed above avatars (red for you, teal for others)
 - Chat bubbles (`Enter` key to toggle input, type message, `Enter` to send, `Esc` to cancel)
 - WS broadcasts chat to all users in the same space (4-second display)
 - Click on placed items in non-edit mode to send `interact` WS message (shows floating text)
 - Click on other players' avatars to show popup with "View Profile" option
-- WS `join` handler now queries and broadcasts usernames in `space-joined` and `user-joined` payloads
+- WS `join` handler now queries and broadcasts usernames + avatarId in `space-joined` and `user-joined` payloads
 
 ### Batch Placement (paint brush bundling)
 - `POST /api/v1/space/element/batch` — place up to 100 elements in one request
@@ -129,6 +125,38 @@ cd meta/apps/ws && node_modules/.bin/tsx watch --env-file=.env src/index.ts
 - Modal with name input, dimensions dropdown (10x10 to 50x50), and optional template picker
 - Calls POST /api/v1/space then navigates to the new space
 - Fetches available map templates on modal open
+
+### Avatar Customization
+- `GET /api/v1/user/avatars` — lists all 3 seeded avatars (Default, Ninja, Wizard)
+- `GET /api/v1/user/me` — now returns `avatarId` field
+- `POST /api/v1/user/metadata` — sets user's `avatarId` (avatar selection)
+- ProfilePage: avatar picker shown when viewing your own profile (clickable thumbnails)
+- Game.tsx header: **Avatar** button opens an in-game modal with all 3 characters (64x96 preview, click to select)
+- WS `user-joined` / `space-joined` — include `avatarId` in payloads, stored on User class
+- Canvas rendering: draws avatar image instead of colored circle (falls back to colored circle if image hasn't loaded)
+
+### Pixel Character Sprites
+- `scripts/generate-avatars.mjs` — generates 128x96 sprite sheets using `@napi-rs/canvas`
+- Each avatar has 8 frames (4 directions × 2 walk frames), each 32x48 pixels
+- Characters have visible head, body, arms, legs, directional facing
+  - **Default**: blue shirt, brown hair, dark pants
+  - **Ninja**: black suit, red headband, visible eyes only
+  - **Wizard**: purple robe, pointed hat, white beard, wooden staff
+- Frontend extracts frames via `ctx.drawImage(img, sx, sy, 32, 48, ...)`
+- Direction-to-column mapping: 0=down, 1=left, 2=right, 3=up
+
+### Smooth Movement & Walk Animation
+- `requestAnimationFrame` loop lerps player between grid cells (150ms ease-out quad)
+- `animPosRef` holds animated position, used in render instead of `currentUser.x/y`
+- `facingRef` tracks direction ('down'|'up'|'left'|'right'), set per-move from delta
+- `walkFrameRef` alternates 0/1 every 75ms during movement (walk cycle)
+- `walkBobRef` adds 3px vertical sine-wave bounce during movement
+- **Click-to-walk**: BFS pathfinding avoids obstacles (elements+items), walks tile-by-tile via `moveQueueRef`
+- Arrow key cancels the queue for instant response
+
+### CORS Fix
+- `http/src/index.ts`: `CORS_ORIGIN` env var supports comma-separated origins, defaults to `[localhost:5173, localhost:5174]`
+- `.env` updated to allow both ports (Vite falls back to 5174 when 5173 is busy)
 
 ## Editor Features (Implemented)
 - Layer toggle (FLOOR/WALL)
@@ -150,9 +178,12 @@ cd meta/apps/ws && node_modules/.bin/tsx watch --env-file=.env src/index.ts
 - Click on other players to view profile
 - Emotes (1-6 keys, floating emoji)
 - Arrow key movement with WS sync
+- Smooth movement animation + click-to-walk
+- Pixel character sprites with walk cycle animation
 
 ## Known Issues / Blocked
 - "Load Demo Items" is a dev/testing hack
 - No guest/anonymous mode (requires auth for most features)
 - WS server uses `any` types for messages
 - Collision detection on the server could be more granular
+- Avatar change requires page refresh or WS reconnect to see updated avatar for other users

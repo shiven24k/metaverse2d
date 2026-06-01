@@ -7,6 +7,7 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 export default function AuthPage() {
     const navigate = useNavigate();
     const setAuth = useAuthStore((s) => s.setAuth);
+    const setGuest = useAuthStore((s) => s.setGuest);
     const [mode, setMode] = useState<"signin" | "signup">("signin");
     const [username, setUsername] = useState("");
     const [email, setEmail] = useState("");
@@ -70,34 +71,41 @@ export default function AuthPage() {
     };
 
     return (
-        <div style={styles.container}>
-            <div style={styles.card}>
-                <h1 style={styles.title}>Metaverse 2D</h1>
-                <p style={styles.subtitle}>
-                    {mode === "signin" ? "Sign in to your account" : "Create an account"}
-                </p>
+        <div style={S.page}>
+            {/* Decorative blurred orbs */}
+            <div style={S.orb1} />
+            <div style={S.orb2} />
 
-                <div style={styles.tabs}>
+            <div style={S.card}>
+                {/* Logo */}
+                <div style={S.logoRow}>
+                    <span style={S.logoPx}>M2D</span>
+                    <span style={S.logoText}>Metaverse 2D</span>
+                </div>
+                <p style={S.tagline}>Explore. Build. Connect.</p>
+
+                {/* Mode toggle */}
+                <div style={S.tabs}>
                     <button
-                        style={{ ...styles.tab, ...(mode === "signin" ? styles.activeTab : {}) }}
+                        style={{ ...S.tab, ...(mode === "signin" ? S.tabActive : {}) }}
                         onClick={() => { setMode("signin"); setError(""); }}
                     >
                         Sign In
                     </button>
                     <button
-                        style={{ ...styles.tab, ...(mode === "signup" ? styles.activeTab : {}) }}
+                        style={{ ...S.tab, ...(mode === "signup" ? S.tabActive : {}) }}
                         onClick={() => { setMode("signup"); setError(""); }}
                     >
                         Sign Up
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} style={styles.form}>
+                <form onSubmit={handleSubmit} style={S.form}>
                     {mode === "signup" && (
-                        <div style={styles.field}>
-                            <label style={styles.label}>Username</label>
+                        <div style={S.field}>
+                            <label style={S.label}>Username</label>
                             <input
-                                style={styles.input}
+                                style={S.input}
                                 type="text"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
@@ -108,10 +116,10 @@ export default function AuthPage() {
                         </div>
                     )}
 
-                    <div style={styles.field}>
-                        <label style={styles.label}>Email</label>
+                    <div style={S.field}>
+                        <label style={S.label}>Email</label>
                         <input
-                            style={styles.input}
+                            style={S.input}
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -121,10 +129,10 @@ export default function AuthPage() {
                         />
                     </div>
 
-                    <div style={styles.field}>
-                        <label style={styles.label}>Password</label>
+                    <div style={S.field}>
+                        <label style={S.label}>Password</label>
                         <input
-                            style={styles.input}
+                            style={S.input}
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
@@ -134,68 +142,137 @@ export default function AuthPage() {
                         />
                     </div>
 
-                    {error && <p style={styles.error}>{error}</p>}
+                    {error && <p style={S.error}>{error}</p>}
 
-                    <button style={styles.button} type="submit" disabled={loading}>
-                        {loading ? "Loading..." : mode === "signin" ? "Sign In" : "Sign Up"}
+                    <button style={S.submitBtn} type="submit" disabled={loading}>
+                        {loading ? "Loading…" : mode === "signin" ? "Sign In" : "Create Account"}
                     </button>
                 </form>
+
+                <div style={S.divider}>
+                    <span style={S.dividerLine} />
+                    <span style={S.dividerText}>or</span>
+                    <span style={S.dividerLine} />
+                </div>
+
+                <button
+                    style={S.guestBtn}
+                    onClick={() => { setGuest(); navigate("/lobby", { replace: true }); }}
+                >
+                    Browse as Guest
+                </button>
+                <p style={S.guestNote}>Walk around spaces without an account. No saves.</p>
             </div>
         </div>
     );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-    container: {
+const S: Record<string, React.CSSProperties> = {
+    page: {
         minHeight: "100vh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#f0f2f5",
+        background: "linear-gradient(160deg, #0f172a, #1a1035, #0f1a2e)",
         fontFamily: "system-ui, sans-serif",
+        position: "relative",
+        overflow: "hidden",
+    },
+    orb1: {
+        position: "absolute",
+        top: "-10%",
+        left: "-5%",
+        width: 400,
+        height: 400,
+        borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%)",
+        pointerEvents: "none",
+    },
+    orb2: {
+        position: "absolute",
+        bottom: "-10%",
+        right: "-5%",
+        width: 360,
+        height: 360,
+        borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)",
+        pointerEvents: "none",
     },
     card: {
-        background: "#fff",
-        borderRadius: 12,
+        position: "relative",
+        zIndex: 1,
+        background: "rgba(255,255,255,0.05)",
+        border: "1px solid rgba(255,255,255,0.10)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        borderRadius: 16,
         padding: "40px 36px",
-        width: 380,
-        boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
+        width: 400,
+        boxSizing: "border-box",
     },
-    title: {
-        margin: 0,
-        fontSize: 26,
+
+    // Logo
+    logoRow: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        marginBottom: 6,
+    },
+    logoPx: {
+        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+        color: "#fff",
+        fontWeight: 900,
+        fontSize: 13,
+        letterSpacing: "0.1em",
+        padding: "4px 8px",
+        borderRadius: 6,
+        fontFamily: "monospace",
+    },
+    logoText: {
+        fontSize: 20,
         fontWeight: 700,
-        color: "#1a1a2e",
-        textAlign: "center",
+        color: "#f1f5f9",
+        letterSpacing: "-0.3px",
     },
-    subtitle: {
-        margin: "8px 0 24px",
-        color: "#666",
+    tagline: {
+        margin: "0 0 28px",
         textAlign: "center",
-        fontSize: 14,
+        fontSize: 13,
+        color: "#818cf8",
+        letterSpacing: "0.05em",
+        fontWeight: 500,
     },
+
+    // Tabs
     tabs: {
         display: "flex",
-        borderRadius: 8,
-        overflow: "hidden",
-        border: "1px solid #e0e0e0",
+        background: "rgba(255,255,255,0.06)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 10,
+        padding: 4,
+        gap: 4,
         marginBottom: 24,
     },
     tab: {
         flex: 1,
-        padding: "10px 0",
+        padding: "9px 0",
         border: "none",
-        background: "#f8f8f8",
+        background: "transparent",
         cursor: "pointer",
         fontSize: 14,
         fontWeight: 500,
-        color: "#666",
-        transition: "all 0.2s",
+        color: "#94a3b8",
+        borderRadius: 7,
+        transition: "all 0.18s",
     },
-    activeTab: {
-        background: "#4f46e5",
+    tabActive: {
+        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
         color: "#fff",
+        fontWeight: 600,
     },
+
+    // Form
     form: {
         display: "flex",
         flexDirection: "column",
@@ -209,34 +286,77 @@ const styles: Record<string, React.CSSProperties> = {
     label: {
         fontSize: 13,
         fontWeight: 600,
-        color: "#333",
+        color: "#cbd5e1",
     },
     input: {
         padding: "10px 12px",
         borderRadius: 8,
-        border: "1px solid #d1d5db",
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.08)",
+        color: "#f1f5f9",
         fontSize: 14,
         outline: "none",
-        transition: "border-color 0.2s",
     },
     error: {
-        color: "#ef4444",
+        color: "#fca5a5",
         fontSize: 13,
         margin: 0,
         padding: "8px 12px",
-        background: "#fef2f2",
+        background: "rgba(239,68,68,0.15)",
+        border: "1px solid rgba(239,68,68,0.3)",
         borderRadius: 6,
     },
-    button: {
+    submitBtn: {
         padding: "12px",
         borderRadius: 8,
         border: "none",
-        background: "#4f46e5",
+        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
         color: "#fff",
         fontSize: 15,
         fontWeight: 600,
         cursor: "pointer",
         marginTop: 4,
-        transition: "background 0.2s",
+        width: "100%",
+        letterSpacing: "0.01em",
+    },
+
+    // Divider
+    divider: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        margin: "20px 0",
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        background: "rgba(255,255,255,0.10)",
+        display: "block",
+    },
+    dividerText: {
+        fontSize: 12,
+        color: "#475569",
+        fontWeight: 500,
+        whiteSpace: "nowrap",
+    },
+
+    // Guest
+    guestBtn: {
+        width: "100%",
+        padding: "10px",
+        borderRadius: 8,
+        border: "1px solid rgba(255,255,255,0.15)",
+        background: "transparent",
+        color: "#94a3b8",
+        fontSize: 14,
+        fontWeight: 500,
+        cursor: "pointer",
+        letterSpacing: "0.01em",
+    },
+    guestNote: {
+        margin: "8px 0 0",
+        textAlign: "center",
+        fontSize: 11,
+        color: "#475569",
     },
 };
