@@ -126,6 +126,8 @@ interface NPC {
     dialogues: string[];
     x: number;
     y: number;
+    motionType: 'STATIC' | 'PATROL' | 'WANDER';
+    wanderRadius: number;
 }
 
 
@@ -247,7 +249,7 @@ const ArenaInner = () => {
     // ── NPC editor ───────────────────────────────────────────────────────────
     const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
     const [showNpcModal, setShowNpcModal] = useState(false);
-    const [npcForm, setNpcForm] = useState<{ id?: string; name: string; sprite: string; dialogues: [string, string, string]; x: number; y: number }>({ name: '', sprite: 'avatar-default', dialogues: ['', '', ''], x: 0, y: 0 });
+    const [npcForm, setNpcForm] = useState<{ id?: string; name: string; sprite: string; dialogues: [string, string, string]; x: number; y: number; motionType: 'STATIC' | 'PATROL' | 'WANDER'; wanderRadius: number }>({ name: '', sprite: 'avatar-default', dialogues: ['', '', ''], x: 0, y: 0, motionType: 'PATROL', wanderRadius: 3 });
     const [savingNpc, setSavingNpc] = useState(false);
     const [npcPickingPos, setNpcPickingPos] = useState(false);
     const npcDragRef = useRef<{ id: string } | null>(null);
@@ -1104,26 +1106,31 @@ const ArenaInner = () => {
                 break;
 
             case 'npc-moved': {
+                const { npcId, x: npcX, y: npcY, facing } = message.payload;
+                console.log(`[NPC] npc-moved received: id=${npcId} → (${npcX}, ${npcY}) facing=${facing}`);
+
+                // Update facing ref immediately (safe to do outside state updater)
                 const facingCol: Record<string, number> = { down: 0, left: 1, right: 2, up: 3 };
-                if (message.payload.facing) {
-                    npcFacing.current.set(message.payload.npcId, facingCol[message.payload.facing] ?? 0);
+                if (facing) {
+                    npcFacing.current.set(npcId, facingCol[facing] ?? 0);
                 }
-                setNpcs(prev => {
-                    const npc = prev.find(n => n.id === message.payload.npcId);
-                    if (npc) {
-                        npcAnims.current.set(npc.id, {
-                            fromX: npc.x, fromY: npc.y,
-                            toX: message.payload.x, toY: message.payload.y,
-                            startTime: performance.now(),
-                            duration: 450,
-                        });
-                    }
-                    return prev.map(n =>
-                        n.id === message.payload.npcId
-                            ? { ...n, x: message.payload.x, y: message.payload.y }
-                            : n
-                    );
-                });
+
+                // Snapshot current position for tween BEFORE the state update
+                const currentNpc = npcsRef.current.find(n => n.id === npcId);
+                if (currentNpc) {
+                    npcAnims.current.set(npcId, {
+                        fromX: currentNpc.x, fromY: currentNpc.y,
+                        toX: npcX, toY: npcY,
+                        startTime: performance.now(),
+                        duration: 450,
+                    });
+                } else {
+                    console.warn(`[NPC] npc-moved for unknown NPC id=${npcId} (npcs in state: ${npcsRef.current.length})`);
+                }
+
+                setNpcs(prev => prev.map(n =>
+                    n.id === npcId ? { ...n, x: npcX, y: npcY } : n
+                ));
                 break;
             }
 
@@ -1901,24 +1908,28 @@ const ArenaInner = () => {
             const avatarUrl = `${API}/uploads/defaults/${npc.sprite}.png`;
             const img = imageCache.current.get(avatarUrl);
 
-            // Interpolate position from tween
-            const anim = npcAnims.current.get(npc.id);
-            let rx = npc.x, ry = npc.y;
-            let isWalking = false;
-            if (anim) {
-                const t = Math.min((performance.now() - anim.startTime) / anim.duration, 1);
-                const eased = t * (2 - t);
-                rx = anim.fromX + (anim.toX - anim.fromX) * eased;
-                ry = anim.fromY + (anim.toY - anim.fromY) * eased;
-                isWalking = t < 1;
+            const motionType = npc.motionType ?? 'PATROL';
+            const isStatic = motionType === 'STATIC';
+
+            // STATIC NPCs: fixed position, no tween, no animation
+            let rx = npc.x, ry = npc.y, isWalking = false;
+            if (!isStatic) {
+                const anim = npcAnims.current.get(npc.id);
+                if (anim) {
+                    const t = Math.min((performance.now() - anim.startTime) / anim.duration, 1);
+                    const eased = t * (2 - t);
+                    rx = anim.fromX + (anim.toX - anim.fromX) * eased;
+                    ry = anim.fromY + (anim.toY - anim.fromY) * eased;
+                    isWalking = t < 1;
+                }
             }
             const px = rx * 50;
             const py = ry * 50;
 
-            // Sprite facing column and walk frame
-            const dirCol = npcFacing.current.get(npc.id) ?? 0;
-            const walkFrame = isWalking ? (Math.floor(performance.now() / 100) % 2) : 0;
-            const bob = isWalking ? Math.sin(performance.now() / 100) * 2 : 0;
+            // STATIC: always face down (col 0, frame 0); PATROL/WANDER: animated
+            const dirCol  = isStatic ? 0 : (npcFacing.current.get(npc.id) ?? 0);
+            const walkFrame = (!isStatic && isWalking) ? (Math.floor(performance.now() / 100) % 2) : 0;
+            const bob = (!isStatic && isWalking) ? Math.sin(performance.now() / 100) * 2 : 0;
 
             if (img) {
                 ctx.drawImage(img, dirCol * 32, walkFrame * 48, 32, 48, px - 16, py - 24 - bob, 32, 48);
@@ -2272,10 +2283,12 @@ const ArenaInner = () => {
 
                 {/* ── NPC add/edit modal ── */}
                 {showNpcModal && (
-                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: '24px 28px', width: 360, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: '24px 28px', width: 380, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)', maxHeight: '90vh', overflowY: 'auto' }}>
                         <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 16 }}>
                             {npcForm.id ? '✏️ Edit NPC' : '🤖 Add NPC'}
                         </div>
+
+                        {/* Name */}
                         <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Name</label>
                         <input
                             value={npcForm.name}
@@ -2283,6 +2296,43 @@ const ArenaInner = () => {
                             placeholder="NPC name..."
                             style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
                         />
+
+                        {/* Motion type */}
+                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>Motion Type</label>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                            {([
+                                { value: 'STATIC', icon: '🧍', label: 'Static',  desc: 'Stands still' },
+                                { value: 'PATROL', icon: '🚶', label: 'Patrol',  desc: 'Walks a path' },
+                                { value: 'WANDER', icon: '🌀', label: 'Wander', desc: 'Roams freely' },
+                            ] as const).map(opt => (
+                                <div
+                                    key={opt.value}
+                                    onClick={() => setNpcForm(f => ({ ...f, motionType: opt.value }))}
+                                    style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: `2px solid ${npcForm.motionType === opt.value ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: npcForm.motionType === opt.value ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', cursor: 'pointer', textAlign: 'center' }}
+                                >
+                                    <div style={{ fontSize: 18, marginBottom: 2 }}>{opt.icon}</div>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: npcForm.motionType === opt.value ? '#a5b4fc' : '#94a3b8' }}>{opt.label}</div>
+                                    <div style={{ fontSize: 9, color: '#64748b', marginTop: 1 }}>{opt.desc}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Wander radius — only shown for WANDER */}
+                        {npcForm.motionType === 'WANDER' && (
+                            <div style={{ marginBottom: 12 }}>
+                                <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                                    <span>Wander Radius</span>
+                                    <span style={{ color: '#a5b4fc', fontWeight: 600 }}>{npcForm.wanderRadius} tile{npcForm.wanderRadius !== 1 ? 's' : ''}</span>
+                                </label>
+                                <input
+                                    type="range" min={1} max={8} value={npcForm.wanderRadius}
+                                    onChange={e => setNpcForm(f => ({ ...f, wanderRadius: parseInt(e.target.value) }))}
+                                    style={{ width: '100%', accentColor: '#6366f1' }}
+                                />
+                            </div>
+                        )}
+
+                        {/* Sprite */}
                         <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>Sprite</label>
                         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                             {(['avatar-default', 'avatar-ninja', 'avatar-wizard'] as const).map(av => (
@@ -2296,7 +2346,11 @@ const ArenaInner = () => {
                                 </div>
                             ))}
                         </div>
-                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Position</label>
+
+                        {/* Spawn position (always shown — even STATIC needs a starting point) */}
+                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                            {npcForm.motionType === 'WANDER' ? 'Home Position (wanders from here)' : npcForm.motionType === 'STATIC' ? 'Position' : 'Spawn Position'}
+                        </label>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                             <div style={{ display: 'flex', gap: 4, flex: 1 }}>
                                 <input value={npcForm.x} onChange={e => setNpcForm(f => ({ ...f, x: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.width - 1} placeholder="X" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 12, outline: 'none' }} />
@@ -2307,6 +2361,8 @@ const ArenaInner = () => {
                                 style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#818cf8', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}
                             >📍 Pick</button>
                         </div>
+
+                        {/* Dialogues */}
                         <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Dialogues (up to 3)</label>
                         {([0, 1, 2] as const).map(i => (
                             <input
@@ -2321,18 +2377,22 @@ const ArenaInner = () => {
                                 style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 12, outline: 'none', boxSizing: 'border-box', marginBottom: 6 }}
                             />
                         ))}
-                        <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+
+                        {/* Buttons */}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
                             <button
                                 disabled={savingNpc || !npcForm.name.trim()}
                                 onClick={async () => {
                                     if (!npcForm.name.trim()) return;
                                     setSavingNpc(true);
                                     const body = {
-                                        name: npcForm.name.trim(),
-                                        sprite: npcForm.sprite,
-                                        dialogues: npcForm.dialogues.filter(d => d.trim()),
-                                        x: npcForm.x,
-                                        y: npcForm.y,
+                                        name:         npcForm.name.trim(),
+                                        sprite:       npcForm.sprite,
+                                        dialogues:    npcForm.dialogues.filter(d => d.trim()),
+                                        x:            npcForm.x,
+                                        y:            npcForm.y,
+                                        motionType:   npcForm.motionType,
+                                        wanderRadius: npcForm.wanderRadius,
                                     };
                                     try {
                                         if (npcForm.id) {
@@ -2694,7 +2754,7 @@ const ArenaInner = () => {
                                         onClick={() => {
                                             const cx = Math.floor(spaceDims.width / 2);
                                             const cy = Math.floor(spaceDims.height / 2);
-                                            setNpcForm({ name: '', sprite: 'avatar-default', dialogues: ['', '', ''], x: cx, y: cy });
+                                            setNpcForm({ name: '', sprite: 'avatar-default', dialogues: ['', '', ''], x: cx, y: cy, motionType: 'PATROL', wanderRadius: 3 });
                                             setShowNpcModal(true);
                                         }}
                                         style={{ padding: '8px', borderRadius: 6, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600, marginBottom: 4 }}
@@ -2717,13 +2777,13 @@ const ArenaInner = () => {
                                                 />
                                                 <div style={{ flex: 1, minWidth: 0 }}>
                                                     <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#333' }}>{npc.name}</p>
-                                                    <p style={{ margin: '2px 0 0', fontSize: 10, color: '#888' }}>({npc.x}, {npc.y}) · {npc.dialogues.length} line{npc.dialogues.length !== 1 ? 's' : ''}</p>
+                                                    <p style={{ margin: '2px 0 0', fontSize: 10, color: '#888' }}>({npc.x}, {npc.y}) · {npc.dialogues.length} line{npc.dialogues.length !== 1 ? 's' : ''} · <span style={{ color: npc.motionType === 'STATIC' ? '#60a5fa' : npc.motionType === 'WANDER' ? '#34d399' : '#a78bfa' }}>{(npc.motionType ?? 'PATROL').toLowerCase()}</span></p>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: 4 }}>
                                                     <button
                                                         onClick={e => {
                                                             e.stopPropagation();
-                                                            setNpcForm({ id: npc.id, name: npc.name, sprite: npc.sprite, dialogues: [npc.dialogues[0] || '', npc.dialogues[1] || '', npc.dialogues[2] || ''], x: npc.x, y: npc.y });
+                                                            setNpcForm({ id: npc.id, name: npc.name, sprite: npc.sprite, dialogues: [npc.dialogues[0] || '', npc.dialogues[1] || '', npc.dialogues[2] || ''], x: npc.x, y: npc.y, motionType: npc.motionType ?? 'PATROL', wanderRadius: npc.wanderRadius ?? 3 });
                                                             setShowNpcModal(true);
                                                         }}
                                                         style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#4f46e5', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}

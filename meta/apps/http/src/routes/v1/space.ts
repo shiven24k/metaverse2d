@@ -629,22 +629,26 @@ spaceRouter.get("/:spaceId/npcs", async (req, res) => {
     res.json({ npcs });
 });
 
+const VALID_MOTION_TYPES = new Set(['STATIC', 'PATROL', 'WANDER']);
+
 // POST /space/:spaceId/npc — create NPC (owner only)
 spaceRouter.post("/:spaceId/npc", userMiddleware, async (req, res) => {
-    const { name, sprite, dialogues, x, y, patrolPath } = req.body;
+    const { name, sprite, dialogues, x, y, patrolPath, motionType, wanderRadius } = req.body;
     const space = await client.space.findUnique({
         where: { id: req.params.spaceId, creatorId: req.userId! },
     });
     if (!space) { res.status(403).json({ message: "Unauthorized" }); return; }
     const npc = await client.nPC.create({
         data: {
-            spaceId: req.params.spaceId,
-            name:        name        || "New NPC",
-            sprite:      sprite      || "avatar-default",
-            dialogues:   Array.isArray(dialogues) ? dialogues.filter(Boolean) : [],
-            x:           typeof x === "number" ? x : Math.floor(space.width  / 2),
-            y:           typeof y === "number" ? y : Math.floor(space.height / 2),
-            patrolPath:  Array.isArray(patrolPath) ? patrolPath : [],
+            spaceId:      req.params.spaceId,
+            name:         name        || "New NPC",
+            sprite:       sprite      || "avatar-default",
+            dialogues:    Array.isArray(dialogues) ? dialogues.filter(Boolean) : [],
+            x:            typeof x === "number" ? x : Math.floor(space.width  / 2),
+            y:            typeof y === "number" ? y : Math.floor(space.height / 2),
+            patrolPath:   Array.isArray(patrolPath) ? patrolPath : [],
+            motionType:   VALID_MOTION_TYPES.has(motionType) ? motionType : "PATROL",
+            wanderRadius: typeof wanderRadius === "number" ? Math.max(1, Math.min(10, wanderRadius)) : 3,
         },
     });
     res.status(201).json({ npc });
@@ -659,16 +663,18 @@ spaceRouter.put("/npc/:id", userMiddleware, async (req, res) => {
     if (!npc || npc.space.creatorId !== req.userId) {
         res.status(403).json({ message: "Unauthorized" }); return;
     }
-    const { name, sprite, dialogues, x, y, patrolPath } = req.body;
+    const { name, sprite, dialogues, x, y, patrolPath, motionType, wanderRadius } = req.body;
     const updated = await client.nPC.update({
         where: { id: req.params.id },
         data: {
-            ...(name        !== undefined && { name }),
-            ...(sprite      !== undefined && { sprite }),
-            ...(dialogues   !== undefined && { dialogues: Array.isArray(dialogues) ? dialogues.filter(Boolean) : [] }),
-            ...(x           !== undefined && { x }),
-            ...(y           !== undefined && { y }),
-            ...(patrolPath  !== undefined && { patrolPath }),
+            ...(name         !== undefined && { name }),
+            ...(sprite       !== undefined && { sprite }),
+            ...(dialogues    !== undefined && { dialogues: Array.isArray(dialogues) ? dialogues.filter(Boolean) : [] }),
+            ...(x            !== undefined && { x }),
+            ...(y            !== undefined && { y }),
+            ...(patrolPath   !== undefined && { patrolPath }),
+            ...(motionType   !== undefined && VALID_MOTION_TYPES.has(motionType) && { motionType }),
+            ...(wanderRadius !== undefined && { wanderRadius: Math.max(1, Math.min(10, Number(wanderRadius))) }),
         },
     });
     res.json({ npc: updated });

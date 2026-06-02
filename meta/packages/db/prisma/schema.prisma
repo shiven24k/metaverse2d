@@ -291,15 +291,23 @@ model NeighbourhoodMember {
 }
 
 model NPC {
-  id         String   @id @default(cuid())
-  spaceId    String
-  name       String
-  sprite     String   @default("avatar-default")
-  dialogues  String[]
-  x          Int
-  y          Int
-  patrolPath Json     @default("[]")
-  space      Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  id           String     @id @default(cuid())
+  spaceId      String
+  name         String
+  sprite       String     @default("avatar-default")
+  dialogues    String[]
+  x            Int
+  y            Int
+  patrolPath   Json       @default("[]")
+  motionType   NPCMotion  @default(PATROL)
+  wanderRadius Int        @default(3)
+  space        Space      @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+}
+
+enum NPCMotion {
+  STATIC
+  PATROL
+  WANDER
 }
 
 model ChestInteraction {

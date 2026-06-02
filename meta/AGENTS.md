@@ -1,189 +1,365 @@
 # AGENTS.md — Metaverse 2D
 
-## Project Overview
-Multiplayer 2D pixel-space metaverse: React frontend + Express REST API + WebSocket server + PostgreSQL (via Prisma). pnpm monorepo with 5 packages.
+Technical reference for AI agents working in this codebase. Covers architecture, data flow, known bugs, and everything needed to avoid re-deriving context from scratch.
+
+---
 
 ## Architecture
-- **frontend** (`apps/frontend/`, port 5173) — React SPA with Vite
-- **http** (`apps/http/`, port 3000) — Express REST API (better-auth, CRUD)
-- **ws** (`apps/ws/`, port 3001) — WebSocket server (real-time multiplayer)
-- **db** (`packages/db/`) — Prisma client + schema
 
-## Running
-```bash
-cd meta
-pnpm run dev   # uses turborepo
 ```
-Or start each service manually:
-```bash
-cd meta/apps/frontend && node_modules/.bin/vite --port 5173 --host
-cd meta/apps/http && node_modules/.bin/tsx watch --env-file=.env src/index.ts
-cd meta/apps/ws && node_modules/.bin/tsx watch --env-file=.env src/index.ts
+meta/
+├── apps/frontend/   React 19 + Vite SPA  (port 5173)
+├── apps/http/       Express REST API      (port 3000)
+├── apps/ws/         WebSocket server      (port 3001)
+└── packages/db/     Prisma 6.3.1 + PostgreSQL
 ```
 
-## Key Fixes Made
+**Auth**: better-auth with the `bearer()` plugin. All protected endpoints require `Authorization: Bearer <token>`. The WS server validates tokens by calling `auth.api.getSession()` from `@better-auth/core`. Token is returned in the `set-auth-token` response header on sign-up/sign-in.
 
-### Infrastructure
-- PostgreSQL Docker container (postgres:16, port 5432)
-- Created .env files for http (DATABASE_URL, BETTER_AUTH_SECRET, CORS_ORIGIN) and ws (DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL)
-- All 9 Prisma migrations run, DB seeded (8 elements, 10 items, 3 avatars, maps)
-- esbuild 0.28.0 binary mismatch: fixed by installing @esbuild/linux-x64@0.28.0 and patching main.js
-- tsx binary not found: added tsx as devDependency to root, http, and ws
+**Build**: esbuild bundles `http` and `ws` into `dist/index.js`. These bundles **cannot find the Prisma native engine** at runtime — always start services in **dev mode** with `tsx watch`:
+```bash
+node_modules/.bin/tsx --env-file=apps/http/.env apps/http/src/index.ts
+node_modules/.bin/tsx --env-file=apps/ws/.env  apps/ws/src/index.ts
+```
 
-### Bug Fixes
-- `admin.ts:55` — unawaited Promise in PUT /element/:elementId (added async/await)
-- `Game.tsx:488` — wrong layer value 'ground' → 'FLOOR' (Prisma enum mismatch)
-- `space.ts:88` — off-by-one bounds check > → >= for element placement
-- WS User.ts emote protocol: accepts {emoji, x, y} instead of emoteId, broadcasts "emoted"
-- WS User.ts interaction type: broadcasts "interacted" instead of "item-interaction"
-- WS auth.ts: missing BETTER_AUTH_SECRET fallback (caused token verification failure → rapid disconnect loop)
-- Game.tsx: `currentUser` position never updated locally after WS move (server excluded sender from broadcast). Fixed by updating `currentUser` state in animation completion callback.
-- Game.tsx: removed unused `getImage` function (TS build error)
+**Prisma version**: The project uses `@prisma/client@6.3.1`. Regenerate the client after any schema change:
+```bash
+npx prisma@6.3.1 generate --schema=packages/db/prisma/schema.prisma
+```
+The globally-installed Prisma (if 7.x) will reject `url = env(...)` in the datasource. Always use the project-pinned version `prisma@6.3.1`.
 
-### Assets & Rendering
-- Generated 20 real PNG image assets (replacing SVGs misnamed as .png)
-- Canvas rendering: imageCache ref, preloadImages with onload→rerender, drawImageOnCanvas helper
-- Editor sidebar: <img> thumbnails instead of colored divs/emoji
-- Canvas uses actual space dimensions (spaceDims.width*50 × spaceDims.height*50)
-- Canvas overflow: ResizeObserver + style.width/height instead of transform: scale()
-- canvasToGrid: accounts for CSS size vs internal resolution ratio
-- Grid lines drawn only within space bounds
+**Migrations**: No `prisma migrate dev` — plain SQL files in `packages/db/prisma/migrations/<timestamp>_<name>/migration.sql`. Apply manually via `psql` or `prisma db execute`.
 
-### Paint Brush
-- Click+drag to place elements/items continuously
-- 120ms throttle, skips unchanged cells
-- isAreaFree collision check
-- TDZ fix: paintPlace moved after isAreaFree
+---
 
-## Editor Features (Implemented)
+## Database Schema Summary
 
-### Layer Toggle (FLOOR/WALL)
-- `placementLayer` state ('FLOOR' | 'WALL')
-- Toggle buttons in the "Placing" bar when an item is selected
-- placeItem uses placementLayer instead of hardcoded 'FLOOR'
+| Model | Key fields | Notes |
+|-------|-----------|-------|
+| `User` | id, email, username, avatarId, role | role = Admin\|User |
+| `Session` | token, userId, expiresAt | better-auth managed |
+| `Space` | id, width, height, creatorId | has fromPortals, toPortals relations |
+| `spaceElements` | spaceId, elementId, x, y | tiles placed in a space |
+| `Element` | id, imageUrl, width, height, blocking | catalogue; IDs like `el-grass` |
+| `PlacedItem` | spaceId, itemId, x, y, layer, metadata | `metadata Json?` holds sign text etc. |
+| `Item` | id, name, category, rarity, imageUrl, width, height | IDs like `item-office-desk` |
+| `InventoryItem` | userId, itemId, quantity | unique(userId, itemId) |
+| `Wallet` | userId, coins, tokens, stars | |
+| `NPC` | spaceId, name, sprite, dialogues[], x, y, patrolPath, motionType, wanderRadius | motionType = NPCMotion enum |
+| `NPCMotion` (enum) | STATIC, PATROL, WANDER | |
+| `SpacePortal` | fromSpaceId, toSpaceId, x, y, label | cascade delete from both Space relations |
+| `DailyGift` | userId, lastClaim, streak | one per user |
+| `ChestInteraction` | userId, placedItemId, lastAt | unique(userId, placedItemId) |
+| `BannedUser` | userId, reason | WS join rejects banned users |
 
-### Eraser Tool
-- 🧹 Eraser button in editor header
-- Press `E` key to toggle
-- Paints over elements/items to delete them instantly
-- Works with paint brush (click+drag to erase multiple)
+---
 
-### WS Broadcast for Placements
-- Frontend sends element-placed, item-placed, element-deleted, item-deleted via WS after each HTTP call
-- WS server relays to all other users in the same room
-- Other clients auto-refresh via handleMessage
+## HTTP Routes (`apps/http/src/routes/v1/`)
 
-### Server-Side Collision Validation
-- POST /space/element and POST /space/place check for overlapping elements/items
-- Returns 409 Conflict on overlap
-- Client-side isAreaFree remains as first-pass filter
+Route registration order matters in Express. Static paths must be registered before dynamic `/:param` paths.
 
-## Recent Additions
+### `space.ts` — route ordering (critical)
 
-### Selection Rectangle
-- Click+drag on empty canvas space to draw a blue rubber-band selection rectangle
-- All items/elements intersecting the rectangle are highlighted with purple dashed borders
-- Group count shown in editor sidebar ("N items selected") with Delete all / Clear buttons
-- Del/Backspace deletes all selected items
-- Escape clears the selection
-- Single-click on an item still works for individual selection
+```
+GET  /public                 ← static
+GET  /all                    ← static
+DELETE /element              ← static
+POST /element                ← static
+POST /                       ← static
+POST /element/batch          ← static
+POST /place/batch            ← static
+POST /place                  ← static
+DELETE /placed/:id           ← semi-static (literal "placed")
+PUT  /placed/:id/metadata    ← semi-static
+PUT  /placed/:id/move        ← semi-static
+PUT  /element/:id/move       ← semi-static
+GET  /:spaceId/npcs          ← dynamic (NPC read)
+POST /:spaceId/npc           ← dynamic (NPC create)
+PUT  /npc/:id                ← must come BEFORE /:spaceId routes
+DELETE /npc/:id              ← must come BEFORE /:spaceId routes
+DELETE /portal/:id           ← must come BEFORE /:spaceId routes
+POST /:spaceId/portal        ← dynamic
+PUT  /:spaceId/resize        ← dynamic
+DELETE /:spaceId             ← last dynamic (owner delete)
+GET  /:spaceId               ← last dynamic (public read)
+```
 
-### Undo/Redo
-- Snapshot-based: saves `{ elements, items }` state before each mutation
-- Diff-based reconciliation: computes what changed and calls inverse API endpoints
-- Ctrl+Z to undo, Ctrl+Shift+Z to redo
-- ↩ Undo / ↪ Redo buttons in editor sidebar header, disabled when no history
-- 50-action history limit, clears redo stack on new actions
-- Works for: place item/element, delete item/element, move item/element, batch flush
+`GET /:spaceId` response shape (includes portals):
+```json
+{
+  "name": "...",
+  "dimensions": "20x20",
+  "elements": [ { "id": "se1", "element": {...}, "x": 0, "y": 0 } ],
+  "placedItems": [ { "id": "pi1", "item": {...}, "x": 0, "y": 0, "layer": "FLOOR", "metadata": null } ],
+  "portals": [ { "id": "p1", "toSpaceId": "...", "x": 5, "y": 5, "label": "Portal" } ]
+}
+```
 
-### Keyboard Shortcut Hints
-- Editor header shows `[E] Eraser · [Esc] Deselect · [Ctrl+Z] Undo · Click/drag to place`
-- Sidebar status bar shows `Ctrl+Z Undo · Ctrl+Shift+Z Redo`
+### NPC auto-seed
+`POST /space` calls `client.nPC.createMany(makeDefaultNpcs(spaceId, w, h))` immediately after creating the space. `makeDefaultNpcs()` generates Manager Mike (PATROL), Dev Dana (PATROL), HR Helen (PATROL) with patrol paths scaled to space dimensions. This applies to both blank-space creation and map-template creation.
 
-### Player Names & Interaction
-- Usernames displayed above avatars (red for you, teal for others)
-- Chat bubbles (`Enter` key to toggle input, type message, `Enter` to send, `Esc` to cancel)
-- WS broadcasts chat to all users in the same space (4-second display)
-- Click on placed items in non-edit mode to send `interact` WS message (shows floating text)
-- Click on other players' avatars to show popup with "View Profile" option
-- WS `join` handler now queries and broadcasts usernames + avatarId in `space-joined` and `user-joined` payloads
+### Validation helpers in space.ts
+- `VALID_MOTION_TYPES = new Set(['STATIC','PATROL','WANDER'])` guards NPC create/update
+- Element/item **move** endpoints now check `x + w > spaceWidth` (footprint-aware), not just `x >= spaceWidth`
 
-### Batch Placement (paint brush bundling)
-- `POST /api/v1/space/element/batch` — place up to 100 elements in one request
-- `POST /api/v1/space/place/batch` — place up to 50 items in one request with inventory validation
-- Frontend collects paint brush strokes into a buffer, flushes every 300ms or on mouse up
-- Both endpoints validate bounds, collisions, and inventory availability
+---
 
-### Move Tool
-- `PUT /api/v1/space/element/:id/move` and `PUT /api/v1/space/placed/:id/move` — update position
-- Click a selected element/item and drag to reposition
-- Green dashed preview shows target position
-- WS broadcasts element-moved/item-moved to other users
+## WebSocket Server (`apps/ws/src/`)
 
-### In-Editor Map Creation
-- "+ New Map" button in editor sidebar header
-- Modal with name input, dimensions dropdown (10x10 to 50x50), and optional template picker
-- Calls POST /api/v1/space then navigates to the new space
-- Fetches available map templates on modal open
+### `RoomManager` (singleton)
+```typescript
+rooms: Map<spaceId, User[]>
 
-### Avatar Customization
-- `GET /api/v1/user/avatars` — lists all 3 seeded avatars (Default, Ninja, Wizard)
-- `GET /api/v1/user/me` — now returns `avatarId` field
-- `POST /api/v1/user/metadata` — sets user's `avatarId` (avatar selection)
-- ProfilePage: avatar picker shown when viewing your own profile (clickable thumbnails)
-- Game.tsx header: **Avatar** button opens an in-game modal with all 3 characters (64x96 preview, click to select)
-- WS `user-joined` / `space-joined` — include `avatarId` in payloads, stored on User class
-- Canvas rendering: draws avatar image instead of colored circle (falls back to colored circle if image hasn't loaded)
+addUser(spaceId, user)         // append
+removeUser(user, spaceId)      // filter by user.id
+broadcast(msg, sender, roomId) // all except sender
+broadcastToRoom(msg, roomId)   // everyone including sender
+```
 
-### Pixel Character Sprites
-- `scripts/generate-avatars.mjs` — generates 128x96 sprite sheets using `@napi-rs/canvas`
-- Each avatar has 8 frames (4 directions × 2 walk frames), each 32x48 pixels
-- Characters have visible head, body, arms, legs, directional facing
-  - **Default**: blue shirt, brown hair, dark pants
-  - **Ninja**: black suit, red headband, visible eyes only
-  - **Wizard**: purple robe, pointed hat, white beard, wooden staff
-- Frontend extracts frames via `ctx.drawImage(img, sx, sy, 32, 48, ...)`
-- Direction-to-column mapping: 0=down, 1=left, 2=right, 3=up
+### `User` class
+- `id`: random 10-char string (session-level, not DB userId)
+- `userId`: DB user id (set after join)
+- `spaceId`: set after `join` message; guards destroy() safety
+- `isGuest`: true when no token supplied
 
-### Smooth Movement & Walk Animation
-- `requestAnimationFrame` loop lerps player between grid cells (150ms ease-out quad)
-- `animPosRef` holds animated position, used in render instead of `currentUser.x/y`
-- `facingRef` tracks direction ('down'|'up'|'left'|'right'), set per-move from delta
-- `walkFrameRef` alternates 0/1 every 75ms during movement (walk cycle)
-- `walkBobRef` adds 3px vertical sine-wave bounce during movement
-- **Click-to-walk**: BFS pathfinding avoids obstacles (elements+items), walks tile-by-tile via `moveQueueRef`
-- Arrow key cancels the queue for instant response
+**Re-join guard** (prevents ghost users):
+```typescript
+case "join": {
+    if (this.spaceId) {
+        getRoomManager().removeUser(this, this.spaceId);
+        this.spaceId = undefined;
+    }
+    // ... proceed with new join
+```
 
-### CORS Fix
-- `http/src/index.ts`: `CORS_ORIGIN` env var supports comma-separated origins, defaults to `[localhost:5173, localhost:5174]`
-- `.env` updated to allow both ports (Vite falls back to 5174 when 5173 is busy)
+**destroy() guard** (prevents crash on never-joined disconnect):
+```typescript
+destroy() {
+    if (!this.spaceId) return;
+    // broadcast user-left + removeUser
+```
 
-## Editor Features (Implemented)
-- Layer toggle (FLOOR/WALL)
-- Eraser tool (E key)
-- Move tool (drag selected items)
-- Paint brush with batch placement
-- In-editor map creation
-- Undo/redo (Ctrl+Z / Ctrl+Shift+Z)
-- Selection rectangle (rubber-band multi-select)
-- WS broadcast for placements, deletions, moves
-- Server-side collision validation
-- Right-click delete, Delete/Backspace key, Escape to deselect
-- Hover preview, selection highlight, auto-select new placements
+**Movement validation** (server-side, adjacent tiles only):
+```typescript
+const xDisp = Math.abs(this.x - moveX);
+const yDisp = Math.abs(this.y - moveY);
+if ((xDisp === 1 && yDisp === 0) || (xDisp === 0 && yDisp === 1)) {
+    // accept
+} else {
+    this.send({ type: "movement-rejected", payload: { x: this.x, y: this.y } });
+}
+```
 
-## Player Interactions (Implemented)
-- Usernames displayed above avatars
-- Chat bubbles (Enter to type, Enter to send, 4s display)
-- Click on placed items to interact (shows floating interaction text via WS)
-- Click on other players to view profile
-- Emotes (1-6 keys, floating emoji)
-- Arrow key movement with WS sync
-- Smooth movement animation + click-to-walk
-- Pixel character sprites with walk cycle animation
+⚠️ **Known gap**: No space boundary check on movement (user can move to negative coords or beyond width/height). Fix: add `newX >= 0 && newY >= 0 && newX < space.width && newY < space.height`.
 
-## Known Issues / Blocked
-- "Load Demo Items" is a dev/testing hack
-- No guest/anonymous mode (requires auth for most features)
-- WS server uses `any` types for messages
-- Collision detection on the server could be more granular
-- Avatar change requires page refresh or WS reconnect to see updated avatar for other users
+### NPC Tick (`index.ts`)
+
+Runs every 500ms (`setInterval(npcTick, 500)`).
+
+```
+For each active room:
+  Fetch space (width, height) once
+  Fetch all NPCs for the space
+  For each NPC:
+    STATIC → skip
+    idle countdown > 0 → decrement, skip
+    WANDER → pick destination within wanderRadius of npc.x,npc.y (DB home);
+              stepToward() one tile; broadcast npc-moved
+    PATROL → clamp patrolIndex % patrol.length;
+              stepToward() toward current waypoint;
+              advance index when at waypoint; broadcast npc-moved
+```
+
+`NpcState` (in-memory, keyed by `npc.id`):
+```typescript
+{
+    x, y,              // current position
+    patrolIndex,       // current waypoint index (PATROL)
+    idleCountdown,     // ticks to stay idle
+    wanderTarget,      // { x, y } | null (WANDER)
+    wanderCooldown,    // ticks until next destination pick (WANDER)
+}
+```
+
+`stepToward(cx,cy,tx,ty)` prefers the axis with larger delta, with random tie-break.
+
+---
+
+## Frontend (`apps/frontend/src/Game.tsx`)
+
+### Key constants
+
+```typescript
+WS_URL  = import.meta.env.VITE_WS_URL  || 'ws://localhost:3001'
+API     = import.meta.env.VITE_API_URL  || 'http://localhost:3000'
+TILE_SIZE = 50  // canvas pixels per tile
+```
+
+**Tile/item sprite lookup**: `TILE_IMAGE[elementId]` → `/tiles/<name>.png` (served by Vite). Falls back to `element.imageUrl` (which points to the HTTP server's `/uploads/defaults/`).
+
+### Canvas coordinate system
+
+```
+worldW = spaceDims.width  * 50
+worldH = spaceDims.height * 50
+camX   = clamp(playerCenterX - vpW/2, 0, worldW - vpW)
+camY   = clamp(playerCenterY - vpH/2, 0, worldH - vpH)
+ctx.translate(offsetX - camX, offsetY - camY)  // inside ctx.save()/restore()
+```
+
+`canvasToGrid(clientX, clientY)` converts screen coords back to tile coords accounting for camera offset.
+
+### Animation system
+
+All movement uses a `requestAnimationFrame` loop in a `useEffect`:
+- **Player tween**: `moveAnimRef` (fromX/Y → toX/Y, 150ms ease-out quad). Position stored in `animPosRef`. After tween, processes `moveQueueRef` (click-to-walk queue).
+- **NPC tween**: `npcAnims` Map (per-npc, 450ms). `npcFacing` Map (sprite column).
+- **Portal shimmer**: `portalsRef.current.length > 0` → always rerenders every RAF frame while portals exist.
+
+### WS message handler
+
+`handleMessage` is assigned to `handleMessageRef.current` (a ref) to avoid stale closures. The actual WS `onmessage` calls `handleMessageRef.current(data)`.
+
+### Edit mode interactions (startPaint / paintMove / stopPaint)
+
+`startPaint` checks in order:
+1. Sign click → `setSignEditing`
+2. NPC click → `setSelectedNpcId`, `npcDragRef.current = { id }`
+3. `eraserMode || selectedElement || selectedItem` → start paint
+4. `selectedPlaced` + on-item hit → start move (`isMoving`)
+5. Else → start selection rect (`isSelecting`)
+
+`handleCanvasMouseUp` (edit mode) checks in order:
+1. `portalPlacingMode` → open portal creation modal
+2. `npcPickingPos` → set form position, re-open NPC modal
+3. `npcDragRef.current` → finalize NPC drag (PUT /npc/:id if position changed)
+4. Else → `stopPaint()` (handles move finalization and selection)
+
+### State inventory (NPC-related)
+
+```typescript
+npcs: NPC[]                  // current space NPCs (fetched from /npcs)
+npcsRef: Ref<NPC[]>          // always-current ref for event handlers
+selectedNpcId: string|null   // which NPC is highlighted in editor
+npcDragRef: Ref<{id}|null>   // NPC being dragged (not state, to avoid re-renders)
+npcPickingPos: boolean        // "click on map" position-picking mode
+showNpcModal: boolean
+npcForm: {
+  id?, name, sprite,
+  dialogues: [string,string,string],
+  x, y,
+  motionType: 'STATIC'|'PATROL'|'WANDER',
+  wanderRadius: number
+}
+```
+
+### NPC rendering
+
+```typescript
+const isStatic = npc.motionType === 'STATIC';
+// STATIC: fixed position (npc.x, npc.y), no tween, dirCol=0, walkFrame=0, bob=0
+// PATROL/WANDER: interpolated from npcAnims tween
+const dirCol    = isStatic ? 0 : (npcFacing.current.get(npc.id) ?? 0);
+const walkFrame = (!isStatic && isWalking) ? (Math.floor(t / 100) % 2) : 0;
+const bob       = (!isStatic && isWalking) ? Math.sin(t / 100) * 2 : 0;
+ctx.drawImage(img, dirCol*32, walkFrame*48, 32, 48, px-16, py-24-bob, 32, 48);
+```
+
+### Activity system
+
+- `myActivity`: `'sitting' | 'working' | null` — local state
+- `othersActivity`: `Map<userId, Activity>` — received via `activity-changed` WS
+- **Auto-upgrade**: if `myActivity === 'sitting'` AND player is adjacent to `item-computer` or `item-office-desk`, render as `'working'`
+- Press `F` near an `item-office-chair` → toggles sitting; broadcasts `activity-changed`
+- Moving clears the activity
+
+### Portal rendering (canvas)
+
+```typescript
+const portalPhase = (performance.now() / 600) % (Math.PI * 2);
+const pulse = 0.55 + 0.3 * Math.sin(portalPhase);
+// draws purple gradient rounded rect with 🌀 and label text
+```
+
+Portals are stored in `portals` state (fetched as part of `fetchSpace()` from `GET /space/:id`).
+
+---
+
+## Sprite Generation
+
+### `scripts/generate-tiles.mjs`
+Writes PNGs to both `apps/frontend/public/tiles/` and `apps/frontend/public/items/` (served by Vite), AND to `apps/http/uploads/defaults/` (served by HTTP).
+
+All drawing uses four pixel helpers: `px(ctx,x,y,color)`, `rect(...)`, `hline(...)`, `vline(...)`.
+
+Sizes: tiles are 16×16 (1×1 tile), some elements are 32×32 (2×2 tile). Items vary (e.g. `meeting-table` is 48×32 = 3×2 tiles).
+
+To add a new sprite: define a drawing function, add `{ name, w, h, fn }` to TILES or ITEMS array, then `node scripts/generate-tiles.mjs`.
+
+### `scripts/generate-avatars.mjs`
+Writes 128×96 sprite sheets to `apps/http/uploads/defaults/avatar-*.png`.
+
+---
+
+## Known Bugs & Mitigations
+
+| Location | Bug | Status |
+|----------|-----|--------|
+| `ws/User.ts:243` | No space-boundary check on movement (can go to x=-1, y=-1) | **Open** — server validates adjacency but not bounds |
+| `ws/User.ts` | No deduplication if two `join` messages arrive concurrently (async gap) | **Mitigated** — synchronous re-join guard added, but race during auth await remains |
+| `shop.ts:50` | Balance check outside transaction (TOCTOU) | **Open** — concurrent buys can go negative |
+| `gift.ts:56` | Claim check outside transaction (TOCTOU) | **Open** — concurrent claims could double-grant |
+
+**Fixed bugs (do not revert):**
+- `gift.ts`: `setUTCHours(24,...)` + `setUTCDate(+1)` → double advance (was 48h lockout). Fixed to `setUTCDate(+1)` + `setUTCHours(0,0,0,0)`.
+- `gift.ts`: `milestoneItem` declared inside `$transaction` callback, used outside → `ReferenceError`. Fixed to return from transaction as tuple.
+- `gift.ts`: `wallet.coins + 50` non-atomic. Fixed to `{ coins: { increment: 50 } }` upsert.
+- `economy.ts`: cooldown check outside transaction. Fixed: check moved inside `$transaction`, throws typed error caught outside.
+- `space.ts`: move boundary used `x >= width` ignoring element footprint. Fixed to `x + ew > width`.
+- `ws/index.ts`: NPC patrolIndex not clamped before array access. Fixed: `state.patrolIndex % patrol.length`.
+- `ws/User.ts`: `destroy()` called before `spaceId` set. Fixed with `if (!this.spaceId) return` guard.
+- `ws/User.ts`: second `join` added user to new room without removing from old room (ghost). Fixed with re-join cleanup block.
+
+---
+
+## Tests
+
+```bash
+node_modules/.bin/vitest run    # 134 tests, ~900ms
+```
+
+Mock infrastructure: `tests/__mocks__/db.ts` — a full `vi.fn()` stub of the Prisma client. Imported via `vitest.config.ts` alias `@repo/db/client → tests/__mocks__/db.ts`.
+
+Integration tests use `supertest` + `express` with the actual route handlers. Auth middleware is mocked to inject `req.userId = 'test-user-id'`.
+
+Tests document expected-but-open bugs (e.g. movement bounds, TOCTOU races) as passing `expect` assertions that describe the current (buggy) behavior, so regressions on fixes are immediately visible.
+
+---
+
+## Seed Data
+
+`packages/db/prisma/seed.ts` is idempotent (uses `upsert`). Run with:
+```bash
+pnpm --filter @repo/db seed
+```
+
+Seeds (in order):
+1. All element types (`el-grass` through `el-glass-wall`)
+2. All item types (`item-sofa` through `item-office-printer`)
+3. 2 map templates (Park 20×20, Garden 15×15)
+4. 3 avatars (`avatar-default`, `avatar-ninja`, `avatar-wizard`)
+5. Office NPCs for each existing space with 0 NPCs (Manager Mike, Dev Dana, HR Helen)
+
+New spaces created via the API automatically receive the same 3 NPCs via `makeDefaultNpcs()` in `space.ts`.
+
+---
+
+## Adding a New Feature Checklist
+
+1. **Schema change** → edit `schema.prisma`, write `migration.sql`, run `npx prisma@6.3.1 generate`
+2. **HTTP endpoint** → add to correct route file, respect static-before-dynamic ordering in `space.ts`
+3. **WS message** → add types to `types.ts` (both Incoming and Outgoing unions), handle in `User.ts`
+4. **Frontend state** → add to Game.tsx near related state, update canvas `useEffect` deps array
+5. **Sprites** → add drawing function + array entry to `generate-tiles.mjs`, run `node scripts/generate-tiles.mjs`, add to `TILE_IMAGE` or `ITEM_IMAGE` maps in Game.tsx, add to seed.ts
+6. **Tests** → add unit tests for pure logic, integration tests for HTTP routes
+7. **Docs** → update `README.md` (API table, controls) and `AGENTS.md` (schema, technical notes)
