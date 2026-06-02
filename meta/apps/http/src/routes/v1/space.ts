@@ -135,6 +135,68 @@ spaceRouter.post("/element", userMiddleware, async (req, res) => {
     res.json({ message: "Element added" });
 });
 
+// ── Default NPC templates seeded into every new space ─────────────────────────
+function makeDefaultNpcs(spaceId: string, w: number, h: number) {
+    const cx = Math.floor(w / 2);
+    const cy = Math.floor(h / 2);
+    return [
+        {
+            spaceId,
+            name: "Manager Mike",
+            sprite: "avatar-default",
+            dialogues: [
+                "Good morning! The Q3 report is due by EOD.",
+                "Have you checked your emails today? We have a 10am standup.",
+                "Great work on that last sprint. Keep it up, team!",
+            ],
+            x: Math.max(1, cx - 3),
+            y: Math.max(1, cy - 3),
+            patrolPath: [
+                { x: Math.max(1, cx - 3), y: Math.max(1, cy - 3) },
+                { x: Math.min(w - 2, cx),  y: Math.max(1, cy - 3) },
+                { x: Math.min(w - 2, cx),  y: Math.min(h - 2, cy) },
+                { x: Math.max(1, cx - 3), y: Math.min(h - 2, cy) },
+            ],
+        },
+        {
+            spaceId,
+            name: "Dev Dana",
+            sprite: "avatar-ninja",
+            dialogues: [
+                "I'm in the zone — just pushed a fix for the auth bug!",
+                "Has anyone reviewed my PR? It's been sitting for two days...",
+                "Pro tip: press F near an Office Chair to sit and work!",
+            ],
+            x: Math.min(w - 2, cx + 3),
+            y: Math.max(1, cy - 2),
+            patrolPath: [
+                { x: Math.min(w - 2, cx + 3), y: Math.max(1, cy - 2) },
+                { x: Math.min(w - 2, cx + 5), y: Math.max(1, cy - 2) },
+                { x: Math.min(w - 2, cx + 5), y: Math.min(h - 2, cy + 2) },
+                { x: Math.min(w - 2, cx + 3), y: Math.min(h - 2, cy + 2) },
+            ],
+        },
+        {
+            spaceId,
+            name: "HR Helen",
+            sprite: "avatar-wizard",
+            dialogues: [
+                "Don't forget to log your hours in the time tracker!",
+                "PTO requests must be submitted two weeks in advance.",
+                "We're hosting a team lunch on Friday — RSVP in Slack!",
+            ],
+            x: Math.max(1, cx - 1),
+            y: Math.min(h - 2, cy + 4),
+            patrolPath: [
+                { x: Math.max(1, cx - 1),    y: Math.min(h - 2, cy + 4) },
+                { x: Math.min(w - 2, cx + 2), y: Math.min(h - 2, cy + 4) },
+                { x: Math.min(w - 2, cx + 2), y: Math.min(h - 2, cy + 6) },
+                { x: Math.max(1, cx - 1),    y: Math.min(h - 2, cy + 6) },
+            ],
+        },
+    ];
+}
+
 // POST /space — create a new space, auth required
 spaceRouter.post("/", userMiddleware, async (req, res) => {
     const parsedData = CreateSpaceSchema.safeParse(req.body);
@@ -144,14 +206,12 @@ spaceRouter.post("/", userMiddleware, async (req, res) => {
     }
 
     if (!parsedData.data.mapId) {
+        const w = parseInt(parsedData.data.dimensions.split("x")[0]);
+        const h = parseInt(parsedData.data.dimensions.split("x")[1]);
         const space = await client.space.create({
-            data: {
-                name: parsedData.data.name,
-                width: parseInt(parsedData.data.dimensions.split("x")[0]),
-                height: parseInt(parsedData.data.dimensions.split("x")[1]),
-                creatorId: req.userId!,
-            },
+            data: { name: parsedData.data.name, width: w, height: h, creatorId: req.userId! },
         });
+        await client.nPC.createMany({ data: makeDefaultNpcs(space.id, w, h) });
         res.json({ spaceId: space.id });
         return;
     }
@@ -166,8 +226,8 @@ spaceRouter.post("/", userMiddleware, async (req, res) => {
         return;
     }
 
-    const space = await client.$transaction(async () => {
-        const space = await client.space.create({
+    const space = await client.$transaction(async (tx) => {
+        const space = await tx.space.create({
             data: {
                 name: parsedData.data.name,
                 width: map.width,
@@ -175,7 +235,7 @@ spaceRouter.post("/", userMiddleware, async (req, res) => {
                 creatorId: req.userId!,
             },
         });
-        await client.spaceElements.createMany({
+        await tx.spaceElements.createMany({
             data: map.mapElements.map((e) => ({
                 spaceId: space.id,
                 elementId: e.elementId,
@@ -183,6 +243,7 @@ spaceRouter.post("/", userMiddleware, async (req, res) => {
                 y: e.y!,
             })),
         });
+        await tx.nPC.createMany({ data: makeDefaultNpcs(space.id, map.width, map.height) });
         return space;
     });
 
@@ -479,7 +540,10 @@ spaceRouter.put("/element/:id/move", userMiddleware, async (req, res) => {
         return;
     }
 
-    if (x < 0 || y < 0 || x >= spaceElement.space.width || y >= spaceElement.space.height) {
+    const ew = spaceElement.element.width;
+    const eh = spaceElement.element.height;
+
+    if (x < 0 || y < 0 || x + ew > spaceElement.space.width || y + eh > spaceElement.space.height) {
         res.status(400).json({ message: "Position out of bounds" });
         return;
     }
@@ -492,9 +556,6 @@ spaceRouter.put("/element/:id/move", userMiddleware, async (req, res) => {
         where: { spaceId: spaceElement.spaceId },
         select: { x: true, y: true, item: { select: { width: true, height: true } } },
     });
-
-    const ew = spaceElement.element.width;
-    const eh = spaceElement.element.height;
     for (const e of existingElements) {
         if (x < e.x + e.element.width && x + ew > e.x && y < e.y + e.element.height && y + eh > e.y) {
             res.status(409).json({ message: "Position overlaps with existing element" });
@@ -528,7 +589,10 @@ spaceRouter.put("/placed/:id/move", userMiddleware, async (req, res) => {
         return;
     }
 
-    if (x < 0 || y < 0 || x >= placed.space.width || y >= placed.space.height) {
+    const iw = placed.item.width;
+    const ih = placed.item.height;
+
+    if (x < 0 || y < 0 || x + iw > placed.space.width || y + ih > placed.space.height) {
         res.status(400).json({ message: "Position out of bounds" });
         return;
     }
@@ -541,9 +605,6 @@ spaceRouter.put("/placed/:id/move", userMiddleware, async (req, res) => {
         where: { spaceId: placed.spaceId, id: { not: req.params.id } },
         select: { x: true, y: true, item: { select: { width: true, height: true } } },
     });
-
-    const iw = placed.item.width;
-    const ih = placed.item.height;
     for (const e of existingElements) {
         if (x < e.x + e.element.width && x + iw > e.x && y < e.y + e.element.height && y + ih > e.y) {
             res.status(409).json({ message: "Position overlaps with existing element" });
@@ -566,6 +627,122 @@ spaceRouter.put("/placed/:id/move", userMiddleware, async (req, res) => {
 spaceRouter.get("/:spaceId/npcs", async (req, res) => {
     const npcs = await client.nPC.findMany({ where: { spaceId: req.params.spaceId } });
     res.json({ npcs });
+});
+
+// POST /space/:spaceId/npc — create NPC (owner only)
+spaceRouter.post("/:spaceId/npc", userMiddleware, async (req, res) => {
+    const { name, sprite, dialogues, x, y, patrolPath } = req.body;
+    const space = await client.space.findUnique({
+        where: { id: req.params.spaceId, creatorId: req.userId! },
+    });
+    if (!space) { res.status(403).json({ message: "Unauthorized" }); return; }
+    const npc = await client.nPC.create({
+        data: {
+            spaceId: req.params.spaceId,
+            name:        name        || "New NPC",
+            sprite:      sprite      || "avatar-default",
+            dialogues:   Array.isArray(dialogues) ? dialogues.filter(Boolean) : [],
+            x:           typeof x === "number" ? x : Math.floor(space.width  / 2),
+            y:           typeof y === "number" ? y : Math.floor(space.height / 2),
+            patrolPath:  Array.isArray(patrolPath) ? patrolPath : [],
+        },
+    });
+    res.status(201).json({ npc });
+});
+
+// PUT /space/npc/:id — update NPC (owner only) — must be before /:spaceId dynamic routes
+spaceRouter.put("/npc/:id", userMiddleware, async (req, res) => {
+    const npc = await client.nPC.findUnique({
+        where: { id: req.params.id },
+        include: { space: { select: { creatorId: true } } },
+    });
+    if (!npc || npc.space.creatorId !== req.userId) {
+        res.status(403).json({ message: "Unauthorized" }); return;
+    }
+    const { name, sprite, dialogues, x, y, patrolPath } = req.body;
+    const updated = await client.nPC.update({
+        where: { id: req.params.id },
+        data: {
+            ...(name        !== undefined && { name }),
+            ...(sprite      !== undefined && { sprite }),
+            ...(dialogues   !== undefined && { dialogues: Array.isArray(dialogues) ? dialogues.filter(Boolean) : [] }),
+            ...(x           !== undefined && { x }),
+            ...(y           !== undefined && { y }),
+            ...(patrolPath  !== undefined && { patrolPath }),
+        },
+    });
+    res.json({ npc: updated });
+});
+
+// DELETE /space/npc/:id — delete NPC (owner only) — must be before /:spaceId dynamic routes
+spaceRouter.delete("/npc/:id", userMiddleware, async (req, res) => {
+    const npc = await client.nPC.findUnique({
+        where: { id: req.params.id },
+        include: { space: { select: { creatorId: true } } },
+    });
+    if (!npc || npc.space.creatorId !== req.userId) {
+        res.status(403).json({ message: "Unauthorized" }); return;
+    }
+    await client.nPC.delete({ where: { id: req.params.id } });
+    res.json({ message: "NPC deleted" });
+});
+
+// ─── Portal routes ─────────────────────────────────────────────────────────────
+
+spaceRouter.delete("/portal/:id", userMiddleware, async (req, res) => {
+    const portal = await client.spacePortal.findUnique({
+        where: { id: req.params.id },
+        include: { fromSpace: { select: { creatorId: true } } },
+    });
+    if (!portal || portal.fromSpace.creatorId !== req.userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+    }
+    await client.spacePortal.delete({ where: { id: req.params.id } });
+    res.json({ message: "Portal deleted" });
+});
+
+spaceRouter.post("/:spaceId/portal", userMiddleware, async (req, res) => {
+    const { toSpaceId, x, y, label } = req.body;
+    if (!toSpaceId || x == null || y == null) {
+        res.status(400).json({ message: "toSpaceId, x, y required" });
+        return;
+    }
+    const space = await client.space.findUnique({
+        where: { id: req.params.spaceId, creatorId: req.userId! },
+    });
+    if (!space) {
+        res.status(403).json({ message: "Space not found or not yours" });
+        return;
+    }
+    const toSpace = await client.space.findUnique({ where: { id: toSpaceId } });
+    if (!toSpace) {
+        res.status(400).json({ message: "Destination space not found" });
+        return;
+    }
+    const portal = await client.spacePortal.create({
+        data: { fromSpaceId: req.params.spaceId, toSpaceId, x, y, label: label || "Portal" },
+    });
+    res.json({ portal });
+});
+
+// ─── Resize route ──────────────────────────────────────────────────────────────
+
+spaceRouter.put("/:spaceId/resize", userMiddleware, async (req, res) => {
+    const { width, height } = req.body;
+    if (!width || !height || width < 5 || height < 5 || width > 100 || height > 100) {
+        res.status(400).json({ message: "width and height required (5–100)" });
+        return;
+    }
+    const space = await client.space.findUnique({
+        where: { id: req.params.spaceId, creatorId: req.userId! },
+    });
+    if (!space) {
+        res.status(403).json({ message: "Space not found or not yours" });
+        return;
+    }
+    await client.space.update({ where: { id: req.params.spaceId }, data: { width, height } });
+    res.json({ message: "Space resized", width, height });
 });
 
 // ─── Dynamic routes last ──────────────────────────────────────────────────────
@@ -598,6 +775,7 @@ spaceRouter.get("/:spaceId", async (req, res) => {
         include: {
             elements: { include: { element: true } },
             placedItems: { include: { item: true } },
+            fromPortals: true,
         },
     });
 
@@ -636,6 +814,13 @@ spaceRouter.get("/:spaceId", async (req, res) => {
             y: p.y,
             layer: p.layer,
             metadata: p.metadata ?? null,
+        })),
+        portals: space.fromPortals.map((p) => ({
+            id: p.id,
+            toSpaceId: p.toSpaceId,
+            x: p.x,
+            y: p.y,
+            label: p.label,
         })),
     });
 });

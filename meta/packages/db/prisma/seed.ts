@@ -152,6 +152,23 @@ async function main() {
     create: { id: "el-chest", width: 1, height: 1, static: false, blocking: true, imageUrl: "/uploads/defaults/chest.png" },
   });
 
+  // ── Office tiles ────────────────────────────────────────────────────────────
+  await client.element.upsert({
+    where: { id: "el-office-carpet" },
+    update: { imageUrl: "/uploads/defaults/office-carpet.png", width: 1, height: 1, static: true, blocking: false },
+    create: { id: "el-office-carpet", width: 1, height: 1, static: true, blocking: false, imageUrl: "/uploads/defaults/office-carpet.png" },
+  });
+  await client.element.upsert({
+    where: { id: "el-office-floor" },
+    update: { imageUrl: "/uploads/defaults/office-floor.png", width: 1, height: 1, static: true, blocking: false },
+    create: { id: "el-office-floor", width: 1, height: 1, static: true, blocking: false, imageUrl: "/uploads/defaults/office-floor.png" },
+  });
+  await client.element.upsert({
+    where: { id: "el-glass-wall" },
+    update: { imageUrl: "/uploads/defaults/glass-wall.png", width: 1, height: 1, static: true, blocking: true },
+    create: { id: "el-glass-wall", width: 1, height: 1, static: true, blocking: true, imageUrl: "/uploads/defaults/glass-wall.png" },
+  });
+
   console.log("Elements created");
 
   // ─── Items ─────────────────────────────────────────────────────────────────
@@ -247,6 +264,53 @@ async function main() {
     create: { id: "item-fountain", name: "Fountain", category: "Decoration", rarity: "Rare", imageUrl: "/uploads/defaults/fountain.png", width: 2, height: 2, blocking: true },
   });
 
+  // ── Office items ────────────────────────────────────────────────────────────
+  await client.item.upsert({
+    where: { id: "item-office-desk" },
+    update: { name: "Office Desk", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/office-desk.png", width: 2, height: 1, blocking: true },
+    create: { id: "item-office-desk", name: "Office Desk", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/office-desk.png", width: 2, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-office-chair" },
+    update: { name: "Office Chair", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/office-chair.png", width: 1, height: 1, blocking: false },
+    create: { id: "item-office-chair", name: "Office Chair", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/office-chair.png", width: 1, height: 1, blocking: false },
+  });
+  await client.item.upsert({
+    where: { id: "item-computer" },
+    update: { name: "Computer", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/computer.png", width: 1, height: 1, blocking: true },
+    create: { id: "item-computer", name: "Computer", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/computer.png", width: 1, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-whiteboard" },
+    update: { name: "Whiteboard", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/whiteboard.png", width: 2, height: 1, isWallItem: true, blocking: false },
+    create: { id: "item-whiteboard", name: "Whiteboard", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/whiteboard.png", width: 2, height: 1, isWallItem: true, blocking: false },
+  });
+  await client.item.upsert({
+    where: { id: "item-coffee-machine" },
+    update: { name: "Coffee Machine", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/coffee-machine.png", width: 1, height: 1, blocking: true },
+    create: { id: "item-coffee-machine", name: "Coffee Machine", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/coffee-machine.png", width: 1, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-filing-cabinet" },
+    update: { name: "Filing Cabinet", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/filing-cabinet.png", width: 1, height: 2, blocking: true },
+    create: { id: "item-filing-cabinet", name: "Filing Cabinet", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/filing-cabinet.png", width: 1, height: 2, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-meeting-table" },
+    update: { name: "Meeting Table", category: "Office", rarity: "Rare", imageUrl: "/uploads/defaults/meeting-table.png", width: 3, height: 2, blocking: true },
+    create: { id: "item-meeting-table", name: "Meeting Table", category: "Office", rarity: "Rare", imageUrl: "/uploads/defaults/meeting-table.png", width: 3, height: 2, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-vending-machine" },
+    update: { name: "Vending Machine", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/vending-machine.png", width: 1, height: 2, blocking: true },
+    create: { id: "item-vending-machine", name: "Vending Machine", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/vending-machine.png", width: 1, height: 2, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-office-printer" },
+    update: { name: "Printer", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/office-printer.png", width: 1, height: 1, blocking: true },
+    create: { id: "item-office-printer", name: "Printer", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/office-printer.png", width: 1, height: 1, blocking: true },
+  });
+
   console.log("Items created");
 
   // ─── Map ────────────────────────────────────────────────────────────────────
@@ -333,7 +397,7 @@ async function main() {
 
   console.log("Avatars created");
 
-  // ─── NPCs: seed 3 NPCs into every space that has none ──────────────────────
+  // ─── NPCs: seed 3 office NPCs into every space that has none ─────────────────
   const spaces = await client.space.findMany({ select: { id: true, width: true, height: true } });
   for (const space of spaces) {
     const existing = await client.nPC.count({ where: { spaceId: space.id } });
@@ -348,12 +412,12 @@ async function main() {
       data: [
         {
           spaceId: space.id,
-          name: "Guide Bob",
+          name: "Manager Mike",
           sprite: "avatar-default",
           dialogues: [
-            "Welcome! I can help you navigate this space.",
-            "Press arrow keys or click tiles to move around.",
-            "Open the Chat panel to talk with nearby players!",
+            "Good morning! The Q3 report is due by EOD.",
+            "Have you checked your emails today? We have a 10am standup.",
+            "Great work on that last sprint. Keep it up, team!",
           ],
           x: Math.max(1, cx - 3),
           y: Math.max(1, cy - 3),
@@ -366,12 +430,12 @@ async function main() {
         },
         {
           spaceId: space.id,
-          name: "Merchant Maya",
+          name: "Dev Dana",
           sprite: "avatar-ninja",
           dialogues: [
-            "Psst… Looking for rare items? Check the Shop tab in the lobby!",
-            "Daily gifts reset every 24 hours. Don't miss your streak bonus!",
-            "Coins can be found in treasure chests hidden around spaces.",
+            "I'm in the zone — just pushed a fix for the auth bug!",
+            "Has anyone reviewed my PR? It's been sitting for two days...",
+            "Pro tip: press F near an Office Chair to sit and work!",
           ],
           x: Math.min(w - 2, cx + 3),
           y: Math.max(1, cy - 2),
@@ -384,12 +448,12 @@ async function main() {
         },
         {
           spaceId: space.id,
-          name: "Explorer Erik",
+          name: "HR Helen",
           sprite: "avatar-wizard",
           dialogues: [
-            "I've explored every corner of this world!",
-            "In Edit Mode you can place items and design your own space.",
-            "Try the campfire — it warms your soul on cold nights.",
+            "Don't forget to log your hours in the time tracker!",
+            "PTO requests must be submitted two weeks in advance.",
+            "We're hosting a team lunch on Friday — RSVP in Slack!",
           ],
           x: Math.max(1, cx - 1),
           y: Math.min(h - 2, cy + 4),

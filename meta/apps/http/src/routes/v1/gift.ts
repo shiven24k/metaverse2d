@@ -16,8 +16,8 @@ giftRouter.get("/status", userMiddleware, async (req, res) => {
 
     const now = new Date();
     const nextClaim = new Date(gift.lastClaim);
-    nextClaim.setUTCHours(24, 0, 0, 0);
     nextClaim.setUTCDate(nextClaim.getUTCDate() + 1);
+    nextClaim.setUTCHours(0, 0, 0, 0);
 
     if (now >= nextClaim) {
         res.json({ claimed: false, nextClaimAt: null });
@@ -36,8 +36,8 @@ giftRouter.post("/claim", userMiddleware, async (req, res) => {
 
     if (existing) {
         const nextClaim = new Date(existing.lastClaim);
-        nextClaim.setUTCHours(24, 0, 0, 0);
         nextClaim.setUTCDate(nextClaim.getUTCDate() + 1);
+        nextClaim.setUTCHours(0, 0, 0, 0);
         if (now < nextClaim) {
             res.status(400).json({ message: "Gift already claimed today" });
             return;
@@ -53,7 +53,7 @@ giftRouter.post("/claim", userMiddleware, async (req, res) => {
         randomItem = commonItems[Math.floor(Math.random() * commonItems.length)];
     }
 
-    const [gift] = await client.$transaction(async (tx) => {
+    const [gift, milestoneItem] = await client.$transaction(async (tx) => {
         const gift = await tx.dailyGift.upsert({
             where: { userId: req.userId! },
             create: { userId: req.userId!, lastClaim: now, streak: 1 },
@@ -63,17 +63,10 @@ giftRouter.post("/claim", userMiddleware, async (req, res) => {
             },
         });
 
-        let wallet = await tx.wallet.findUnique({
-            where: { userId: req.userId },
-        });
-        if (!wallet) {
-            wallet = await tx.wallet.create({
-                data: { userId: req.userId! },
-            });
-        }
-        await tx.wallet.update({
-            where: { userId: req.userId },
-            data: { coins: wallet.coins + 50 },
+        await tx.wallet.upsert({
+            where: { userId: req.userId! },
+            create: { userId: req.userId!, coins: 50 },
+            update: { coins: { increment: 50 } },
         });
 
         let milestoneItem = null;
@@ -110,7 +103,7 @@ giftRouter.post("/claim", userMiddleware, async (req, res) => {
             });
         }
 
-        return [gift];
+        return [gift, milestoneItem] as const;
     });
 
     res.json({

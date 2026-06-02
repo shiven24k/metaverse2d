@@ -40,6 +40,11 @@ type EditorRelayIncoming = {
     payload: Record<string, unknown>;
 };
 
+type ActivityChangedIncoming = {
+    type: 'activity-changed';
+    payload: { activity: 'sitting' | 'working' | null };
+};
+
 export type IncomingMessage =
     | JoinMessage
     | MoveMessage
@@ -48,7 +53,8 @@ export type IncomingMessage =
     | ChatIncomingMessage
     | AvatarChangedIncomingMessage
     | GiftIncomingMessage
-    | EditorRelayIncoming;
+    | EditorRelayIncoming
+    | ActivityChangedIncoming;
 
 // ─── Outgoing messages (server → client) ─────────────────────────────────────
 
@@ -117,7 +123,12 @@ type EditorRelayOutgoing = {
 
 type NpcMovedMessage = {
     type: 'npc-moved';
-    payload: { npcId: string; x: number; y: number };
+    payload: { npcId: string; x: number; y: number; facing?: string };
+};
+
+type ActivityChangedOutgoing = {
+    type: 'activity-changed';
+    payload: { userId?: string; activity: 'sitting' | 'working' | null };
 };
 
 export type OutgoingMessage =
@@ -132,4 +143,5 @@ export type OutgoingMessage =
     | GiftAnnounceMessage
     | AvatarChangedOutgoingMessage
     | EditorRelayOutgoing
-    | NpcMovedMessage;
+    | NpcMovedMessage
+    | ActivityChangedOutgoing;

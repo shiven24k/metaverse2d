@@ -45,6 +45,12 @@ export class User {
 
             switch (parsedData.type) {
                 case "join": {
+                    // Guard against re-join: clean up old room membership first
+                    if (this.spaceId) {
+                        getRoomManager().removeUser(this, this.spaceId);
+                        this.spaceId = undefined;
+                    }
+
                     const spaceId = parsedData.payload.spaceId;
                     const token = parsedData.payload.token;
 
@@ -225,6 +231,21 @@ export class User {
                     break;
                 }
 
+                case "activity-changed": {
+                    const { activity } = parsedData.payload;
+                    if (activity === null || activity === 'sitting' || activity === 'working') {
+                        getRoomManager().broadcast(
+                            {
+                                type: "activity-changed",
+                                payload: { userId: this.userId, activity },
+                            },
+                            this,
+                            this.spaceId!
+                        );
+                    }
+                    break;
+                }
+
                 case "move": {
                     const moveX = parsedData.payload.x;
                     const moveY = parsedData.payload.y;
@@ -259,12 +280,13 @@ export class User {
     }
 
     destroy() {
+        if (!this.spaceId) return; // disconnected before completing join
         getRoomManager().broadcast(
             { type: "user-left", payload: { userId: this.userId } },
             this,
-            this.spaceId!
+            this.spaceId
         );
-        getRoomManager().removeUser(this, this.spaceId!);
+        getRoomManager().removeUser(this, this.spaceId);
     }
 
     send(payload: OutgoingMessage) {

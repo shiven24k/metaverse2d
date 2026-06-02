@@ -10,51 +10,63 @@ const MAX_RECONNECT_DELAY_MS = 30_000;
 
 // Frontend-hosted pixel art sprites (Vite public folder, no API prefix)
 const TILE_IMAGE: Record<string, string> = {
-    'el-grass':         '/tiles/grass.png',
-    'el-dirt':          '/tiles/dirt.png',
-    'el-water':         '/tiles/water.png',
-    'el-wall':          '/tiles/wall.png',
-    'el-path':          '/tiles/path.png',
-    'el-tree':          '/tiles/tree.png',
-    'el-fence':         '/tiles/fence.png',
-    'el-flower':        '/tiles/flower.png',
-    'el-sand':          '/tiles/sand.png',
-    'el-snow':          '/tiles/snow.png',
-    'el-lava':          '/tiles/lava.png',
-    'el-cobblestone':   '/tiles/cobblestone.png',
-    'el-wood-floor':    '/tiles/wood-floor.png',
-    'el-cave-floor':    '/tiles/cave-floor.png',
-    'el-bush':          '/tiles/bush.png',
-    'el-cactus':        '/tiles/cactus.png',
-    'el-rock':          '/tiles/rock.png',
-    'el-mushroom':      '/tiles/mushroom.png',
-    'el-pine-tree':     '/tiles/pine-tree.png',
-    'el-shallow-water': '/tiles/shallow-water.png',
-    'el-waterfall':     '/tiles/waterfall.png',
-    'el-brick-wall':    '/tiles/brick-wall.png',
-    'el-window':        '/tiles/window.png',
-    'el-door':          '/tiles/door.png',
-    'el-roof':          '/tiles/roof.png',
-    'el-chest':         '/tiles/chest.png',
+    'el-grass':          '/tiles/grass.png',
+    'el-dirt':           '/tiles/dirt.png',
+    'el-water':          '/tiles/water.png',
+    'el-wall':           '/tiles/wall.png',
+    'el-path':           '/tiles/path.png',
+    'el-tree':           '/tiles/tree.png',
+    'el-fence':          '/tiles/fence.png',
+    'el-flower':         '/tiles/flower.png',
+    'el-sand':           '/tiles/sand.png',
+    'el-snow':           '/tiles/snow.png',
+    'el-lava':           '/tiles/lava.png',
+    'el-cobblestone':    '/tiles/cobblestone.png',
+    'el-wood-floor':     '/tiles/wood-floor.png',
+    'el-cave-floor':     '/tiles/cave-floor.png',
+    'el-bush':           '/tiles/bush.png',
+    'el-cactus':         '/tiles/cactus.png',
+    'el-rock':           '/tiles/rock.png',
+    'el-mushroom':       '/tiles/mushroom.png',
+    'el-pine-tree':      '/tiles/pine-tree.png',
+    'el-shallow-water':  '/tiles/shallow-water.png',
+    'el-waterfall':      '/tiles/waterfall.png',
+    'el-brick-wall':     '/tiles/brick-wall.png',
+    'el-window':         '/tiles/window.png',
+    'el-door':           '/tiles/door.png',
+    'el-roof':           '/tiles/roof.png',
+    'el-chest':          '/tiles/chest.png',
+    'el-office-carpet':  '/tiles/office-carpet.png',
+    'el-office-floor':   '/tiles/office-floor.png',
+    'el-glass-wall':     '/tiles/glass-wall.png',
 };
 
 const ITEM_IMAGE: Record<string, string> = {
-    'item-sofa':      '/items/sofa.png',
-    'item-table':     '/items/table.png',
-    'item-chair':     '/items/chair.png',
-    'item-rug':       '/items/rug.png',
-    'item-plant':     '/items/plant.png',
-    'item-lamp':      '/items/lamp.png',
-    'item-painting':  '/items/painting.png',
-    'item-bookshelf': '/items/bookshelf.png',
-    'item-crystal':   '/items/crystal.png',
-    'item-throne':    '/items/throne.png',
-    'item-bed':       '/items/bed.png',
-    'item-counter':   '/items/counter.png',
-    'item-barrel':    '/items/barrel.png',
-    'item-sign':      '/items/sign.png',
-    'item-campfire':  '/items/campfire.png',
-    'item-fountain':  '/items/fountain.png',
+    'item-sofa':             '/items/sofa.png',
+    'item-table':            '/items/table.png',
+    'item-chair':            '/items/chair.png',
+    'item-rug':              '/items/rug.png',
+    'item-plant':            '/items/plant.png',
+    'item-lamp':             '/items/lamp.png',
+    'item-painting':         '/items/painting.png',
+    'item-bookshelf':        '/items/bookshelf.png',
+    'item-crystal':          '/items/crystal.png',
+    'item-throne':           '/items/throne.png',
+    'item-bed':              '/items/bed.png',
+    'item-counter':          '/items/counter.png',
+    'item-barrel':           '/items/barrel.png',
+    'item-sign':             '/items/sign.png',
+    'item-campfire':         '/items/campfire.png',
+    'item-fountain':         '/items/fountain.png',
+    'item-office-desk':      '/items/office-desk.png',
+    'item-office-chair':     '/items/office-chair.png',
+    'item-computer':         '/items/computer.png',
+    'item-whiteboard':       '/items/whiteboard.png',
+    'item-coffee-machine':   '/items/coffee-machine.png',
+    'item-filing-cabinet':   '/items/filing-cabinet.png',
+    'item-meeting-table':    '/items/meeting-table.png',
+    'item-vending-machine':  '/items/vending-machine.png',
+    'item-office-printer':   '/items/office-printer.png',
 };
 
 const ALL_TILE_PATHS = [...Object.values(TILE_IMAGE), ...Object.values(ITEM_IMAGE)];
@@ -97,6 +109,14 @@ interface PlacedItem {
     y: number;
     layer: string;
     metadata?: { text?: string } | null;
+}
+
+interface SpacePortal {
+    id: string;
+    toSpaceId: string;
+    x: number;
+    y: number;
+    label: string;
 }
 
 interface NPC {
@@ -219,6 +239,39 @@ const ArenaInner = () => {
     const [npcs, setNpcs] = useState<NPC[]>([]);
     const npcsRef = useRef<NPC[]>([]);
     const [npcDialogue, setNpcDialogue] = useState<{ npc: NPC; idx: number } | null>(null);
+    // Per-NPC smooth tween: fromX/Y → toX/Y over `duration` ms
+    const npcAnims = useRef<Map<string, { fromX: number; fromY: number; toX: number; toY: number; startTime: number; duration: number }>>(new Map());
+    // Per-NPC facing direction (sprite column: down=0, left=1, right=2, up=3)
+    const npcFacing = useRef<Map<string, number>>(new Map());
+
+    // ── NPC editor ───────────────────────────────────────────────────────────
+    const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
+    const [showNpcModal, setShowNpcModal] = useState(false);
+    const [npcForm, setNpcForm] = useState<{ id?: string; name: string; sprite: string; dialogues: [string, string, string]; x: number; y: number }>({ name: '', sprite: 'avatar-default', dialogues: ['', '', ''], x: 0, y: 0 });
+    const [savingNpc, setSavingNpc] = useState(false);
+    const [npcPickingPos, setNpcPickingPos] = useState(false);
+    const npcDragRef = useRef<{ id: string } | null>(null);
+
+    // ── Portals ──────────────────────────────────────────────────────────────
+    const [portals, setPortals] = useState<SpacePortal[]>([]);
+    const portalsRef = useRef<SpacePortal[]>([]);
+    const [portalTravel, setPortalTravel] = useState<SpacePortal | null>(null);
+    const [showPortalModal, setShowPortalModal] = useState(false);
+    const [newPortalPos, setNewPortalPos] = useState<{ x: number; y: number } | null>(null);
+    const [newPortalTarget, setNewPortalTarget] = useState('');
+    const [newPortalLabel, setNewPortalLabel] = useState('Portal');
+    const [portalPlacingMode, setPortalPlacingMode] = useState(false);
+    const [showResizeModal, setShowResizeModal] = useState(false);
+    const [resizeW, setResizeW] = useState('');
+    const [resizeH, setResizeH] = useState('');
+    useEffect(() => { portalsRef.current = portals; }, [portals]);
+
+    // ── Activities ───────────────────────────────────────────────────────────
+    type Activity = 'sitting' | 'working' | null;
+    const [myActivity, setMyActivity] = useState<Activity>(null);
+    const myActivityRef = useRef<Activity>(null);
+    const [othersActivity, setOthersActivity] = useState<Map<string, Activity>>(new Map());
+    useEffect(() => { myActivityRef.current = myActivity; }, [myActivity]);
 
     const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
     const rerender = useCallback(() => setRenderTick(t => t + 1), []);
@@ -299,7 +352,7 @@ const ArenaInner = () => {
     const [canvasIsOver, setCanvasIsOver] = useState(false);
     const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
     const [selectedPlaced, setSelectedPlaced] = useState<{ type: 'element' | 'item'; id: string } | null>(null);
-    const [editorTab, setEditorTab] = useState<'elements' | 'items'>('elements');
+    const [editorTab, setEditorTab] = useState<'elements' | 'items' | 'npcs'>('elements');
     const isPainting = useRef(false);
     const lastPlacedCell = useRef<{ x: number; y: number } | null>(null);
     const paintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -403,6 +456,17 @@ const ArenaInner = () => {
                 if (t >= 1) { bumpAnimRef.current = null; }
                 rerender();
             }
+            // Drive NPC tweens
+            if (npcAnims.current.size > 0) {
+                let anyActive = false;
+                for (const [npcId, a] of npcAnims.current) {
+                    if ((performance.now() - a.startTime) < a.duration) { anyActive = true; break; }
+                    npcAnims.current.delete(npcId);
+                }
+                if (anyActive) rerender();
+            }
+            // Portal shimmer animation
+            if (portalsRef.current.length > 0) rerender();
             id = requestAnimationFrame(tick);
         }
         id = requestAnimationFrame(tick);
@@ -671,6 +735,10 @@ const ArenaInner = () => {
                 setSelectedItem(null);
                 setSelectedElement(null);
                 setEraserMode(false);
+                setPortalPlacingMode(false);
+                setSelectedNpcId(null);
+                setNpcPickingPos(false);
+                npcDragRef.current = null;
                 isMoving.current = false;
                 moveTarget.current = null;
                 setMovePreview(null);
@@ -696,6 +764,44 @@ const ArenaInner = () => {
         }
 
         const { x, y } = currentUser;
+
+        if (e.key === 'f' || e.key === 'F') {
+            // Sit/stand on adjacent or current office chair
+            const chairItem = placedItems.find(p =>
+                p.item.id === 'item-office-chair' && Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 1
+            );
+            if (chairItem) {
+                const next: Activity = myActivityRef.current === null ? 'sitting' : null;
+                setMyActivity(next);
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({ type: 'activity-changed', payload: { activity: next } }));
+                }
+                return;
+            }
+            // Coffee machine interaction
+            const coffeeItem = placedItems.find(p =>
+                p.item.id === 'item-coffee-machine' && Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 1
+            );
+            if (coffeeItem) {
+                setInteractionPopup({ type: 'sign', title: '☕ Coffee Machine', text: 'You grab a coffee. +10 energy boost! Now back to work.' });
+                return;
+            }
+            // Vending machine interaction
+            const vendingItem = placedItems.find(p =>
+                p.item.id === 'item-vending-machine' && Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 1
+            );
+            if (vendingItem) {
+                setInteractionPopup({ type: 'sign', title: '🍫 Vending Machine', text: 'You grab a snack. Yum!' });
+                return;
+            }
+            // Step on portal
+            const portalHere = portalsRef.current.find(p => p.x === x && p.y === y);
+            if (portalHere) {
+                setPortalTravel(portalHere);
+                return;
+            }
+        }
+
         switch (e.key) {
             case 'ArrowUp':    handleMove(x, y - 1); break;
             case 'ArrowDown':  handleMove(x, y + 1); break;
@@ -710,6 +816,7 @@ const ArenaInner = () => {
             const data = await res.json();
             setSpaceElements(data.elements || []);
             setPlacedItems(data.placedItems || []);
+            setPortals(data.portals || []);
             if (data.name) setSpaceName(data.name);
             if (data.dimensions) {
                 const parts = data.dimensions.split('x');
@@ -996,13 +1103,43 @@ const ArenaInner = () => {
                 addToast(`🎁 ${message.payload.fromUsername} sent ${message.payload.itemName} to ${message.payload.recipientUsername}!`, 'success');
                 break;
 
-            case 'npc-moved':
-                setNpcs(prev => prev.map(n =>
-                    n.id === message.payload.npcId
-                        ? { ...n, x: message.payload.x, y: message.payload.y }
-                        : n
-                ));
+            case 'npc-moved': {
+                const facingCol: Record<string, number> = { down: 0, left: 1, right: 2, up: 3 };
+                if (message.payload.facing) {
+                    npcFacing.current.set(message.payload.npcId, facingCol[message.payload.facing] ?? 0);
+                }
+                setNpcs(prev => {
+                    const npc = prev.find(n => n.id === message.payload.npcId);
+                    if (npc) {
+                        npcAnims.current.set(npc.id, {
+                            fromX: npc.x, fromY: npc.y,
+                            toX: message.payload.x, toY: message.payload.y,
+                            startTime: performance.now(),
+                            duration: 450,
+                        });
+                    }
+                    return prev.map(n =>
+                        n.id === message.payload.npcId
+                            ? { ...n, x: message.payload.x, y: message.payload.y }
+                            : n
+                    );
+                });
                 break;
+            }
+
+            case 'activity-changed': {
+                const uid = message.payload.userId;
+                const act = message.payload.activity as Activity;
+                if (uid) {
+                    setOthersActivity(prev => {
+                        const next = new Map(prev);
+                        if (act === null) next.delete(uid);
+                        else next.set(uid, act);
+                        return next;
+                    });
+                }
+                break;
+            }
         }
     };
     handleMessageRef.current = handleMessage;
@@ -1056,6 +1193,16 @@ const ArenaInner = () => {
         }
         moveQueueRef.current = [];
         doMove(newX, newY);
+        // Clear sitting when moving
+        if (myActivityRef.current !== null) {
+            setMyActivity(null);
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({ type: 'activity-changed', payload: { activity: null } }));
+            }
+        }
+        // Check portal
+        const portal = portalsRef.current.find(p => p.x === newX && p.y === newY);
+        if (portal) setTimeout(() => setPortalTravel(portal), 300);
     };
 
     const placeItem = useCallback(async (itemId: string, x: number, y: number) => {
@@ -1262,6 +1409,14 @@ const ArenaInner = () => {
                 setSignEditing({ placedItemId: hitSign.id, text: hitSign.metadata?.text || '' });
                 return;
             }
+            // NPC drag: click on an NPC in edit mode selects it and starts drag
+            const hitNpc = npcsRef.current.find(n => n.x === pos.x && n.y === pos.y);
+            if (hitNpc) {
+                setSelectedNpcId(hitNpc.id);
+                setEditorTab('npcs');
+                npcDragRef.current = { id: hitNpc.id };
+                return;
+            }
         }
 
         if (eraserMode || selectedElement || selectedItem) {
@@ -1304,6 +1459,7 @@ const ArenaInner = () => {
         if (!editMode) return;
         const pos = canvasToGrid(e.clientX, e.clientY);
         if (!pos) return;
+        if (npcDragRef.current) { setHoverPos(pos); return; }
         if (isSelecting.current && selectStart.current) {
             setSelectionRect({ x1: selectStart.current.x, y1: selectStart.current.y, x2: pos.x, y2: pos.y });
             return;
@@ -1371,6 +1527,14 @@ const ArenaInner = () => {
         if (!editMode) return;
         const pos = canvasToGrid(e.clientX, e.clientY);
         if (!pos) return;
+        // Right-click on existing portal: delete it
+        const hitPortal = portalsRef.current.find(p => p.x === pos.x && p.y === pos.y);
+        if (hitPortal) {
+            fetch(`${API}/api/v1/space/portal/${hitPortal.id}`, { method: 'DELETE', headers: authHeaders })
+                .then(() => fetchSpace())
+                .catch(() => {});
+            return;
+        }
         const allPlaced = [
             ...spaceElements.map(e => ({ type: 'element' as const, id: e.id, x: e.x, y: e.y, w: e.element.width, h: e.element.height })),
             ...placedItems.map(p => ({ type: 'item' as const, id: p.id, x: p.x, y: p.y, w: p.item.width, h: p.item.height })),
@@ -1383,7 +1547,40 @@ const ArenaInner = () => {
     };
 
     const handleCanvasMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (editMode) { stopPaint(); return; }
+        if (editMode) {
+            if (portalPlacingMode) {
+                const pos = canvasToGrid(e.clientX, e.clientY);
+                if (pos) { setNewPortalPos(pos); setShowPortalModal(true); setPortalPlacingMode(false); }
+                return;
+            }
+            if (npcPickingPos) {
+                const pos = canvasToGrid(e.clientX, e.clientY);
+                if (pos) {
+                    setNpcForm(f => ({ ...f, x: pos.x, y: pos.y }));
+                    setNpcPickingPos(false);
+                    setShowNpcModal(true);
+                }
+                return;
+            }
+            if (npcDragRef.current) {
+                const pos = canvasToGrid(e.clientX, e.clientY);
+                const dragId = npcDragRef.current.id;
+                npcDragRef.current = null;
+                setHoverPos(null);
+                if (pos) {
+                    const npc = npcsRef.current.find(n => n.id === dragId);
+                    if (npc && (npc.x !== pos.x || npc.y !== pos.y)) {
+                        fetch(`${API}/api/v1/space/npc/${dragId}`, {
+                            method: 'PUT', headers: authHeaders,
+                            body: JSON.stringify({ x: pos.x, y: pos.y }),
+                        }).then(() => fetchNpcs()).catch(() => {});
+                    }
+                }
+                return;
+            }
+            stopPaint();
+            return;
+        }
         if (e.button !== 0) return;
         const pos = canvasToGrid(e.clientX, e.clientY);
         if (!pos) return;
@@ -1569,6 +1766,36 @@ const ArenaInner = () => {
             drawImageOnCanvas(ctx, itemUrl, x, y, w, h, '#fef3c7', 'rgba(0,0,0,0.20)', editMode ? p.item.name : undefined);
         });
 
+        // Portals — animated shimmering gate
+        const portalPhase = (performance.now() / 600) % (Math.PI * 2);
+        portals.forEach(portal => {
+            const px = portal.x * 50;
+            const py = portal.y * 50;
+            const pulse = 0.55 + 0.3 * Math.sin(portalPhase);
+            ctx.save();
+            ctx.globalAlpha = pulse;
+            const grad = ctx.createLinearGradient(px, py, px + 50, py + 50);
+            grad.addColorStop(0, '#7c3aed');
+            grad.addColorStop(0.5, '#4f46e5');
+            grad.addColorStop(1, '#06b6d4');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.roundRect(px + 4, py + 4, 42, 42, 8);
+            ctx.fill();
+            ctx.globalAlpha = 0.9;
+            ctx.strokeStyle = '#c4b5fd';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(portal.label, px + 25, py + 28);
+            ctx.font = '18px sans-serif';
+            ctx.fillText('🌀', px + 25, py + 16);
+            ctx.restore();
+        });
+
         if (editMode && currentUser) {
             ctx.strokeStyle = 'rgba(79, 70, 229, 0.25)';
             ctx.lineWidth = 2;
@@ -1596,6 +1823,17 @@ const ArenaInner = () => {
         });
 
         if (currentUser) {
+            // Auto-detect working: sitting + adjacent to computer or office desk
+            const curActivity = myActivityRef.current;
+            let effectiveActivity: Activity = curActivity;
+            if (curActivity === 'sitting') {
+                const adjComputer = placedItems.find(p =>
+                    (p.item.id === 'item-computer' || p.item.id === 'item-office-desk') &&
+                    Math.abs(p.x - currentUser.x) <= 1 && Math.abs(p.y - currentUser.y) <= 1
+                );
+                if (adjComputer) effectiveActivity = 'working';
+            }
+
             preloadAvatarImage(currentUser.avatarId);
             const avatarUrl = currentUser.avatarId ? `${API}/uploads/defaults/${currentUser.avatarId}.png` : '';
             const img = avatarUrl ? imageCache.current.get(avatarUrl) : null;
@@ -1618,6 +1856,10 @@ const ArenaInner = () => {
             ctx.font = 'bold 11px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(currentUser.username, cx, cy + 28);
+            if (effectiveActivity) {
+                ctx.font = '16px sans-serif';
+                ctx.fillText(effectiveActivity === 'working' ? '💻' : '💺', cx, cy - 38);
+            }
         }
 
         users.forEach(user => {
@@ -1636,28 +1878,54 @@ const ArenaInner = () => {
             ctx.font = 'bold 11px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(user.username, user.x * 50, user.y * 50 + 28);
+            // Activity emoji
+            const uActivity = othersActivity.get(user.userId);
+            if (uActivity) {
+                ctx.font = '16px sans-serif';
+                ctx.fillText(uActivity === 'working' ? '💻' : '💺', user.x * 50, user.y * 50 - 38);
+            }
             // 👂 proximity indicator when we're typing a chat message
             if (currentUser && showChatInput) {
                 const dist = Math.sqrt((user.x - currentUser.x) ** 2 + (user.y - currentUser.y) ** 2);
                 if (dist <= 4) {
                     ctx.font = '14px sans-serif';
                     ctx.globalAlpha = 1;
-                    ctx.fillText('👂', user.x * 50, user.y * 50 - 38);
+                    ctx.fillText('👂', user.x * 50, user.y * 50 - 52);
                 }
             }
         });
 
-        // NPCs
+        // NPCs — smooth interpolated movement
         npcs.forEach(npc => {
             preloadAvatarImage(npc.sprite);
             const avatarUrl = `${API}/uploads/defaults/${npc.sprite}.png`;
             const img = imageCache.current.get(avatarUrl);
+
+            // Interpolate position from tween
+            const anim = npcAnims.current.get(npc.id);
+            let rx = npc.x, ry = npc.y;
+            let isWalking = false;
+            if (anim) {
+                const t = Math.min((performance.now() - anim.startTime) / anim.duration, 1);
+                const eased = t * (2 - t);
+                rx = anim.fromX + (anim.toX - anim.fromX) * eased;
+                ry = anim.fromY + (anim.toY - anim.fromY) * eased;
+                isWalking = t < 1;
+            }
+            const px = rx * 50;
+            const py = ry * 50;
+
+            // Sprite facing column and walk frame
+            const dirCol = npcFacing.current.get(npc.id) ?? 0;
+            const walkFrame = isWalking ? (Math.floor(performance.now() / 100) % 2) : 0;
+            const bob = isWalking ? Math.sin(performance.now() / 100) * 2 : 0;
+
             if (img) {
-                ctx.drawImage(img, 0, 0, 32, 48, npc.x * 50 - 16, npc.y * 50 - 24, 32, 48);
+                ctx.drawImage(img, dirCol * 32, walkFrame * 48, 32, 48, px - 16, py - 24 - bob, 32, 48);
             } else {
                 ctx.beginPath();
                 ctx.fillStyle = '#FFD700';
-                ctx.arc(npc.x * 50, npc.y * 50, 20, 0, Math.PI * 2);
+                ctx.arc(px, py, 20, 0, Math.PI * 2);
                 ctx.fill();
             }
             ctx.shadowColor = 'rgba(0,0,0,0.8)';
@@ -1665,11 +1933,32 @@ const ArenaInner = () => {
             ctx.fillStyle = '#FFD700';
             ctx.font = 'bold 11px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(npc.name, npc.x * 50, npc.y * 50 + 28);
+            ctx.fillText(npc.name, px, py + 28);
             ctx.font = '14px sans-serif';
-            ctx.fillText('💬', npc.x * 50, npc.y * 50 - 40);
+            ctx.fillText('💬', px, py - 42);
             ctx.shadowBlur = 0;
         });
+
+        // NPC selection highlight in edit mode
+        if (editMode && selectedNpcId) {
+            const selNpc = npcs.find(n => n.id === selectedNpcId);
+            if (selNpc) {
+                const anim = npcAnims.current.get(selNpc.id);
+                let sx = selNpc.x, sy = selNpc.y;
+                if (anim) {
+                    const t = Math.min((performance.now() - anim.startTime) / anim.duration, 1);
+                    sx = anim.fromX + (anim.toX - anim.fromX) * (t * (2 - t));
+                    sy = anim.fromY + (anim.toY - anim.fromY) * (t * (2 - t));
+                }
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([5, 3]);
+                ctx.beginPath();
+                ctx.arc(sx * 50, sy * 50, 28, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
 
         // Proximity chat: full opacity within 4 tiles, 40% for 5-10, hidden beyond 10
         chatBubbles.forEach(b => {
@@ -1784,7 +2073,7 @@ const ArenaInner = () => {
             ctx.fillRect(0, 0, vpW, vpH);
             ctx.globalAlpha = 1;
         }
-    }, [currentUser, users, npcs, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, showChatInput]);
+    }, [currentUser, users, npcs, portals, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, showChatInput, myActivity, othersActivity, selectedNpcId]);
 
     return (
         <div style={{ fontFamily: 'system-ui', background: '#0a0a14', position: 'fixed', inset: 0, width: '100vw', height: '100vh', overflow: 'hidden' }}>
@@ -1856,8 +2145,8 @@ const ArenaInner = () => {
 
                 {/* Hint text overlay */}
                 <div style={{ position: 'absolute', top: 8, left: 12, pointerEvents: 'none', zIndex: 10 }}>
-                    <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.7)', background: 'rgba(0,0,0,0.5)', padding: '3px 10px', borderRadius: 6 }}>
-                        {editMode ? '[E] Eraser · [Esc] Deselect · [Ctrl+Z] Undo · Click/drag to place' : 'Arrow keys or click to move · 1-6 emotes · Enter chat'}
+                    <p style={{ margin: 0, fontSize: 11, color: portalPlacingMode || npcPickingPos ? '#c4b5fd' : 'rgba(255,255,255,0.7)', background: 'rgba(0,0,0,0.5)', padding: '3px 10px', borderRadius: 6 }}>
+                        {portalPlacingMode ? '🌀 Click a tile to place a portal — [Esc] to cancel' : npcPickingPos ? '📍 Click a tile to position the NPC — [Esc] to cancel' : editMode ? 'Esc deselect · Ctrl+Z undo · right-click portal to delete · click NPC to select/drag' : 'Arrow keys or click to move · [F] Interact/Sit · 1-6 emotes · Enter chat'}
                     </p>
                 </div>
 
@@ -1981,6 +2270,203 @@ const ArenaInner = () => {
                 )}
                 {signEditing && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 1199 }} onClick={() => setSignEditing(null)} />}
 
+                {/* ── NPC add/edit modal ── */}
+                {showNpcModal && (
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: '24px 28px', width: 360, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 16 }}>
+                            {npcForm.id ? '✏️ Edit NPC' : '🤖 Add NPC'}
+                        </div>
+                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Name</label>
+                        <input
+                            value={npcForm.name}
+                            onChange={e => setNpcForm(f => ({ ...f, name: e.target.value }))}
+                            placeholder="NPC name..."
+                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
+                        />
+                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>Sprite</label>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                            {(['avatar-default', 'avatar-ninja', 'avatar-wizard'] as const).map(av => (
+                                <div
+                                    key={av}
+                                    onClick={() => setNpcForm(f => ({ ...f, sprite: av }))}
+                                    style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: `2px solid ${npcForm.sprite === av ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: npcForm.sprite === av ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', cursor: 'pointer', textAlign: 'center' }}
+                                >
+                                    <img src={`${API}/uploads/defaults/${av}.png`} alt={av} style={{ width: 32, height: 32, objectFit: 'cover', display: 'block', margin: '0 auto 4px' }} onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+                                    <span style={{ fontSize: 9, color: '#94a3b8' }}>{av.replace('avatar-', '')}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Position</label>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                            <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+                                <input value={npcForm.x} onChange={e => setNpcForm(f => ({ ...f, x: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.width - 1} placeholder="X" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 12, outline: 'none' }} />
+                                <input value={npcForm.y} onChange={e => setNpcForm(f => ({ ...f, y: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.height - 1} placeholder="Y" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 12, outline: 'none' }} />
+                            </div>
+                            <button
+                                onClick={() => { setNpcPickingPos(true); setShowNpcModal(false); }}
+                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#818cf8', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            >📍 Pick</button>
+                        </div>
+                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Dialogues (up to 3)</label>
+                        {([0, 1, 2] as const).map(i => (
+                            <input
+                                key={i}
+                                value={npcForm.dialogues[i]}
+                                onChange={e => {
+                                    const d: [string, string, string] = [...npcForm.dialogues] as [string, string, string];
+                                    d[i] = e.target.value;
+                                    setNpcForm(f => ({ ...f, dialogues: d }));
+                                }}
+                                placeholder={`Line ${i + 1}...`}
+                                style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 12, outline: 'none', boxSizing: 'border-box', marginBottom: 6 }}
+                            />
+                        ))}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+                            <button
+                                disabled={savingNpc || !npcForm.name.trim()}
+                                onClick={async () => {
+                                    if (!npcForm.name.trim()) return;
+                                    setSavingNpc(true);
+                                    const body = {
+                                        name: npcForm.name.trim(),
+                                        sprite: npcForm.sprite,
+                                        dialogues: npcForm.dialogues.filter(d => d.trim()),
+                                        x: npcForm.x,
+                                        y: npcForm.y,
+                                    };
+                                    try {
+                                        if (npcForm.id) {
+                                            await fetch(`${API}/api/v1/space/npc/${npcForm.id}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify(body) });
+                                        } else {
+                                            await fetch(`${API}/api/v1/space/${spaceId}/npc`, { method: 'POST', headers: authHeaders, body: JSON.stringify(body) });
+                                        }
+                                        fetchNpcs();
+                                        setShowNpcModal(false);
+                                    } catch {}
+                                    setSavingNpc(false);
+                                }}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: savingNpc || !npcForm.name.trim() ? '#374151' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, cursor: savingNpc || !npcForm.name.trim() ? 'not-allowed' : 'pointer', fontWeight: 600 }}
+                            >
+                                {savingNpc ? 'Saving…' : npcForm.id ? 'Save Changes' : 'Add NPC'}
+                            </button>
+                            <button onClick={() => setShowNpcModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                        </div>
+                    </div>
+                )}
+                {showNpcModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1199 }} onClick={() => setShowNpcModal(false)} />}
+
+                {/* NPC position picking hint */}
+                {npcPickingPos && (
+                    <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', background: 'rgba(99,102,241,0.9)', color: '#fff', padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 200, pointerEvents: 'none' }}>
+                        📍 Click a tile to set NPC position
+                    </div>
+                )}
+
+                {/* ── Portal travel prompt ── */}
+                {portalTravel && (
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(124,58,237,0.4)', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '24px 28px', width: 320, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)', textAlign: 'center' }}>
+                        <div style={{ fontSize: 32, marginBottom: 10 }}>🌀</div>
+                        <div style={{ fontSize: 17, fontWeight: 700, color: '#c4b5fd', marginBottom: 8 }}>Portal — {portalTravel.label}</div>
+                        <p style={{ margin: '0 0 18px', fontSize: 14, color: '#94a3b8' }}>Travel to another space?</p>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                            <button
+                                onClick={() => { navigate(`/arena?spaceId=${portalTravel.toSpaceId}`); setPortalTravel(null); }}
+                                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}
+                            >
+                                Travel
+                            </button>
+                            <button onClick={() => setPortalTravel(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 14, cursor: 'pointer' }}>Cancel</button>
+                        </div>
+                    </div>
+                )}
+                {portalTravel && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1199 }} onClick={() => setPortalTravel(null)} />}
+
+                {/* ── Portal creation modal ── */}
+                {showPortalModal && newPortalPos && (
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 14, padding: '24px 28px', width: 340, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
+                        <div style={{ fontSize: 17, fontWeight: 700, color: '#c4b5fd', marginBottom: 16 }}>🌀 Create Portal at ({newPortalPos.x}, {newPortalPos.y})</div>
+                        <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Destination Space ID</label>
+                        <input
+                            value={newPortalTarget}
+                            onChange={e => setNewPortalTarget(e.target.value)}
+                            placeholder="Paste space ID..."
+                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 10 }}
+                        />
+                        <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Label</label>
+                        <input
+                            value={newPortalLabel}
+                            onChange={e => setNewPortalLabel(e.target.value)}
+                            placeholder="Portal"
+                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }}
+                        />
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={async () => {
+                                    if (!newPortalTarget.trim()) return;
+                                    try {
+                                        await fetch(`${API}/api/v1/space/${spaceId}/portal`, {
+                                            method: 'POST',
+                                            headers: authHeaders,
+                                            body: JSON.stringify({ toSpaceId: newPortalTarget.trim(), x: newPortalPos.x, y: newPortalPos.y, label: newPortalLabel || 'Portal' }),
+                                        });
+                                        fetchSpace();
+                                    } catch {}
+                                    setShowPortalModal(false);
+                                    setNewPortalTarget('');
+                                    setNewPortalLabel('Portal');
+                                }}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                            >
+                                Create
+                            </button>
+                            <button onClick={() => setShowPortalModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                        </div>
+                    </div>
+                )}
+                {showPortalModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1199 }} onClick={() => setShowPortalModal(false)} />}
+
+                {/* ── Space resize modal ── */}
+                {showResizeModal && (
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: '24px 28px', width: 300, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 16 }}>↔ Resize Space</div>
+                        <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Width (5–100)</label>
+                                <input value={resizeW} onChange={e => setResizeW(e.target.value)} placeholder={String(spaceDims.width)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Height (5–100)</label>
+                                <input value={resizeH} onChange={e => setResizeH(e.target.value)} placeholder={String(spaceDims.height)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={async () => {
+                                    const w = parseInt(resizeW) || spaceDims.width;
+                                    const h = parseInt(resizeH) || spaceDims.height;
+                                    try {
+                                        const res = await fetch(`${API}/api/v1/space/${spaceId}/resize`, {
+                                            method: 'PUT',
+                                            headers: authHeaders,
+                                            body: JSON.stringify({ width: w, height: h }),
+                                        });
+                                        if (res.ok) { setSpaceDims({ width: w, height: h }); addToast(`Space resized to ${w}×${h}`, 'success'); }
+                                        else { const d = await res.json(); addToast(d.message || 'Resize failed', 'warning'); }
+                                    } catch {}
+                                    setShowResizeModal(false);
+                                    setResizeW('');
+                                    setResizeH('');
+                                }}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                            >
+                                Resize
+                            </button>
+                            <button onClick={() => setShowResizeModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                        </div>
+                    </div>
+                )}
+                {showResizeModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1199 }} onClick={() => setShowResizeModal(false)} />}
+
                 {playerPopup && (
                     <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.15)', zIndex: 1100, textAlign: 'center' }}>
                         <p style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', margin: '0 0 16px' }}>{playerPopup.username}</p>
@@ -2023,11 +2509,25 @@ const ArenaInner = () => {
                                     + New Map
                                 </button>
                                 <button
+                                    onClick={() => { setResizeW(String(spaceDims.width)); setResizeH(String(spaceDims.height)); setShowResizeModal(true); }}
+                                    style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#6366f1', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                    title="Resize Space"
+                                >
+                                    ↔ Resize
+                                </button>
+                                <button
                                     onClick={() => { setEraserMode(m => !m); setSelectedItem(null); setSelectedElement(null); setSelectedPlaced(null); }}
                                     style={{ padding: '4px 10px', borderRadius: 4, border: `2px solid ${eraserMode ? '#ef4444' : '#d1d5db'}`, background: eraserMode ? '#fef2f2' : '#fff', color: eraserMode ? '#ef4444' : '#666', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
                                     title="Eraser (E)"
                                 >
                                     🧹 Eraser
+                                </button>
+                                <button
+                                    onClick={() => { setPortalPlacingMode(m => !m); setEraserMode(false); setSelectedItem(null); setSelectedElement(null); }}
+                                    style={{ padding: '4px 10px', borderRadius: 4, border: `2px solid ${portalPlacingMode ? '#7c3aed' : '#d1d5db'}`, background: portalPlacingMode ? '#f5f3ff' : '#fff', color: '#7c3aed', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                    title="Click canvas to place a portal"
+                                >
+                                    🌀 Portal
                                 </button>
                                 {selectedPlaced && (
                                     <button
@@ -2100,15 +2600,21 @@ const ArenaInner = () => {
                         <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb' }}>
                             <button
                                 onClick={() => { setEditorTab('elements'); setSelectedItem(null); setSelectedElement(null); fetchElementsCatalog(); }}
-                                style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === 'elements' ? '#4f46e5' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 13, color: editorTab === 'elements' ? '#4f46e5' : '#888', cursor: 'pointer', transition: 'all 0.15s' }}
+                                style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === 'elements' ? '#4f46e5' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 12, color: editorTab === 'elements' ? '#4f46e5' : '#888', cursor: 'pointer', transition: 'all 0.15s' }}
                             >
                                 Elements
                             </button>
                             <button
                                 onClick={() => { setEditorTab('items'); setSelectedItem(null); setSelectedElement(null); }}
-                                style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === 'items' ? '#4f46e5' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 13, color: editorTab === 'items' ? '#4f46e5' : '#888', cursor: 'pointer', transition: 'all 0.15s' }}
+                                style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === 'items' ? '#4f46e5' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 12, color: editorTab === 'items' ? '#4f46e5' : '#888', cursor: 'pointer', transition: 'all 0.15s' }}
                             >
                                 Items
+                            </button>
+                            <button
+                                onClick={() => { setEditorTab('npcs'); setSelectedItem(null); setSelectedElement(null); }}
+                                style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === 'npcs' ? '#4f46e5' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 12, color: editorTab === 'npcs' ? '#4f46e5' : '#888', cursor: 'pointer', transition: 'all 0.15s' }}
+                            >
+                                NPCs
                             </button>
                         </div>
                         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
@@ -2181,6 +2687,67 @@ const ArenaInner = () => {
                                         </div>
                                     )}
                                 </>
+                            )}
+                            {editorTab === 'npcs' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <button
+                                        onClick={() => {
+                                            const cx = Math.floor(spaceDims.width / 2);
+                                            const cy = Math.floor(spaceDims.height / 2);
+                                            setNpcForm({ name: '', sprite: 'avatar-default', dialogues: ['', '', ''], x: cx, y: cy });
+                                            setShowNpcModal(true);
+                                        }}
+                                        style={{ padding: '8px', borderRadius: 6, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600, marginBottom: 4 }}
+                                    >
+                                        + Add NPC
+                                    </button>
+                                    {npcs.length === 0 && <p style={{ fontSize: 12, color: '#999', textAlign: 'center' }}>No NPCs yet.</p>}
+                                    {npcs.map(npc => (
+                                        <div
+                                            key={npc.id}
+                                            onClick={() => setSelectedNpcId(selectedNpcId === npc.id ? null : npc.id)}
+                                            style={{ padding: '10px 12px', borderRadius: 8, border: `2px solid ${selectedNpcId === npc.id ? '#f59e0b' : '#e5e7eb'}`, background: selectedNpcId === npc.id ? '#fffbeb' : '#fafafa', cursor: 'pointer', transition: 'all 0.15s' }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <img
+                                                    src={`${API}/uploads/defaults/${npc.sprite}.png`}
+                                                    alt={npc.sprite}
+                                                    style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, background: '#e5e7eb', flexShrink: 0 }}
+                                                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                />
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#333' }}>{npc.name}</p>
+                                                    <p style={{ margin: '2px 0 0', fontSize: 10, color: '#888' }}>({npc.x}, {npc.y}) · {npc.dialogues.length} line{npc.dialogues.length !== 1 ? 's' : ''}</p>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 4 }}>
+                                                    <button
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            setNpcForm({ id: npc.id, name: npc.name, sprite: npc.sprite, dialogues: [npc.dialogues[0] || '', npc.dialogues[1] || '', npc.dialogues[2] || ''], x: npc.x, y: npc.y });
+                                                            setShowNpcModal(true);
+                                                        }}
+                                                        style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#4f46e5', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}
+                                                    >Edit</button>
+                                                    <button
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            if (!confirm(`Delete ${npc.name}?`)) return;
+                                                            fetch(`${API}/api/v1/space/npc/${npc.id}`, { method: 'DELETE', headers: authHeaders })
+                                                                .then(() => { if (selectedNpcId === npc.id) setSelectedNpcId(null); fetchNpcs(); })
+                                                                .catch(() => {});
+                                                        }}
+                                                        style={{ padding: '3px 8px', borderRadius: 4, border: 'none', background: '#ef4444', color: '#fff', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}
+                                                    >Del</button>
+                                                </div>
+                                            </div>
+                                            {selectedNpcId === npc.id && (
+                                                <p style={{ margin: '6px 0 0', fontSize: 10, color: '#6b7280', fontStyle: 'italic' }}>
+                                                    Drag on canvas to reposition
+                                                </p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
                         <div style={{ padding: '10px 16px', borderTop: '1px solid #e5e7eb', fontSize: 11 }}>

@@ -425,6 +425,39 @@ function chest(ctx, ox = 0, oy = 0) {
     hline(ctx, oy+14, ox+2, ox+14, C.dark);
 }
 
+// ─── Office tile sprites ───────────────────────────────────────────────────────
+
+function officeCarpet(ctx, ox = 0, oy = 0) {
+    const C = { base: '#6b7a8d', l: '#7e8fa3', d: '#556070' };
+    rect(ctx, ox, oy, 16, 16, C.base);
+    for (let y = 0; y < 16; y++) {
+        for (let x = 0; x < 16; x++) {
+            if ((x + y) % 4 === 0) px(ctx, ox + x, oy + y, C.d);
+            else if ((x + y) % 4 === 2) px(ctx, ox + x, oy + y, C.l);
+        }
+    }
+}
+
+function officeFloor(ctx, ox = 0, oy = 0) {
+    const C = { tile: '#d8d8e0', grout: '#b0b0be', h: '#ececf4', d: '#c0c0cc' };
+    rect(ctx, ox, oy, 16, 16, C.tile);
+    hline(ctx, oy + 7, ox, ox + 16, C.grout);
+    hline(ctx, oy + 8, ox, ox + 16, C.grout);
+    vline(ctx, ox + 7, oy, oy + 16, C.grout);
+    vline(ctx, ox + 8, oy, oy + 16, C.grout);
+    px(ctx, ox + 1, oy + 1, C.h); px(ctx, ox + 9, oy + 1, C.h);
+    px(ctx, ox + 1, oy + 9, C.h); px(ctx, ox + 9, oy + 9, C.h);
+    px(ctx, ox + 6, oy + 6, C.d); px(ctx, ox + 14, oy + 6, C.d);
+}
+
+function glassWall(ctx, ox = 0, oy = 0) {
+    const C = { frame: '#4a5066', glass: '#aac8e8', refl: '#d0e8f8', dark: '#7090b0' };
+    rect(ctx, ox, oy, 16, 16, C.frame);
+    rect(ctx, ox + 1, oy + 1, 14, 14, C.glass);
+    for (let i = 0; i < 5; i++) { px(ctx, ox + 2 + i, oy + 2, C.refl); px(ctx, ox + 2, oy + 2 + i, C.refl); }
+    for (let i = 0; i < 3; i++) { px(ctx, ox + 9 + i, oy + 5, C.dark); px(ctx, ox + 5 + i, oy + 9, C.dark); }
+}
+
 // ─── ITEM sprites ─────────────────────────────────────────────────────────────
 
 function sofa(ctx, ox = 0, oy = 0) {
@@ -742,6 +775,152 @@ function throne(ctx, ox = 0, oy = 0) {
     hline(ctx, oy+18, ox+4, ox+28, C.gl); hline(ctx, oy+26, ox+4, ox+28, C.gl);
 }
 
+// ─── Office item sprites ───────────────────────────────────────────────────────
+
+function officeDesk(ctx, ox = 0, oy = 0) {
+    const C = { top: '#a0764a', toph: '#c09060', topd: '#7a5830', handle: '#c89050', drawer: '#6a4828' };
+    rect(ctx, ox, oy, 32, 10, C.top);
+    hline(ctx, oy, ox, ox + 32, C.toph); hline(ctx, oy + 1, ox, ox + 32, C.toph);
+    hline(ctx, oy + 9, ox, ox + 32, C.topd);
+    vline(ctx, ox, oy, oy + 10, C.toph); vline(ctx, ox + 31, oy, oy + 10, C.topd);
+    rect(ctx, ox, oy + 10, 32, 6, C.topd);
+    rect(ctx, ox + 1, oy + 11, 13, 4, C.drawer);
+    hline(ctx, oy + 11, ox + 1, ox + 14, '#9a7040');
+    rect(ctx, ox + 5, oy + 12, 5, 2, C.handle);
+    rect(ctx, ox + 17, oy + 11, 13, 4, C.drawer);
+    hline(ctx, oy + 11, ox + 17, ox + 30, '#9a7040');
+    rect(ctx, ox + 21, oy + 12, 5, 2, C.handle);
+    rect(ctx, ox + 3, oy + 2, 6, 5, '#f0f0f0');
+    hline(ctx, oy + 3, ox + 4, ox + 8, '#c0c0c0');
+    hline(ctx, oy + 5, ox + 4, ox + 8, '#c0c0c0');
+    vline(ctx, ox + 12, oy + 3, oy + 7, '#2244cc');
+}
+
+function officeChair(ctx, ox = 0, oy = 0) {
+    const C = { back: '#3a3a4a', seat: '#4a4a5a', wheel: '#28282e', pole: '#7878a0', hi: '#7a7a8a', cush: '#5a5a6a' };
+    rect(ctx, ox + 2, oy + 1, 12, 7, C.back);
+    hline(ctx, oy + 1, ox + 2, ox + 14, C.hi); vline(ctx, ox + 2, oy + 1, oy + 8, C.hi);
+    rect(ctx, ox + 1, oy + 8, 14, 4, C.seat);
+    hline(ctx, oy + 8, ox + 1, ox + 15, C.cush);
+    vline(ctx, ox + 7, oy + 12, oy + 15, C.pole); vline(ctx, ox + 8, oy + 12, oy + 15, C.pole);
+    rect(ctx, ox + 3, oy + 14, 10, 2, C.wheel);
+    for (const x of [3, 6, 9]) px(ctx, ox + x, oy + 15, '#111118');
+}
+
+function computer(ctx, ox = 0, oy = 0) {
+    const C = { bezel: '#1e1e2c', screen: '#3a6ea8', stand: '#808098', key: '#b0b0c8', glow: '#66aaee' };
+    rect(ctx, ox + 1, oy, 14, 10, C.bezel);
+    rect(ctx, ox + 2, oy + 1, 12, 8, C.screen);
+    hline(ctx, oy + 2, ox + 3, ox + 11, '#55cc88'); hline(ctx, oy + 4, ox + 3, ox + 9, '#dd8844');
+    hline(ctx, oy + 6, ox + 3, ox + 13, '#55cc88'); hline(ctx, oy + 8, ox + 5, ox + 13, '#aaaaee');
+    hline(ctx, oy + 1, ox + 2, ox + 14, C.glow);
+    vline(ctx, ox + 7, oy + 10, oy + 12, C.stand); vline(ctx, ox + 8, oy + 10, oy + 12, C.stand);
+    rect(ctx, ox + 4, oy + 12, 8, 1, C.stand);
+    rect(ctx, ox + 2, oy + 13, 12, 3, C.key);
+    hline(ctx, oy + 13, ox + 2, ox + 14, '#c8c8d8');
+    for (let kx = 3; kx < 14; kx += 2) px(ctx, ox + kx, oy + 14, '#888898');
+}
+
+function whiteboard(ctx, ox = 0, oy = 0) {
+    const C = { frame: '#888898', board: '#f8f8f8', tray: '#aaaabc' };
+    rect(ctx, ox, oy, 32, 16, C.frame);
+    rect(ctx, ox + 1, oy + 1, 30, 13, C.board);
+    hline(ctx, oy + 1, ox + 1, ox + 31, '#ffffff');
+    for (let i = 0; i < 8; i++) px(ctx, ox + 3 + i, oy + 3, '#334477');
+    vline(ctx, ox + 3, oy + 3, oy + 9, '#334477'); vline(ctx, ox + 10, oy + 3, oy + 9, '#334477');
+    hline(ctx, oy + 8, ox + 3, ox + 11, '#334477');
+    hline(ctx, oy + 6, ox + 12, ox + 16, '#334477');
+    px(ctx, ox + 15, oy + 5, '#334477'); px(ctx, ox + 15, oy + 7, '#334477');
+    for (let i = 0; i < 8; i++) px(ctx, ox + 17 + i, oy + 3, '#2244cc');
+    vline(ctx, ox + 17, oy + 3, oy + 9, '#2244cc'); vline(ctx, ox + 24, oy + 3, oy + 9, '#2244cc');
+    hline(ctx, oy + 8, ox + 17, ox + 25, '#2244cc');
+    hline(ctx, oy + 10, ox + 3, ox + 15, '#cc2222'); hline(ctx, oy + 12, ox + 3, ox + 20, '#222222');
+    rect(ctx, ox + 1, oy + 14, 30, 2, C.tray);
+    px(ctx, ox + 3, oy + 14, '#cc2222'); px(ctx, ox + 6, oy + 14, '#2244cc'); px(ctx, ox + 9, oy + 14, '#22aa44');
+}
+
+function coffeeMachine(ctx, ox = 0, oy = 0) {
+    const C = { body: '#242432', panel: '#303040', cup: '#f0e8d8', coffee: '#5a3010', steam: '#cccccc' };
+    rect(ctx, ox + 1, oy, 14, 16, C.body);
+    hline(ctx, oy, ox + 1, ox + 15, '#3a3a4a'); vline(ctx, ox + 1, oy, oy + 16, '#3a3a4a');
+    rect(ctx, ox + 2, oy + 1, 12, 5, C.panel);
+    rect(ctx, ox + 3, oy + 2, 2, 2, '#cc3333'); rect(ctx, ox + 7, oy + 2, 2, 2, '#22cc55');
+    hline(ctx, oy + 2, ox + 11, ox + 14, '#44ffaa');
+    rect(ctx, ox + 11, oy + 6, 4, 6, '#3a6080');
+    rect(ctx, ox + 4, oy + 7, 7, 3, '#111120');
+    hline(ctx, oy + 9, ox + 4, ox + 11, '#666688');
+    rect(ctx, ox + 5, oy + 11, 6, 4, C.cup);
+    hline(ctx, oy + 11, ox + 5, ox + 11, '#e0d0c0');
+    rect(ctx, ox + 5, oy + 12, 6, 3, C.coffee);
+    px(ctx, ox + 6, oy + 10, C.steam); px(ctx, ox + 8, oy + 9, C.steam); px(ctx, ox + 10, oy + 10, C.steam);
+}
+
+function filingCabinet(ctx, ox = 0, oy = 0) {
+    const C = { body: '#888898', top: '#aaaabc', drawer: '#9898a8', handle: '#ccccdd', shadow: '#606070' };
+    rect(ctx, ox + 1, oy, 14, 32, C.body);
+    hline(ctx, oy, ox + 1, ox + 15, C.top);
+    vline(ctx, ox + 1, oy, oy + 32, C.top); vline(ctx, ox + 14, oy, oy + 32, C.shadow);
+    for (let d = 0; d < 3; d++) {
+        const dy = oy + 2 + d * 10;
+        rect(ctx, ox + 2, dy, 12, 8, C.drawer);
+        hline(ctx, dy, ox + 2, ox + 14, '#aaaabc'); vline(ctx, ox + 2, dy, dy + 8, '#aaaabc');
+        hline(ctx, dy + 7, ox + 2, ox + 14, C.shadow);
+        rect(ctx, ox + 5, dy + 3, 6, 2, C.handle);
+        hline(ctx, dy + 3, ox + 5, ox + 11, '#ddddee');
+    }
+    rect(ctx, ox + 2, oy + 30, 12, 2, C.shadow);
+}
+
+function meetingTable(ctx, ox = 0, oy = 0) {
+    const C = { top: '#6b4c2a', toph: '#8a6a40', topd: '#4a3018', edge: '#3a2010', leg: '#5a4020' };
+    rect(ctx, ox + 2, oy + 4, 44, 20, C.top);
+    hline(ctx, oy + 4, ox + 2, ox + 46, C.toph); hline(ctx, oy + 5, ox + 2, ox + 46, C.toph);
+    hline(ctx, oy + 23, ox + 2, ox + 46, C.topd);
+    vline(ctx, ox + 2, oy + 4, oy + 24, C.toph); vline(ctx, ox + 45, oy + 4, oy + 24, C.topd);
+    rect(ctx, ox + 2, oy + 24, 44, 4, C.edge);
+    rect(ctx, ox + 4, oy + 26, 4, 6, C.leg); rect(ctx, ox + 40, oy + 26, 4, 6, C.leg);
+    rect(ctx, ox + 8, oy + 8, 8, 5, '#f5f5f5');
+    hline(ctx, oy + 9, ox + 9, ox + 15, '#d0d0d0'); hline(ctx, oy + 11, ox + 9, ox + 14, '#d0d0d0');
+    rect(ctx, ox + 20, oy + 7, 10, 7, '#1e1e2c');
+    rect(ctx, ox + 21, oy + 8, 8, 5, '#3366aa');
+    rect(ctx, ox + 18, oy + 14, 14, 2, '#303040');
+    rect(ctx, ox + 34, oy + 9, 6, 5, '#d0b8a0');
+    hline(ctx, oy + 9, ox + 34, ox + 40, '#e8d0c0');
+}
+
+function vendingMachine(ctx, ox = 0, oy = 0) {
+    const colors = ['#ffcc22', '#ff6644', '#44ccff', '#88ff44', '#cc44ff', '#ff88aa'];
+    rect(ctx, ox + 1, oy, 14, 32, '#bb2244');
+    hline(ctx, oy, ox + 1, ox + 15, '#dd3355'); vline(ctx, ox + 1, oy, oy + 32, '#dd3355');
+    vline(ctx, ox + 14, oy, oy + 32, '#881133');
+    rect(ctx, ox + 2, oy + 2, 12, 14, '#111828');
+    hline(ctx, oy + 2, ox + 2, ox + 14, '#223355');
+    let ic = 0;
+    for (let row = 0; row < 2; row++) for (let col = 0; col < 3; col++) rect(ctx, ox + 3 + col * 4, oy + 4 + row * 6, 3, 4, colors[ic++]);
+    rect(ctx, ox + 2, oy + 17, 12, 8, '#280e1a');
+    rect(ctx, ox + 4, oy + 19, 8, 2, '#445566');
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) px(ctx, ox + 4 + c * 3, oy + 22 + r * 2, '#aaaacc');
+    rect(ctx, ox + 2, oy + 27, 12, 4, '#881133');
+    rect(ctx, ox + 3, oy + 28, 10, 2, '#660e22');
+    hline(ctx, oy + 16, ox + 3, ox + 13, '#ff4466');
+}
+
+function officePrinter(ctx, ox = 0, oy = 0) {
+    const C = { body: '#d8d8e0', top: '#c0c0cc', panel: '#a0a0b8', paper: '#f8f8f8' };
+    rect(ctx, ox + 1, oy + 4, 14, 10, C.body);
+    hline(ctx, oy + 4, ox + 1, ox + 15, C.top); vline(ctx, ox + 1, oy + 4, oy + 14, C.top);
+    rect(ctx, ox + 3, oy + 2, 10, 3, C.paper);
+    hline(ctx, oy + 2, ox + 3, ox + 13, '#eeeeee');
+    rect(ctx, ox + 3, oy + 14, 10, 2, C.paper);
+    rect(ctx, ox + 5, oy + 13, 6, 2, C.paper);
+    hline(ctx, oy + 13, ox + 5, ox + 11, '#eeeeee');
+    rect(ctx, ox + 2, oy + 7, 8, 4, C.panel);
+    px(ctx, ox + 3, oy + 8, '#22cc44'); px(ctx, ox + 5, oy + 8, '#4466cc'); px(ctx, ox + 7, oy + 8, '#4466cc');
+    hline(ctx, oy + 9, ox + 3, ox + 9, '#888898');
+    rect(ctx, ox + 11, oy + 7, 3, 4, C.body);
+    hline(ctx, oy + 8, ox + 11, ox + 14, '#888898'); hline(ctx, oy + 10, ox + 11, ox + 14, '#888898');
+}
+
 // ─── Render and save ──────────────────────────────────────────────────────────
 
 const TILES = [
@@ -775,6 +954,10 @@ const TILES = [
     { name: 'door',          w: 16, h: 32, fn: door       },
     { name: 'roof',          w: 16, h: 16, fn: roof       },
     { name: 'chest',         w: 16, h: 16, fn: chest      },
+    // office tiles
+    { name: 'office-carpet', w: 16, h: 16, fn: officeCarpet },
+    { name: 'office-floor',  w: 16, h: 16, fn: officeFloor  },
+    { name: 'glass-wall',    w: 16, h: 16, fn: glassWall    },
 ];
 
 const ITEMS = [
@@ -795,7 +978,17 @@ const ITEMS = [
     { name: 'barrel',    w: 16, h: 16, fn: barrel    },
     { name: 'sign',      w: 16, h: 16, fn: sign      },
     { name: 'campfire',  w: 16, h: 16, fn: campfire  },
-    { name: 'fountain',  w: 32, h: 32, fn: fountain  },
+    { name: 'fountain',       w: 32, h: 32, fn: fountain      },
+    // office items
+    { name: 'office-desk',     w: 32, h: 16, fn: officeDesk    },
+    { name: 'office-chair',    w: 16, h: 16, fn: officeChair   },
+    { name: 'computer',        w: 16, h: 16, fn: computer      },
+    { name: 'whiteboard',      w: 32, h: 16, fn: whiteboard    },
+    { name: 'coffee-machine',  w: 16, h: 16, fn: coffeeMachine },
+    { name: 'filing-cabinet',  w: 16, h: 32, fn: filingCabinet },
+    { name: 'meeting-table',   w: 48, h: 32, fn: meetingTable  },
+    { name: 'vending-machine', w: 16, h: 32, fn: vendingMachine},
+    { name: 'office-printer',  w: 16, h: 16, fn: officePrinter },
 ];
 
 for (const { name, w, h, fn } of TILES) {

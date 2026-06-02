@@ -91,6 +91,8 @@ model Space {
   placedItems PlacedItem[]
   guestbook   GuestbookEntry[]
   npcs        NPC[]
+  fromPortals SpacePortal[]    @relation("FromPortals")
+  toPortals   SpacePortal[]    @relation("ToPortals")
 }
 
 model spaceElements {
@@ -308,6 +310,17 @@ model ChestInteraction {
   placedItem   PlacedItem @relation(fields: [placedItemId], references: [id], onDelete: Cascade)
 
   @@unique([userId, placedItemId])
+}
+
+model SpacePortal {
+  id          String @id @default(cuid())
+  fromSpaceId String
+  toSpaceId   String
+  x           Int
+  y           Int
+  label       String @default("Portal")
+  fromSpace   Space  @relation("FromPortals", fields: [fromSpaceId], references: [id], onDelete: Cascade)
+  toSpace     Space  @relation("ToPortals", fields: [toSpaceId], references: [id], onDelete: Cascade)
 }
 
 enum Layer {
