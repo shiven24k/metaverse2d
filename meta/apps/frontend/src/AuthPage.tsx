@@ -71,41 +71,35 @@ export default function AuthPage() {
     };
 
     return (
-        <div style={S.page}>
-            {/* Decorative blurred orbs */}
-            <div style={S.orb1} />
-            <div style={S.orb2} />
-
-            <div style={S.card}>
-                {/* Logo */}
-                <div style={S.logoRow}>
-                    <span style={S.logoPx}>M2D</span>
-                    <span style={S.logoText}>Metaverse 2D</span>
+        <div style={s.page}>
+            <div style={s.card}>
+                <div style={s.logoRow}>
+                    <span style={s.logoPx}>M2D</span>
+                    <span style={s.logoText}>Metaverse 2D</span>
                 </div>
-                <p style={S.tagline}>Explore. Build. Connect.</p>
+                <p style={s.tagline}>Explore. Build. Connect.</p>
 
-                {/* Mode toggle */}
-                <div style={S.tabs}>
+                <div style={s.tabs}>
                     <button
-                        style={{ ...S.tab, ...(mode === "signin" ? S.tabActive : {}) }}
+                        style={{ ...s.tab, ...(mode === "signin" ? s.tabActive : {}) }}
                         onClick={() => { setMode("signin"); setError(""); }}
                     >
                         Sign In
                     </button>
                     <button
-                        style={{ ...S.tab, ...(mode === "signup" ? S.tabActive : {}) }}
+                        style={{ ...s.tab, ...(mode === "signup" ? s.tabActive : {}) }}
                         onClick={() => { setMode("signup"); setError(""); }}
                     >
                         Sign Up
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} style={S.form}>
+                <form onSubmit={handleSubmit} style={s.form}>
                     {mode === "signup" && (
-                        <div style={S.field}>
-                            <label style={S.label}>Username</label>
+                        <div style={s.field}>
+                            <label style={s.label}>Username</label>
                             <input
-                                style={S.input}
+                                style={s.input}
                                 type="text"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
@@ -116,10 +110,10 @@ export default function AuthPage() {
                         </div>
                     )}
 
-                    <div style={S.field}>
-                        <label style={S.label}>Email</label>
+                    <div style={s.field}>
+                        <label style={s.label}>Email</label>
                         <input
-                            style={S.input}
+                            style={s.input}
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -129,10 +123,10 @@ export default function AuthPage() {
                         />
                     </div>
 
-                    <div style={S.field}>
-                        <label style={S.label}>Password</label>
+                    <div style={s.field}>
+                        <label style={s.label}>Password</label>
                         <input
-                            style={S.input}
+                            style={s.input}
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
@@ -142,76 +136,49 @@ export default function AuthPage() {
                         />
                     </div>
 
-                    {error && <p style={S.error}>{error}</p>}
+                    {error && <p style={s.error}>{error}</p>}
 
-                    <button style={S.submitBtn} type="submit" disabled={loading}>
-                        {loading ? "Loading…" : mode === "signin" ? "Sign In" : "Create Account"}
+                    <button style={s.submitBtn} type="submit" disabled={loading}>
+                        {loading ? "Loading\u2026" : mode === "signin" ? "Sign In" : "Create Account"}
                     </button>
                 </form>
 
-                <div style={S.divider}>
-                    <span style={S.dividerLine} />
-                    <span style={S.dividerText}>or</span>
-                    <span style={S.dividerLine} />
+                <div style={s.divider}>
+                    <span style={s.dividerLine} />
+                    <span style={s.dividerText}>or</span>
+                    <span style={s.dividerLine} />
                 </div>
 
                 <button
-                    style={S.guestBtn}
+                    style={s.guestBtn}
                     onClick={() => { setGuest(); navigate("/lobby", { replace: true }); }}
                 >
                     Browse as Guest
                 </button>
-                <p style={S.guestNote}>Walk around spaces without an account. No saves.</p>
+                <p style={s.guestNote}>Walk around spaces without an account. No saves.</p>
             </div>
         </div>
     );
 }
 
-const S: Record<string, React.CSSProperties> = {
+const s: Record<string, React.CSSProperties> = {
     page: {
         minHeight: "100vh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "linear-gradient(160deg, #0f172a, #1a1035, #0f1a2e)",
+        background: "#f0f2f5",
         fontFamily: "system-ui, sans-serif",
-        position: "relative",
-        overflow: "hidden",
-    },
-    orb1: {
-        position: "absolute",
-        top: "-10%",
-        left: "-5%",
-        width: 400,
-        height: 400,
-        borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%)",
-        pointerEvents: "none",
-    },
-    orb2: {
-        position: "absolute",
-        bottom: "-10%",
-        right: "-5%",
-        width: 360,
-        height: 360,
-        borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)",
-        pointerEvents: "none",
     },
     card: {
-        position: "relative",
-        zIndex: 1,
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.10)",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
+        background: "#fff",
+        border: "1px solid #ece9f7",
         borderRadius: 16,
         padding: "40px 36px",
         width: 400,
         boxSizing: "border-box",
+        boxShadow: "0 6px 18px rgba(99,102,241,.10)",
     },
-
-    // Logo
     logoRow: {
         display: "flex",
         alignItems: "center",
@@ -220,7 +187,7 @@ const S: Record<string, React.CSSProperties> = {
         marginBottom: 6,
     },
     logoPx: {
-        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+        background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
         color: "#fff",
         fontWeight: 900,
         fontSize: 13,
@@ -232,23 +199,20 @@ const S: Record<string, React.CSSProperties> = {
     logoText: {
         fontSize: 20,
         fontWeight: 700,
-        color: "#f1f5f9",
+        color: "#191427",
         letterSpacing: "-0.3px",
     },
     tagline: {
         margin: "0 0 28px",
         textAlign: "center",
         fontSize: 13,
-        color: "#818cf8",
-        letterSpacing: "0.05em",
+        color: "#6f6b82",
         fontWeight: 500,
     },
-
-    // Tabs
     tabs: {
         display: "flex",
-        background: "rgba(255,255,255,0.06)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        background: "#f4f3f9",
+        border: "1px solid #ecebf3",
         borderRadius: 10,
         padding: 4,
         gap: 4,
@@ -262,17 +226,15 @@ const S: Record<string, React.CSSProperties> = {
         cursor: "pointer",
         fontSize: 14,
         fontWeight: 500,
-        color: "#94a3b8",
+        color: "#6f6b82",
         borderRadius: 7,
         transition: "all 0.18s",
     },
     tabActive: {
-        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+        background: "linear-gradient(135deg,#7c3aed,#a78bfa)",
         color: "#fff",
         fontWeight: 600,
     },
-
-    // Form
     form: {
         display: "flex",
         flexDirection: "column",
@@ -286,31 +248,31 @@ const S: Record<string, React.CSSProperties> = {
     label: {
         fontSize: 13,
         fontWeight: 600,
-        color: "#cbd5e1",
+        color: "#191427",
     },
     input: {
         padding: "10px 12px",
         borderRadius: 8,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.08)",
-        color: "#f1f5f9",
+        border: "1px solid #d4d0e6",
+        background: "#fff",
+        color: "#191427",
         fontSize: 14,
         outline: "none",
     },
     error: {
-        color: "#fca5a5",
+        color: "#dc2626",
         fontSize: 13,
         margin: 0,
         padding: "8px 12px",
-        background: "rgba(239,68,68,0.15)",
-        border: "1px solid rgba(239,68,68,0.3)",
+        background: "#fef2f2",
+        border: "1px solid #fecaca",
         borderRadius: 6,
     },
     submitBtn: {
         padding: "12px",
         borderRadius: 8,
         border: "none",
-        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+        background: "linear-gradient(135deg,#7c3aed,#a78bfa)",
         color: "#fff",
         fontSize: 15,
         fontWeight: 600,
@@ -318,9 +280,8 @@ const S: Record<string, React.CSSProperties> = {
         marginTop: 4,
         width: "100%",
         letterSpacing: "0.01em",
+        boxShadow: "0 4px 12px rgba(124,58,237,.25)",
     },
-
-    // Divider
     divider: {
         display: "flex",
         alignItems: "center",
@@ -330,24 +291,22 @@ const S: Record<string, React.CSSProperties> = {
     dividerLine: {
         flex: 1,
         height: 1,
-        background: "rgba(255,255,255,0.10)",
+        background: "#ecebf3",
         display: "block",
     },
     dividerText: {
         fontSize: 12,
-        color: "#475569",
+        color: "#6f6b82",
         fontWeight: 500,
         whiteSpace: "nowrap",
     },
-
-    // Guest
     guestBtn: {
         width: "100%",
         padding: "10px",
         borderRadius: 8,
-        border: "1px solid rgba(255,255,255,0.15)",
-        background: "transparent",
-        color: "#94a3b8",
+        border: "1px solid #d4d0e6",
+        background: "#fff",
+        color: "#6f6b82",
         fontSize: 14,
         fontWeight: 500,
         cursor: "pointer",
@@ -357,6 +316,6 @@ const S: Record<string, React.CSSProperties> = {
         margin: "8px 0 0",
         textAlign: "center",
         fontSize: 11,
-        color: "#475569",
+        color: "#6f6b82",
     },
 };

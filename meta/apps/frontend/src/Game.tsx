@@ -1,6 +1,31 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Smile, MessageCircle } from 'lucide-react';
+
+// ── PixelAvatar — CSS pixel art character, ported from design system ──────────
+const PIXEL_PALETTES: Record<string, { skin: string; hair: string; shirt: string }> = {
+    'avatar-default': { skin: '#f1c27d', hair: '#6b4226', shirt: '#3b82f6' },
+    'avatar-ninja':   { skin: '#f1c27d', hair: '#1a1a1a', shirt: '#111827' },
+    'avatar-wizard':  { skin: '#f1c27d', hair: '#e5e7eb', shirt: '#7c3aed' },
+    default:          { skin: '#f1c27d', hair: '#6b4226', shirt: '#3b82f6' },
+    coral:            { skin: '#f1c27d', hair: '#9a3412', shirt: '#f97316' },
+    teal:             { skin: '#f1c27d', hair: '#134e4a', shirt: '#14b8a6' },
+    rose:             { skin: '#f1c27d', hair: '#831843', shirt: '#ec4899' },
+};
+function PixelAvatar({ avatarId, size = 28, ring }: { avatarId?: string; size?: number; ring?: string }) {
+    const P = PIXEL_PALETTES[avatarId ?? 'default'] ?? PIXEL_PALETTES.default;
+    const u = size / 8;
+    return (
+        <div style={{ width: size, height: size, position: 'relative', flexShrink: 0, filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.32))', outline: ring ? `2px solid ${ring}` : undefined, borderRadius: ring ? 4 : 0 }}>
+            <div style={{ position: 'absolute', left: u*2, top: 0,     width: u*4, height: u*2,   background: P.hair }} />
+            <div style={{ position: 'absolute', left: u*2, top: u*1.4, width: u*4, height: u*3,   background: P.skin }} />
+            <div style={{ position: 'absolute', left: u*1.5, top: u*4, width: u*5, height: u*3,   background: P.shirt, borderRadius: 1 }} />
+            <div style={{ position: 'absolute', left: u*2,   top: u*6.8, width: u*1.6, height: u*1.3, background: '#1f2937' }} />
+            <div style={{ position: 'absolute', left: u*4.4, top: u*6.8, width: u*1.6, height: u*1.3, background: '#1f2937' }} />
+        </div>
+    );
+}
 
 interface DragItem { type: 'inventory-item' | 'element'; itemId?: string; elementId?: string; name?: string; width: number; height: number; imageUrl: string; }
 
@@ -203,6 +228,7 @@ const ArenaInner = () => {
     const [editorError, setEditorError] = useState('');
     const [toasts, setToasts] = useState<{ id: string; message: string; type: 'info' | 'success' | 'warning' }[]>([]);
     const [spaceName, setSpaceName] = useState('');
+    const [walletCoins, setWalletCoins] = useState<number | null>(null);
     const [showNewMap, setShowNewMap] = useState(false);
     const [newMapName, setNewMapName] = useState('');
     const [newMapDims, setNewMapDims] = useState('20x20');
@@ -910,6 +936,12 @@ const ArenaInner = () => {
     useEffect(() => {
         fetchSpace();
         fetchInventory();
+        if (token) {
+            fetch(`${API}/api/v1/wallet`, { headers: { Authorization: `Bearer ${token}` } })
+                .then(r => r.ok ? r.json() : null)
+                .then(d => { if (d?.coins != null) setWalletCoins(d.coins); })
+                .catch(() => {});
+        }
     }, [fetchSpace, fetchInventory]);
 
     useEffect(() => {
@@ -1726,25 +1758,16 @@ const ArenaInner = () => {
         camRef.current = { x: camX, y: camY, offsetX, offsetY };
 
         ctx.clearRect(0, 0, vpW, vpH);
-        ctx.fillStyle = '#1a2e1a';
+        ctx.fillStyle = '#9aa3b5';
         ctx.fillRect(0, 0, vpW, vpH);
         ctx.save();
         ctx.translate(offsetX - camX, offsetY - camY);
 
-        // Background: tile grass sprite across all cells, fallback to solid color
-        const grassImg = imageCache.current.get('/tiles/grass.png');
-        if (grassImg) {
-            for (let gy = 0; gy < spaceDims.height; gy++) {
-                for (let gx = 0; gx < spaceDims.width; gx++) {
-                    try { ctx.drawImage(grassImg, gx * 50, gy * 50, 50, 50); } catch {}
-                }
-            }
-        } else {
-            ctx.fillStyle = '#f0fdf4';
-            ctx.fillRect(0, 0, worldW, worldH);
-        }
+        // Empty background — user must place tiles to fill the canvas
+        ctx.fillStyle = '#f0fdf4';
+        ctx.fillRect(0, 0, worldW, worldH);
 
-        // Grid lines (subtle, on top of grass)
+        // Grid lines (subtle)
         ctx.strokeStyle = 'rgba(0,0,0,0.10)';
         ctx.lineWidth = 1;
         for (let i = 0; i <= worldW; i += 50) {
@@ -2087,48 +2110,86 @@ const ArenaInner = () => {
     }, [currentUser, users, npcs, portals, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, showChatInput, myActivity, othersActivity, selectedNpcId]);
 
     return (
-        <div style={{ fontFamily: 'system-ui', background: '#0a0a14', position: 'fixed', inset: 0, width: '100vw', height: '100vh', overflow: 'hidden' }}>
-            {/* ── Header ── */}
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 52, background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', zIndex: 10, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#fff', letterSpacing: '-0.3px' }}>{spaceName || 'Arena'}</h1>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: connected ? '#4ade80' : '#f87171', fontWeight: 600 }}>
-                        {connected ? '● Connected' : '○ Offline'}
-                    </span>
-                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', padding: '2px 8px', background: 'rgba(255,255,255,0.07)', borderRadius: 10, marginRight: 4 }}>
-                        {users.size + (currentUser ? 1 : 0)} online
-                    </span>
-                    <button onClick={() => { setShowGuestbook(!showGuestbook); setShowQuests(false); }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: showGuestbook ? '#4f46e5' : 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                        Guestbook
+        <div style={{ fontFamily: 'system-ui', background: '#9aa3b5', position: 'fixed', inset: 0, width: '100vw', height: '100vh', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
+            {/* ── Header (light glass bar) ── */}
+            <header style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 56, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', gap: 12, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderBottom: '1px solid #ecebf3', boxShadow: '0 1px 0 rgba(22,15,52,0.03)' }}>
+                {/* Left: back + space name + theme chip */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    <button onClick={() => navigate('/lobby')} title="Back to lobby" style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid #e3e1ee', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: '#4d495f' }}>
+                        <ArrowLeft size={16} />
                     </button>
-                    <button onClick={() => { setShowQuests(!showQuests); setShowGuestbook(false); }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: showQuests ? '#4f46e5' : 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                        Quests
-                    </button>
-                    {!isGuest && (
-                        <button onClick={() => setEditMode(!editMode)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: editMode ? '#4f46e5' : 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                            {editMode ? 'Exit Edit' : 'Edit'}
-                        </button>
+                    <div style={{ width: 1, height: 24, background: '#ecebf3', flexShrink: 0 }} />
+                    <h1 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#191427', letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{spaceName || 'Arena'}</h1>
+                    {spaceName && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: '#6f6b82', background: '#f4f3f9', borderRadius: 999, padding: '3px 9px', flexShrink: 0 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#6d28d9', flexShrink: 0 }} />
+                            Space
+                        </span>
                     )}
+                </div>
+                {/* Right: status + avatar stack + coins + controls */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                    {/* Connected pill */}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, color: connected ? '#15a34a' : '#dc2626' }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#15a34a' : '#dc2626', boxShadow: connected ? '0 0 0 3px #d9f3e2' : 'none' }} />
+                        {connected ? 'Connected' : 'Offline'}
+                    </span>
+                    {/* Pixel avatar stack */}
+                    {(() => {
+                        const allUsers = [
+                            ...(currentUser ? [{ userId: currentUser.userId, avatarId: currentUser.avatarId }] : []),
+                            ...Array.from(users.values()).map(u => ({ userId: u.userId, avatarId: u.avatarId })),
+                        ].slice(0, 3);
+                        const total = users.size + (currentUser ? 1 : 0);
+                        return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                <div style={{ display: 'flex' }}>
+                                    {allUsers.map((u, i) => (
+                                        <div key={u.userId} style={{ marginLeft: i ? -7 : 0, borderRadius: '50%', background: '#fff', padding: 2, position: 'relative', zIndex: 3 - i, border: '1.5px solid #ecebf3' }}>
+                                            <PixelAvatar avatarId={u.avatarId} size={18} />
+                                        </div>
+                                    ))}
+                                </div>
+                                <span style={{ fontSize: 12.5, color: '#6f6b82', fontWeight: 600 }}>{total}</span>
+                            </div>
+                        );
+                    })()}
+                    {/* Coin balance */}
+                    {walletCoins !== null && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 700, color: '#b25e09', background: '#fdf3e3', borderRadius: 999, padding: '4px 12px' }}>
+                            <Coins size={14} />{walletCoins.toLocaleString()}
+                        </span>
+                    )}
+                    <div style={{ width: 1, height: 24, background: '#ecebf3' }} />
+                    {/* Icon button group */}
+                    <div style={{ display: 'flex', gap: 2, padding: 3, background: '#f4f3f9', borderRadius: 9 }}>
+                        <button title="Guestbook" onClick={() => { setShowGuestbook(!showGuestbook); setShowQuests(false); }} style={{ width: 32, height: 32, borderRadius: 7, border: showGuestbook ? '1px solid #e7ddfb' : '1px solid transparent', background: showGuestbook ? '#f4f0fe' : 'transparent', color: showGuestbook ? '#5b21b6' : '#4d495f', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                            <BookOpen size={16} />
+                        </button>
+                        <button title="Quests" onClick={() => { setShowQuests(!showQuests); setShowGuestbook(false); }} style={{ width: 32, height: 32, borderRadius: 7, border: showQuests ? '1px solid #e7ddfb' : '1px solid transparent', background: showQuests ? '#f4f0fe' : 'transparent', color: showQuests ? '#5b21b6' : '#4d495f', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                            <Trophy size={16} />
+                        </button>
+                        {!isGuest && (
+                            <button title={editMode ? 'Exit Edit' : 'Edit space'} onClick={() => setEditMode(!editMode)} style={{ width: 32, height: 32, borderRadius: 7, border: editMode ? '1px solid #e7ddfb' : '1px solid transparent', background: editMode ? '#f4f0fe' : 'transparent', color: editMode ? '#5b21b6' : '#4d495f', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                <Pencil size={16} />
+                            </button>
+                        )}
+                    </div>
                     {!isGuest && (
-                        <button onClick={() => { fetch(`${API}/api/v1/user/avatars`).then(r => r.json()).then(d => setAvatars(d.avatars || [])).catch(() => setAvatars([])); setShowAvatarPicker(true); }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12 }}>
+                        <button onClick={() => { fetch(`${API}/api/v1/user/avatars`).then(r => r.json()).then(d => setAvatars(d.avatars || [])).catch(() => setAvatars([])); setShowAvatarPicker(true); }} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #e3e1ee', background: '#fff', color: '#4d495f', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>
                             Avatar
                         </button>
                     )}
-                    {!editMode && (
-                        <button onClick={() => setShowChatInput(!showChatInput)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: showChatInput ? '#4f46e5' : 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                            Chat
-                        </button>
-                    )}
-                    <button onClick={() => navigate('/lobby')} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', fontSize: 12 }}>
-                        ← Leave
+                    <button onClick={() => navigate('/lobby')} style={{ padding: '6px 14px', borderRadius: 9, border: '1px solid #e3e1ee', background: '#fff', color: '#4d495f', cursor: 'pointer', fontSize: 13, fontWeight: 600, boxShadow: '0 1px 2px rgba(22,15,52,0.05)' }}>
+                        Leave
                     </button>
                 </div>
-            </div>
+            </header>
 
             {/* ── Canvas area: position absolute fills the area below the header ── */}
                 <div
                     ref={containerRef}
-                    style={{ position: 'absolute', top: 52, left: 0, right: 0, bottom: 0, overflow: 'hidden', outline: 'none' }}
+                    style={{ position: 'absolute', top: 56, left: 0, right: 0, bottom: 0, overflow: 'hidden', outline: 'none' }}
                     onKeyDown={handleKeyDown}
                     onClick={() => setShowEmotePalette(false)}
                     tabIndex={0}
@@ -2154,228 +2215,229 @@ const ArenaInner = () => {
                         </div>
                     )}
 
-                {/* Hint text overlay */}
-                <div style={{ position: 'absolute', top: 8, left: 12, pointerEvents: 'none', zIndex: 10 }}>
-                    <p style={{ margin: 0, fontSize: 11, color: portalPlacingMode || npcPickingPos ? '#c4b5fd' : 'rgba(255,255,255,0.7)', background: 'rgba(0,0,0,0.5)', padding: '3px 10px', borderRadius: 6 }}>
-                        {portalPlacingMode ? '🌀 Click a tile to place a portal — [Esc] to cancel' : npcPickingPos ? '📍 Click a tile to position the NPC — [Esc] to cancel' : editMode ? 'Esc deselect · Ctrl+Z undo · right-click portal to delete · click NPC to select/drag' : 'Arrow keys or click to move · [F] Interact/Sit · 1-6 emotes · Enter chat'}
-                    </p>
-                </div>
+                {/* ── Mode hint (top-left overlay) ── */}
+                {(portalPlacingMode || npcPickingPos || editMode) && (
+                    <div style={{ position: 'absolute', top: 8, left: 12, pointerEvents: 'none', zIndex: 10 }}>
+                        <p style={{ margin: 0, fontSize: 11, color: portalPlacingMode || npcPickingPos ? '#c4b5fd' : '#e2e8f0', background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: 8, backdropFilter: 'blur(4px)' }}>
+                            {portalPlacingMode ? '🌀 Click a tile to place a portal — [Esc] to cancel' : npcPickingPos ? '📍 Click a tile to position the NPC — [Esc] to cancel' : 'Esc deselect · Ctrl+Z undo · right-click portal to delete · click NPC to select/drag'}
+                        </p>
+                    </div>
+                )}
 
-                {/* Chat input */}
+                {/* ── Chat input (above dock) ── */}
                 {!editMode && showChatInput && (
-                    <div style={{ position: 'absolute', bottom: 56, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, zIndex: 50 }}>
+                    <div style={{ position: 'absolute', bottom: 72, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, zIndex: 50 }}>
                         <input
                             value={chatInput}
                             onChange={e => setChatInput(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') sendChat(); if (e.key === 'Escape') { setShowChatInput(false); setChatInput(''); } }}
-                            placeholder="Type a message..."
+                            placeholder="Type a message…"
                             autoFocus
                             maxLength={100}
-                            style={{ width: 280, padding: '8px 12px', borderRadius: 6, border: '1px solid #4f46e5', fontSize: 13, outline: 'none', background: 'rgba(10,10,20,0.9)', color: '#fff' }}
+                            style={{ width: 300, padding: '9px 14px', borderRadius: 10, border: '1.5px solid #6d28d9', fontSize: 13, outline: 'none', background: 'rgba(255,255,255,0.95)', color: '#191427', boxShadow: '0 4px 16px rgba(109,40,217,0.2)', backdropFilter: 'blur(8px)' }}
                         />
-                        <button onClick={sendChat} disabled={!chatInput.trim()} style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: chatInput.trim() ? '#4f46e5' : '#374151', color: '#fff', fontSize: 13, cursor: chatInput.trim() ? 'pointer' : 'not-allowed', fontWeight: 600 }}>Send</button>
+                        <button onClick={sendChat} disabled={!chatInput.trim()} style={{ padding: '9px 18px', borderRadius: 10, border: 'none', background: chatInput.trim() ? '#6d28d9' : '#e3e1ee', color: chatInput.trim() ? '#fff' : '#a3a0b3', fontSize: 13, cursor: chatInput.trim() ? 'pointer' : 'not-allowed', fontWeight: 700 }}>Send</button>
                     </div>
                 )}
 
-                {/* Emote toolbar */}
+                {/* ── Bottom dock (light pill bar) ── */}
                 {!editMode && (
-                    <div style={{ position: 'absolute', bottom: 12, left: 12, display: 'flex', gap: 6, zIndex: 50 }}>
+                    <div style={{ position: 'absolute', bottom: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 2, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', border: '1px solid #ecebf3', borderRadius: 999, padding: 5, boxShadow: '0 1px 2px rgba(22,15,52,0.04), 0 6px 16px rgba(22,15,52,0.07)' }}>
+                        {/* Emote button */}
                         <div style={{ position: 'relative' }}>
-                            <button
-                                onClick={() => setShowEmotePalette(!showEmotePalette)}
-                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: showEmotePalette ? '#4f46e5' : 'rgba(0,0,0,0.65)', cursor: 'pointer', fontSize: 14, lineHeight: 1, color: '#fff', fontWeight: 600 }}
-                                title="Emotes"
-                            >
-                                😊 ▾
+                            <button title="Emotes" onClick={() => setShowEmotePalette(!showEmotePalette)} style={{ width: 38, height: 38, borderRadius: 999, border: showEmotePalette ? '1px solid #e7ddfb' : '1px solid transparent', background: showEmotePalette ? '#f4f0fe' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: showEmotePalette ? '#5b21b6' : '#6f6b82' }}>
+                                <Smile size={18} />
                             </button>
                             {showEmotePalette && (
-                                <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 6, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, padding: 8, borderRadius: 10, background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', zIndex: 100 }}>
+                                <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', left: '50%', transform: 'translateX(-50%)', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, padding: 10, borderRadius: 14, background: '#fff', border: '1px solid #ecebf3', boxShadow: '0 24px 60px rgba(22,15,52,0.22)', zIndex: 100 }}>
                                     {EMOTES.map((emoji, i) => (
-                                        <button key={i} onClick={() => { sendEmote(i + 1); setShowEmotePalette(false); }} style={{ padding: 8, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.08)', cursor: 'pointer', fontSize: 22, lineHeight: 1, transition: 'transform 0.1s' }}
-                                            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.2)')}
+                                        <button key={i} onClick={() => { sendEmote(i + 1); setShowEmotePalette(false); }}
+                                            style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: '#f4f3f9', cursor: 'pointer', fontSize: 22, lineHeight: 1, transition: 'transform 0.1s' }}
+                                            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.15)')}
                                             onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
-                                        >
-                                            {emoji}
-                                        </button>
+                                        >{emoji}</button>
                                     ))}
                                 </div>
                             )}
                         </div>
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                            {EMOTES.slice(0, 3).map((emoji, i) => (
-                                <button key={i} onClick={() => sendEmote(i + 1)} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.65)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>
-                                    {emoji}
-                                </button>
-                            ))}
-                        </div>
+                        <div style={{ width: 1, height: 22, background: '#ecebf3', margin: '0 2px' }} />
+                        {/* Chat button */}
+                        <button onClick={() => setShowChatInput(!showChatInput)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 13px', height: 38, borderRadius: 999, border: showChatInput ? '1px solid #e7ddfb' : '1px solid transparent', background: showChatInput ? '#f4f0fe' : 'transparent', color: showChatInput ? '#5b21b6' : '#4d495f', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                            <MessageCircle size={16} />Chat
+                        </button>
+                        <div style={{ width: 1, height: 22, background: '#ecebf3', margin: '0 2px' }} />
+                        {/* Hint */}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 12px', fontSize: 11.5, color: '#a3a0b3', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                            Arrows to move · F to interact
+                        </span>
                     </div>
                 )}
 
-                {/* Player popup */}
                 {/* ── Interaction popup ── */}
                 {interactionPopup && (
-                    <div style={{ position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', borderRadius: 12, padding: '14px 20px', minWidth: 220, maxWidth: 320, zIndex: 200, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 6 }}>{interactionPopup.title}</div>
-                        <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>{interactionPopup.text}</div>
-                        <button onClick={() => setInteractionPopup(null)} style={{ marginTop: 10, padding: '4px 14px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 11, cursor: 'pointer' }}>Dismiss</button>
+                    <div style={{ position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)', background: '#fff', border: `1px solid ${interactionPopup.type === 'chest' ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.12)'}`, backdropFilter: 'blur(10px)', borderRadius: 14, padding: '20px 24px', minWidth: 240, maxWidth: 320, zIndex: 200, textAlign: 'center', boxShadow: interactionPopup.type === 'chest' ? '0 8px 32px rgba(251,191,36,0.2)' : '0 8px 32px rgba(0,0,0,0.4)' }}>
+                        {interactionPopup.type === 'chest' && (
+                            <div style={{ width: 68, height: 68, margin: '0 auto 12px', borderRadius: 14, background: 'radial-gradient(circle at 50% 36%, #fff6e0, #fde7a8 62%, #f6c64e)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(246,198,78,0.4)', position: 'relative' }}>
+                                <img src="/tiles/chest.png" alt="chest" style={{ width: 40, imageRendering: 'pixelated', filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.3))' }} />
+                                {(['#f59e0b','#a855f7','#22c55e'] as string[]).map((c, i) => {
+                                    const tops = [6, 4, 2]; const lefts = ['12%', '72%', '42%'];
+                                    return <span key={i} style={{ position: 'absolute', top: tops[i], left: lefts[i], width: 5, height: 5, borderRadius: 2, background: c, transform: `rotate(${i*50}deg)` }} />;
+                                })}
+                            </div>
+                        )}
+                        <div style={{ fontSize: 15, fontWeight: 700, color: interactionPopup.type === 'chest' ? '#fbbf24' : '#f1f5f9', marginBottom: 6 }}>{interactionPopup.title}</div>
+                        <div style={{ fontSize: 13, color: '#6f6b82', lineHeight: 1.5 }}>{interactionPopup.text}</div>
+                        {interactionPopup.type === 'chest' && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 11, color: '#a3a0b3', marginTop: 8 }}>🕐 Next chest in 1 hour</div>}
+                        <button onClick={() => setInteractionPopup(null)} style={{ marginTop: 12, padding: '6px 18px', borderRadius: 8, border: interactionPopup.type === 'chest' ? 'none' : '1px solid rgba(255,255,255,0.12)', background: interactionPopup.type === 'chest' ? 'linear-gradient(135deg,#4f46e5,#6d28d9)' : 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                            {interactionPopup.type === 'chest' ? 'Collect' : 'Dismiss'}
+                        </button>
                     </div>
                 )}
 
                 {/* ── NPC dialogue ── */}
-                {npcDialogue && (
-                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,200,0,0.25)', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '24px 28px', width: 340, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                            <span style={{ fontSize: 22 }}>💬</span>
-                            <span style={{ fontSize: 17, fontWeight: 700, color: '#FFD700' }}>{npcDialogue.npc.name}</span>
+                {npcDialogue && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.45)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setNpcDialogue(null)} />}
+                {npcDialogue && (() => {
+                    const lines = npcDialogue.npc.dialogues.filter(Boolean);
+                    const idx = npcDialogue.idx % Math.max(lines.length, 1);
+                    const isLast = idx >= lines.length - 1;
+                    const motionLabels: Record<string, string> = { STATIC: '🧍 Static', PATROL: '🚶 Patrol', WANDER: '🌀 Wander' };
+                    return (
+                        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid rgba(255,200,0,0.2)', backdropFilter: 'blur(12px)', borderRadius: 16, width: 360, zIndex: 1200, boxShadow: '0 12px 48px rgba(0,0,0,0.55)', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
+                            {/* Header */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px 14px', borderBottom: '1px solid rgba(255,200,0,0.12)' }}>
+                                <div style={{ width: 46, height: 46, borderRadius: 10, background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.3)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, fontSize: 28 }}>
+                                    💬
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 16, fontWeight: 700, color: '#FFD700', letterSpacing: '-0.01em' }}>{npcDialogue.npc.name}</div>
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 4, fontSize: 11, fontWeight: 600, color: '#6f6b82', background: 'rgba(255,255,255,0.07)', borderRadius: 6, padding: '2px 8px' }}>
+                                        {motionLabels[npcDialogue.npc.motionType] ?? '🤖 NPC'} · NPC
+                                    </div>
+                                </div>
+                                <button onClick={() => setNpcDialogue(null)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #ecebf3', background: 'rgba(255,255,255,0.06)', color: '#6f6b82', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+                            </div>
+                            {/* Body */}
+                            <div style={{ padding: '18px 20px 18px' }}>
+                                <p style={{ margin: '0 0 16px', fontSize: 14, color: '#4d495f', lineHeight: 1.65, minHeight: 52 }}>
+                                    {lines[idx] || '…'}
+                                </p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    {lines.length > 1 && lines.map((_: string, i: number) => (
+                                        <span key={i} style={{ width: i === idx ? 18 : 6, height: 6, borderRadius: 3, background: i === idx ? '#FFD700' : 'rgba(255,255,255,0.15)', transition: 'all 0.2s' }} />
+                                    ))}
+                                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                                        {!isLast
+                                            ? <button onClick={() => setNpcDialogue(prev => prev ? { ...prev, idx: prev.idx + 1 } : null)} style={{ padding: '7px 16px', borderRadius: 8, border: '1px solid rgba(255,200,0,0.35)', background: 'rgba(255,200,0,0.1)', color: '#FFD700', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>Next →</button>
+                                            : <button onClick={() => setNpcDialogue(null)} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Done</button>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <p style={{ margin: '0 0 16px', fontSize: 14, color: '#e2e8f0', lineHeight: 1.6, minHeight: 48 }}>
-                            {npcDialogue.npc.dialogues[npcDialogue.idx % npcDialogue.npc.dialogues.length]}
-                        </p>
-                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            {npcDialogue.npc.dialogues.length > 1 && (
-                                <button onClick={() => setNpcDialogue(prev => prev ? { ...prev, idx: prev.idx + 1 } : null)} style={{ padding: '7px 16px', borderRadius: 6, border: '1px solid rgba(255,200,0,0.3)', background: 'rgba(255,200,0,0.1)', color: '#FFD700', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
-                                    Next →
-                                </button>
-                            )}
-                            <button onClick={() => setNpcDialogue(null)} style={{ padding: '7px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>Close</button>
-                        </div>
-                    </div>
-                )}
-                {npcDialogue && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1199 }} onClick={() => setNpcDialogue(null)} />}
+                    );
+                })()}
 
                 {/* ── Sign editor (edit mode) ── */}
+                {signEditing && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.32)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setSignEditing(null)} />}
                 {signEditing && (
-                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '20px 24px', width: 320, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
-                        <div style={{ fontWeight: 700, color: '#f1f5f9', marginBottom: 12 }}>📋 Edit Sign Text</div>
-                        <input
-                            autoFocus
-                            value={signEditing.text}
-                            onChange={e => setSignEditing({ ...signEditing, text: e.target.value })}
-                            onKeyDown={e => { if (e.key === 'Escape') setSignEditing(null); }}
-                            maxLength={120}
-                            placeholder="Welcome to my space!"
-                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-                        />
-                        <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
-                            <button
-                                onClick={async () => {
-                                    try {
-                                        await fetch(`${API}/api/v1/space/placed/${signEditing.placedItemId}/metadata`, {
-                                            method: 'PUT',
-                                            headers: authHeaders,
-                                            body: JSON.stringify({ metadata: { text: signEditing.text } }),
-                                        });
-                                        setPlacedItems(prev => prev.map(p =>
-                                            p.id === signEditing.placedItemId ? { ...p, metadata: { text: signEditing.text } } : p
-                                        ));
-                                    } catch {}
-                                    setSignEditing(null);
-                                }}
-                                style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
-                            >
-                                Save
-                            </button>
-                            <button onClick={() => setSignEditing(null)} style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #ecebf3', borderRadius: 16, padding: '22px 24px', width: 340, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)' }}>
+                        <div style={{ fontWeight: 700, color: '#191427', marginBottom: 14, fontSize: 15 }}>📋 Edit Sign Text</div>
+                        <input autoFocus value={signEditing.text} onChange={e => setSignEditing({ ...signEditing, text: e.target.value })} onKeyDown={e => { if (e.key === 'Escape') setSignEditing(null); }} maxLength={120} placeholder="Welcome to my space!"
+                            style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e3e1ee', background: '#fff', color: '#191427', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                        <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+                            <button onClick={() => setSignEditing(null)} style={{ padding: '7px 14px', borderRadius: 9, border: '1px solid #e3e1ee', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                            <button onClick={async () => { try { await fetch(`${API}/api/v1/space/placed/${signEditing.placedItemId}/metadata`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ metadata: { text: signEditing.text } }) }); setPlacedItems(prev => prev.map(p => p.id === signEditing.placedItemId ? { ...p, metadata: { text: signEditing.text } } : p)); } catch {} setSignEditing(null); }}
+                                style={{ padding: '7px 16px', borderRadius: 9, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 700, boxShadow: '0 4px 12px rgba(124,58,237,.25)' }}>Save</button>
                         </div>
                     </div>
                 )}
-                {signEditing && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 1199 }} onClick={() => setSignEditing(null)} />}
 
                 {/* ── NPC add/edit modal ── */}
                 {showNpcModal && (
-                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: '24px 28px', width: 380, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)', maxHeight: '90vh', overflowY: 'auto' }}>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 16 }}>
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #ecebf3', borderRadius: 14, padding: '24px 28px', width: 380, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#191427', marginBottom: 16 }}>
                             {npcForm.id ? '✏️ Edit NPC' : '🤖 Add NPC'}
                         </div>
 
-                        {/* Name */}
-                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Name</label>
-                        <input
-                            value={npcForm.name}
-                            onChange={e => setNpcForm(f => ({ ...f, name: e.target.value }))}
-                            placeholder="NPC name..."
-                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
-                        />
+                        {/* Name — icon wrapper from components-inputs.html */}
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7c6f9c', marginBottom: 7, letterSpacing: '.02em' }}>NPC Name</label>
+                        <div className="ov-input-wrap" style={{ marginBottom: 14 }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            <input value={npcForm.name} onChange={e => setNpcForm(f => ({ ...f, name: e.target.value }))} placeholder="Manager Mike…" />
+                        </div>
 
-                        {/* Motion type */}
-                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>Motion Type</label>
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                        {/* Motion type — gradient selected state from components-inputs.html */}
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7c6f9c', marginBottom: 7, letterSpacing: '.02em' }}>Motion type</label>
+                        <div style={{ display: 'flex', gap: 9, marginBottom: 14 }}>
                             {([
-                                { value: 'STATIC', icon: '🧍', label: 'Static',  desc: 'Stands still' },
-                                { value: 'PATROL', icon: '🚶', label: 'Patrol',  desc: 'Walks a path' },
-                                { value: 'WANDER', icon: '🌀', label: 'Wander', desc: 'Roams freely' },
-                            ] as const).map(opt => (
-                                <div
-                                    key={opt.value}
-                                    onClick={() => setNpcForm(f => ({ ...f, motionType: opt.value }))}
-                                    style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: `2px solid ${npcForm.motionType === opt.value ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: npcForm.motionType === opt.value ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', cursor: 'pointer', textAlign: 'center' }}
-                                >
-                                    <div style={{ fontSize: 18, marginBottom: 2 }}>{opt.icon}</div>
-                                    <div style={{ fontSize: 11, fontWeight: 600, color: npcForm.motionType === opt.value ? '#a5b4fc' : '#94a3b8' }}>{opt.label}</div>
-                                    <div style={{ fontSize: 9, color: '#64748b', marginTop: 1 }}>{opt.desc}</div>
-                                </div>
-                            ))}
+                                { value: 'STATIC', label: 'Static',  desc: 'Stands still' },
+                                { value: 'PATROL', label: 'Patrol',  desc: 'Walks a path' },
+                                { value: 'WANDER', label: 'Wander',  desc: 'Roams freely' },
+                            ] as const).map(opt => {
+                                const on = npcForm.motionType === opt.value;
+                                return (
+                                    <div key={opt.value} onClick={() => setNpcForm(f => ({ ...f, motionType: opt.value }))}
+                                        style={{ flex: 1, padding: '14px 8px 12px', borderRadius: 13, cursor: 'pointer', textAlign: 'center', transition: 'all .15s',
+                                            border: on ? '1.5px solid transparent' : '1.5px solid #e7e2f5',
+                                            background: on ? 'linear-gradient(140deg,#7c3aed,#a78bfa)' : '#fff',
+                                            boxShadow: on ? '0 8px 18px rgba(124,58,237,.3)' : 'none' }}>
+                                        <div style={{ fontSize: 20, marginBottom: 6 }}>{opt.value === 'STATIC' ? '🧍' : opt.value === 'PATROL' ? '🚶' : '🌀'}</div>
+                                        <div style={{ fontSize: 12, fontWeight: 700, color: on ? '#fff' : '#6b6388' }}>{opt.label}</div>
+                                        <div style={{ fontSize: 10, color: on ? 'rgba(255,255,255,.85)' : '#a99fc4', marginTop: 2 }}>{opt.desc}</div>
+                                    </div>
+                                );
+                            })}
                         </div>
 
                         {/* Wander radius — only shown for WANDER */}
                         {npcForm.motionType === 'WANDER' && (
                             <div style={{ marginBottom: 12 }}>
-                                <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                                <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6f6b82', marginBottom: 4 }}>
                                     <span>Wander Radius</span>
-                                    <span style={{ color: '#a5b4fc', fontWeight: 600 }}>{npcForm.wanderRadius} tile{npcForm.wanderRadius !== 1 ? 's' : ''}</span>
+                                    <span style={{ color: '#6d28d9', fontWeight: 600 }}>{npcForm.wanderRadius} tile{npcForm.wanderRadius !== 1 ? 's' : ''}</span>
                                 </label>
                                 <input
                                     type="range" min={1} max={8} value={npcForm.wanderRadius}
                                     onChange={e => setNpcForm(f => ({ ...f, wanderRadius: parseInt(e.target.value) }))}
-                                    style={{ width: '100%', accentColor: '#6366f1' }}
+                                    style={{ width: '100%', accentColor: '#6d28d9' }}
                                 />
                             </div>
                         )}
 
                         {/* Sprite */}
-                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>Sprite</label>
+                        <label style={{ display: 'block', fontSize: 11, color: '#6f6b82', marginBottom: 6 }}>Sprite</label>
                         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                             {(['avatar-default', 'avatar-ninja', 'avatar-wizard'] as const).map(av => (
-                                <div
-                                    key={av}
-                                    onClick={() => setNpcForm(f => ({ ...f, sprite: av }))}
-                                    style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: `2px solid ${npcForm.sprite === av ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: npcForm.sprite === av ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', cursor: 'pointer', textAlign: 'center' }}
-                                >
-                                    <img src={`${API}/uploads/defaults/${av}.png`} alt={av} style={{ width: 32, height: 32, objectFit: 'cover', display: 'block', margin: '0 auto 4px' }} onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
-                                    <span style={{ fontSize: 9, color: '#94a3b8' }}>{av.replace('avatar-', '')}</span>
+                                <div key={av} onClick={() => setNpcForm(f => ({ ...f, sprite: av }))}
+                                    style={{ flex: 1, padding: '10px 4px 8px', borderRadius: 10, border: `2px solid ${npcForm.sprite === av ? '#6d28d9' : '#e3e1ee'}`, background: npcForm.sprite === av ? '#f4f0fe' : '#fff', cursor: 'pointer', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+                                    <PixelAvatar avatarId={av} size={32} />
+                                    <span style={{ fontSize: 9, fontWeight: 600, color: npcForm.sprite === av ? '#6d28d9' : '#6f6b82' }}>{av.replace('avatar-', '')}</span>
                                 </div>
                             ))}
                         </div>
 
                         {/* Spawn position (always shown — even STATIC needs a starting point) */}
-                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                        <label style={{ display: 'block', fontSize: 11, color: '#6f6b82', marginBottom: 4 }}>
                             {npcForm.motionType === 'WANDER' ? 'Home Position (wanders from here)' : npcForm.motionType === 'STATIC' ? 'Position' : 'Spawn Position'}
                         </label>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                             <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-                                <input value={npcForm.x} onChange={e => setNpcForm(f => ({ ...f, x: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.width - 1} placeholder="X" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 12, outline: 'none' }} />
-                                <input value={npcForm.y} onChange={e => setNpcForm(f => ({ ...f, y: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.height - 1} placeholder="Y" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 12, outline: 'none' }} />
+                                <input value={npcForm.x} onChange={e => setNpcForm(f => ({ ...f, x: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.width - 1} placeholder="X" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 12, outline: 'none' }} />
+                                <input value={npcForm.y} onChange={e => setNpcForm(f => ({ ...f, y: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.height - 1} placeholder="Y" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 12, outline: 'none' }} />
                             </div>
                             <button
                                 onClick={() => { setNpcPickingPos(true); setShowNpcModal(false); }}
-                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#818cf8', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #e7ddfb', background: '#f4f0fe', color: '#6d28d9', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}
                             >📍 Pick</button>
                         </div>
 
                         {/* Dialogues */}
-                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Dialogues (up to 3)</label>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7c6f9c', marginBottom: 7, letterSpacing: '.02em' }}>Dialogues (up to 3)</label>
                         {([0, 1, 2] as const).map(i => (
-                            <input
-                                key={i}
-                                value={npcForm.dialogues[i]}
-                                onChange={e => {
-                                    const d: [string, string, string] = [...npcForm.dialogues] as [string, string, string];
-                                    d[i] = e.target.value;
-                                    setNpcForm(f => ({ ...f, dialogues: d }));
-                                }}
-                                placeholder={`Line ${i + 1}...`}
-                                style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 12, outline: 'none', boxSizing: 'border-box', marginBottom: 6 }}
-                            />
+                            <div key={i} className="ov-input-wrap" style={{ marginBottom: 9 }}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                <input value={npcForm.dialogues[i]} onChange={e => { const d: [string, string, string] = [...npcForm.dialogues] as [string, string, string]; d[i] = e.target.value; setNpcForm(f => ({ ...f, dialogues: d })); }} placeholder={`Line ${i + 1}…`} />
+                            </div>
                         ))}
 
                         {/* Buttons */}
@@ -2405,15 +2467,15 @@ const ArenaInner = () => {
                                     } catch {}
                                     setSavingNpc(false);
                                 }}
-                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: savingNpc || !npcForm.name.trim() ? '#374151' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, cursor: savingNpc || !npcForm.name.trim() ? 'not-allowed' : 'pointer', fontWeight: 600 }}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: savingNpc || !npcForm.name.trim() ? '#e3e1ee' : 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 13, cursor: savingNpc || !npcForm.name.trim() ? 'not-allowed' : 'pointer', fontWeight: 600 }}
                             >
                                 {savingNpc ? 'Saving…' : npcForm.id ? 'Save Changes' : 'Add NPC'}
                             </button>
-                            <button onClick={() => setShowNpcModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                            <button onClick={() => setShowNpcModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                         </div>
                     </div>
                 )}
-                {showNpcModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1199 }} onClick={() => setShowNpcModal(false)} />}
+                {showNpcModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.28)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setShowNpcModal(false)} />}
 
                 {/* NPC position picking hint */}
                 {npcPickingPos && (
@@ -2424,40 +2486,40 @@ const ArenaInner = () => {
 
                 {/* ── Portal travel prompt ── */}
                 {portalTravel && (
-                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(124,58,237,0.4)', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '24px 28px', width: 320, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)', textAlign: 'center' }}>
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #e7ddfb', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '24px 28px', width: 320, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)', textAlign: 'center' }}>
                         <div style={{ fontSize: 32, marginBottom: 10 }}>🌀</div>
-                        <div style={{ fontSize: 17, fontWeight: 700, color: '#c4b5fd', marginBottom: 8 }}>Portal — {portalTravel.label}</div>
-                        <p style={{ margin: '0 0 18px', fontSize: 14, color: '#94a3b8' }}>Travel to another space?</p>
+                        <div style={{ fontSize: 17, fontWeight: 700, color: '#6d28d9', marginBottom: 8 }}>Portal — {portalTravel.label}</div>
+                        <p style={{ margin: '0 0 18px', fontSize: 14, color: '#6f6b82' }}>Travel to another space?</p>
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                             <button
                                 onClick={() => { navigate(`/arena?spaceId=${portalTravel.toSpaceId}`); setPortalTravel(null); }}
-                                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}
                             >
                                 Travel
                             </button>
-                            <button onClick={() => setPortalTravel(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 14, cursor: 'pointer' }}>Cancel</button>
+                            <button onClick={() => setPortalTravel(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 14, cursor: 'pointer' }}>Cancel</button>
                         </div>
                     </div>
                 )}
-                {portalTravel && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1199 }} onClick={() => setPortalTravel(null)} />}
+                {portalTravel && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.32)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setPortalTravel(null)} />}
 
                 {/* ── Portal creation modal ── */}
                 {showPortalModal && newPortalPos && (
-                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 14, padding: '24px 28px', width: 340, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
-                        <div style={{ fontSize: 17, fontWeight: 700, color: '#c4b5fd', marginBottom: 16 }}>🌀 Create Portal at ({newPortalPos.x}, {newPortalPos.y})</div>
-                        <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Destination Space ID</label>
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #e7ddfb', borderRadius: 14, padding: '24px 28px', width: 340, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)' }}>
+                        <div style={{ fontSize: 17, fontWeight: 700, color: '#6d28d9', marginBottom: 16 }}>🌀 Create Portal at ({newPortalPos.x}, {newPortalPos.y})</div>
+                        <label style={{ display: 'block', fontSize: 12, color: '#6f6b82', marginBottom: 4 }}>Destination Space ID</label>
                         <input
                             value={newPortalTarget}
                             onChange={e => setNewPortalTarget(e.target.value)}
                             placeholder="Paste space ID..."
-                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 10 }}
+                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 10 }}
                         />
-                        <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Label</label>
+                        <label style={{ display: 'block', fontSize: 12, color: '#6f6b82', marginBottom: 4 }}>Label</label>
                         <input
                             value={newPortalLabel}
                             onChange={e => setNewPortalLabel(e.target.value)}
                             placeholder="Portal"
-                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }}
+                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }}
                         />
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                             <button
@@ -2475,28 +2537,28 @@ const ArenaInner = () => {
                                     setNewPortalTarget('');
                                     setNewPortalLabel('Portal');
                                 }}
-                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
                             >
                                 Create
                             </button>
-                            <button onClick={() => setShowPortalModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                            <button onClick={() => setShowPortalModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                         </div>
                     </div>
                 )}
-                {showPortalModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1199 }} onClick={() => setShowPortalModal(false)} />}
+                {showPortalModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.28)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setShowPortalModal(false)} />}
 
                 {/* ── Space resize modal ── */}
                 {showResizeModal && (
-                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: '24px 28px', width: 300, zIndex: 1200, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 16 }}>↔ Resize Space</div>
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #ecebf3', borderRadius: 14, padding: '24px 28px', width: 300, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)' }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#191427', marginBottom: 16 }}>↔ Resize Space</div>
                         <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
                             <div style={{ flex: 1 }}>
-                                <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Width (5–100)</label>
-                                <input value={resizeW} onChange={e => setResizeW(e.target.value)} placeholder={String(spaceDims.width)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                                <label style={{ display: 'block', fontSize: 11, color: '#6f6b82', marginBottom: 4 }}>Width (5–100)</label>
+                                <input value={resizeW} onChange={e => setResizeW(e.target.value)} placeholder={String(spaceDims.width)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                             </div>
                             <div style={{ flex: 1 }}>
-                                <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Height (5–100)</label>
-                                <input value={resizeH} onChange={e => setResizeH(e.target.value)} placeholder={String(spaceDims.height)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                                <label style={{ display: 'block', fontSize: 11, color: '#6f6b82', marginBottom: 4 }}>Height (5–100)</label>
+                                <input value={resizeH} onChange={e => setResizeH(e.target.value)} placeholder={String(spaceDims.height)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                             </div>
                         </div>
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -2517,27 +2579,27 @@ const ArenaInner = () => {
                                     setResizeW('');
                                     setResizeH('');
                                 }}
-                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
                             >
                                 Resize
                             </button>
-                            <button onClick={() => setShowResizeModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                            <button onClick={() => setShowResizeModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                         </div>
                     </div>
                 )}
-                {showResizeModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1199 }} onClick={() => setShowResizeModal(false)} />}
+                {showResizeModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.28)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setShowResizeModal(false)} />}
 
                 {playerPopup && (
                     <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.15)', zIndex: 1100, textAlign: 'center' }}>
                         <p style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', margin: '0 0 16px' }}>{playerPopup.username}</p>
                         <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                            <button onClick={() => navigate(`/profile/${playerPopup.userId}`)} style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>View Profile</button>
+                            <button onClick={() => navigate(`/profile/${playerPopup.userId}`)} style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>View Profile</button>
                             <button onClick={() => { setGiftTarget({ userId: playerPopup.userId, username: playerPopup.username }); setShowGiftModal(true); setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#333', fontSize: 13, cursor: 'pointer' }}>Send Gift</button>
                             <button onClick={() => { setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#333', fontSize: 13, cursor: 'pointer' }}>Close</button>
                         </div>
                     </div>
                 )}
-                {playerPopup && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 1099 }} onClick={() => setPlayerPopup(null)} />}
+                {playerPopup && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.24)', backdropFilter: 'blur(3px)', zIndex: 1099 }} onClick={() => setPlayerPopup(null)} />}
 
                 {/* ── Editor sidebar (overlays canvas) ── */}
                 {editMode && (
@@ -2563,7 +2625,7 @@ const ArenaInner = () => {
                                 </button>
                                 <button
                                     onClick={() => setShowNewMap(true)}
-                                    style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#4f46e5', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                    style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#6d28d9', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
                                     title="New Map"
                                 >
                                     + New Map
@@ -2634,7 +2696,7 @@ const ArenaInner = () => {
                             </div>
                         )}
                         {(selectedElement || selectedItem) && (
-                            <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#eef2ff', fontSize: 12, color: '#4f46e5', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#eef2ff', fontSize: 12, color: '#6d28d9', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                 <span>🔨</span>
                                 <span>
                                     Placing: {selectedElement ? `${selectedElement.width}×${selectedElement.height} element` : `${selectedItem!.name} (${selectedItem!.width}×${selectedItem!.height})`}
@@ -2699,7 +2761,7 @@ const ArenaInner = () => {
                                                 }}
                                                 style={{ padding: 10, borderRadius: 8, border: `2px solid ${selectedElement?.id === el.id ? '#4f46e5' : '#e5e7eb'}`, background: '#fafafa', cursor: 'pointer', textAlign: 'center', transition: 'border-color 0.15s' }}
                                                 >
-                                                    <div style={{ height: 44, borderRadius: 4, background: '#f3f4f6', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                                    <div style={{ height: 44, borderRadius: 4, background: '#f3f4f6', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
                                                         <img src={imgUrl} alt={el.id} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                                                     </div>
                                                     <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#333' }}>{el.id.replace('el-', '').charAt(0).toUpperCase() + el.id.replace('el-', '').slice(1)}</p>
@@ -2757,7 +2819,7 @@ const ArenaInner = () => {
                                             setNpcForm({ name: '', sprite: 'avatar-default', dialogues: ['', '', ''], x: cx, y: cy, motionType: 'PATROL', wanderRadius: 3 });
                                             setShowNpcModal(true);
                                         }}
-                                        style={{ padding: '8px', borderRadius: 6, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600, marginBottom: 4 }}
+                                        style={{ padding: '8px', borderRadius: 6, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600, marginBottom: 4 }}
                                     >
                                         + Add NPC
                                     </button>
@@ -2786,7 +2848,7 @@ const ArenaInner = () => {
                                                             setNpcForm({ id: npc.id, name: npc.name, sprite: npc.sprite, dialogues: [npc.dialogues[0] || '', npc.dialogues[1] || '', npc.dialogues[2] || ''], x: npc.x, y: npc.y, motionType: npc.motionType ?? 'PATROL', wanderRadius: npc.wanderRadius ?? 3 });
                                                             setShowNpcModal(true);
                                                         }}
-                                                        style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#4f46e5', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}
+                                                        style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#6d28d9', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}
                                                     >Edit</button>
                                                     <button
                                                         onClick={e => {
@@ -2819,7 +2881,7 @@ const ArenaInner = () => {
                                     {!eraserMode && <span style={{ marginLeft: 8 }}>· <span style={{ fontWeight: 600 }}>Ctrl+Z</span> Undo · <span style={{ fontWeight: 600 }}>Ctrl+Shift+Z</span> Redo</span>}
                                 </span>
                             )}
-                            {placing && <span style={{ marginLeft: 8, color: '#4f46e5' }}>Placing...</span>}
+                            {placing && <span style={{ marginLeft: 8, color: '#6d28d9' }}>Placing...</span>}
                             {hoverPos && <span style={{ marginLeft: 8, color: '#999' }}>· ({hoverPos.x}, {hoverPos.y})</span>}
                         </div>
                     </div>
@@ -2837,7 +2899,7 @@ const ArenaInner = () => {
                                 gbMessages.map(msg => (
                                     <div key={msg.id} style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: '#f9fafb' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#4f46e5', cursor: 'pointer' }} onClick={() => navigate(`/profile/${msg.userId}`)}>
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#6d28d9', cursor: 'pointer' }} onClick={() => navigate(`/profile/${msg.userId}`)}>
                                                 {msg.username}
                                             </span>
                                             <span style={{ fontSize: 10, color: '#aaa' }}>{new Date(msg.createdAt).toLocaleDateString()}</span>
@@ -2849,7 +2911,7 @@ const ArenaInner = () => {
                         </div>
                         <div style={{ padding: 12, borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8 }}>
                             <input value={gbMessage} onChange={e => setGbMessage(e.target.value)} onKeyDown={e => e.key === 'Enter' && handlePostGuestbook()} placeholder="Leave a message..." maxLength={200} style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, outline: 'none' }} />
-                            <button onClick={handlePostGuestbook} style={{ padding: '8px 14px', borderRadius: 6, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 13, cursor: 'pointer' }}>Send</button>
+                            <button onClick={handlePostGuestbook} style={{ padding: '8px 14px', borderRadius: 6, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer' }}>Send</button>
                         </div>
                     </div>
                 )}
@@ -2871,7 +2933,7 @@ const ArenaInner = () => {
                                         </div>
                                         <p style={{ margin: '0 0 8px', fontSize: 12, color: '#666' }}>{q.description}</p>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                            <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#e5e7eb', overflow: 'hidden' }}>
+                                            <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#e5e7eb', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
                                                 <div style={{ height: '100%', width: `${Math.min(100, (q.progress / q.goalCount) * 100)}%`, borderRadius: 3, background: q.completed ? '#10b981' : '#4f46e5' }} />
                                             </div>
                                             <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{q.progress}/{q.goalCount}</span>
@@ -2924,10 +2986,11 @@ const ArenaInner = () => {
                 )}
 
                 {showAvatarPicker && (
-                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }} onClick={() => setShowAvatarPicker(false)}>
-                        <div style={{ background: '#fff', borderRadius: 16, padding: 28, maxWidth: 400, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
-                            <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Choose Your Character</h3>
-                            <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }} onClick={() => setShowAvatarPicker(false)}>
+                        <div style={{ background: '#fff', borderRadius: 18, padding: '28px 32px', maxWidth: 460, width: '90%', boxShadow: '0 24px 60px rgba(22,15,52,0.22)', border: '1px solid #ecebf3' }} onClick={e => e.stopPropagation()}>
+                            <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: '#191427', letterSpacing: '-0.02em' }}>Choose Your Character</h3>
+                            <p style={{ margin: '0 0 22px', fontSize: 13, color: '#6f6b82' }}>Pick the avatar that represents you in the world.</p>
+                            <div style={{ display: 'flex', gap: 14, justifyContent: 'center' }}>
                                 {avatars.map(a => {
                                     const selected = currentUser?.avatarId === a.id;
                                     return (
@@ -2944,10 +3007,15 @@ const ArenaInner = () => {
                                                     setShowAvatarPicker(false);
                                                 }
                                             } finally { setSavingAvatar(false); }
-                                        }} disabled={savingAvatar || selected} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 16, borderRadius: 12, border: selected ? '2px solid #4f46e5' : '2px solid #e5e7eb', background: selected ? '#eef2ff' : '#fff', cursor: 'pointer', transition: 'all 0.15s', opacity: savingAvatar ? 0.6 : 1 }} >
-                                            <img src={`${API}${a.imageUrl}`} alt={a.name} style={{ width: 64, height: 96, imageRendering: 'pixelated' }} />
-                                            <span style={{ fontSize: 13, fontWeight: 600, color: selected ? '#4f46e5' : '#333' }}>{a.name}</span>
-                                            {selected && <span style={{ fontSize: 11, color: '#4f46e5' }}>Current</span>}
+                                        }} disabled={savingAvatar || selected}
+                                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '18px 14px 14px', borderRadius: 14, border: selected ? '2px solid #6d28d9' : '2px solid #ecebf3', background: selected ? '#f4f0fe' : '#fbfaff', cursor: selected ? 'default' : 'pointer', transition: 'all 0.15s', opacity: savingAvatar ? 0.6 : 1, minWidth: 100 }}>
+                                            {/* Pixel avatar preview (large) */}
+                                            <div style={{ width: 56, height: 56, background: selected ? '#ede9fe' : '#f4f3f9', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', border: selected ? '1px solid #d4b8fc' : '1px solid #e3e1ee' }}>
+                                                <PixelAvatar avatarId={a.id} size={40} />
+                                            </div>
+                                            <img src={`${API}${a.imageUrl}`} alt={a.name} style={{ width: 0, height: 0, opacity: 0, position: 'absolute' }} onLoad={() => {}} />
+                                            <span style={{ fontSize: 13, fontWeight: 700, color: selected ? '#5b21b6' : '#4d495f' }}>{a.name.replace('Avatar ', '')}</span>
+                                            {selected && <span style={{ fontSize: 10, fontWeight: 700, color: '#6d28d9', background: '#ede9fe', borderRadius: 999, padding: '2px 8px' }}>Current</span>}
                                         </button>
                                     );
                                 })}
@@ -2977,7 +3045,7 @@ const ArenaInner = () => {
                                                 <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#333' }}>{item.name}</p>
                                                 <p style={{ margin: '2px 0 0', fontSize: 11, color: '#888' }}>x{item.quantity} · {item.rarity}</p>
                                             </div>
-                                            <span style={{ fontSize: 12, color: '#4f46e5', fontWeight: 600 }}>Gift →</span>
+                                            <span style={{ fontSize: 12, color: '#6d28d9', fontWeight: 600 }}>Gift →</span>
                                         </button>
                                     ))
                                 )}
@@ -2989,22 +3057,23 @@ const ArenaInner = () => {
             </div>
 
                 {toasts.length > 0 && (
-                    <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 5000, display: 'flex', flexDirection: 'column', gap: 6, pointerEvents: 'none' }}>
-                        {toasts.map(t => (
-                            <div key={t.id} style={{
-                                padding: '10px 18px',
-                                borderRadius: 8,
-                                background: t.type === 'success' ? '#059669' : t.type === 'warning' ? '#d97706' : '#4f46e5',
-                                color: '#fff',
-                                fontSize: 13,
-                                fontWeight: 500,
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                animation: 'slideIn 0.2s ease-out',
-                                pointerEvents: 'auto',
-                            }}>
-                                {t.message}
-                            </div>
-                        ))}
+                    <div style={{ position: 'fixed', bottom: 74, right: 16, zIndex: 5000, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', pointerEvents: 'none' }}>
+                        {toasts.map(t => {
+                            // Toast spec from design system components-toasts.html:
+                            // gradient icon tile + colored border + colored shadow
+                            const TOAST_SPEC: Record<string, { grad: string; border: string; shadow: string; icon: string }> = {
+                                success: { grad: 'linear-gradient(135deg,#34d399,#10b981)', border: '#d7f3e3', shadow: '0 8px 20px rgba(16,185,129,.18)', icon: '🪙' },
+                                info:    { grad: 'linear-gradient(135deg,#7c3aed,#a78bfa)', border: '#ddd6fe', shadow: '0 8px 20px rgba(124,58,237,.18)', icon: '→' },
+                                warning: { grad: 'linear-gradient(135deg,#fbbf24,#f59e0b)', border: '#fde9c8', shadow: '0 8px 20px rgba(217,119,6,.18)', icon: '⏰' },
+                            };
+                            const ts = TOAST_SPEC[t.type] || TOAST_SPEC.info;
+                            return (
+                                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px 11px 10px', borderRadius: 13, background: '#fff', color: '#1c1635', fontSize: 13, fontWeight: 700, border: `1px solid ${ts.border}`, boxShadow: ts.shadow, animation: 'ovSlideIn 0.22s cubic-bezier(.2,.8,.3,1)', pointerEvents: 'auto' }}>
+                                    <span style={{ width: 30, height: 30, borderRadius: 9, background: ts.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 15, color: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>{ts.icon}</span>
+                                    {t.message}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
 

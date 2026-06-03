@@ -51,6 +51,9 @@ importers:
       better-auth:
         specifier: ^1.6.11
         version: 1.6.11(@prisma/client@6.3.1(prisma@6.3.1(typescript@5.7.3))(typescript@5.7.3))(prisma@6.3.1(typescript@5.7.3))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(vitest@4.1.8(@types/node@20.17.6)(@vitest/coverage-v8@4.1.8)(vite@6.4.2(@types/node@20.17.6)(tsx@4.22.3)))
+      lucide-react:
+        specifier: ^1.17.0
+        version: 1.17.0(react@19.0.0)
       react:
         specifier: ^19.0.0
         version: 19.0.0
@@ -2922,6 +2925,11 @@ packages:
   lru-cache@7.18.3:
     resolution: {integrity: sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA==}
     engines: {node: '>=12'}
+
+  lucide-react@1.17.0:
+    resolution: {integrity: sha512-9FA9evdox/JQL5PT57fdA1x/yg8T7knJ98+zjTL3UfKza6pflQUUh3XtaQIHKvnsJw1lmsEyHVlt5jchYxOQ5w==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -6742,6 +6750,10 @@ snapshots:
       yallist: 3.1.1
 
   lru-cache@7.18.3: {}
+
+  lucide-react@1.17.0(react@19.0.0):
+    dependencies:
+      react: 19.0.0
 
   magic-string@0.30.21:
     dependencies:

@@ -1,0 +1,229 @@
+/* ============================================================================
+   OfficeVerse 2D — Colors & Type Foundations
+   Source of truth: shiven24k/metaverse2d (apps/frontend/src)
+   Palette lifted verbatim from SpacePage.tsx + Game.tsx inline styles.
+   ============================================================================ */
+
+/* --- Webfonts -------------------------------------------------------------
+   The codebase ships NO custom font — every surface uses system-ui. To honor
+   the "pixel / retro game" brief we layer two pixel display faces on top of
+   the original system-ui body stack. These are Google Fonts SUBSTITUTIONS,
+   not assets from the repo (flagged in README). Swap freely.                */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+
+:root {
+  /* ====================== CORE PALETTE ================================== */
+  /* Backgrounds — deep slate navy. The whole app sits on #0f172a.          */
+  --bg-base:        #0f172a;   /* app background (slate-900)                */
+  --bg-deep:        #0a0a14;   /* in-game canvas void (darker)             */
+  --bg-header:      #0f172a;   /* header bars                              */
+  --bg-panel:       rgba(255,255,255,0.04);  /* card / panel fill          */
+  --bg-panel-2:     rgba(255,255,255,0.07);  /* pills, hover fills         */
+  --bg-modal:       rgba(15,23,42,0.97);     /* glass modals (blur 8-10)   */
+  --bg-overlay:     rgba(0,0,0,0.3);         /* scrim behind modals        */
+  --bg-light:       #ffffff;   /* "light" modals (avatar/gift picker)      */
+
+  /* The signature page gradient — only used full-bleed on the lobby page. */
+  --grad-page: linear-gradient(160deg, #0f172a 0%, #1a1035 50%, #0f1a2e 100%);
+
+  /* ====================== PURPLE — the brand spine ===================== */
+  --purple-500:     #6366f1;   /* indigo — primary brand                   */
+  --purple-600:     #4f46e5;   /* pressed / active tab / button base       */
+  --purple-700:     #6d28d9;   /* button gradient end                      */
+  --violet-500:     #8b5cf6;   /* violet — gradient partner                */
+  --violet-400:     #a78bfa;   /* season label / accents                   */
+  --indigo-300:     #a5b4fc;   /* selected text on purple wash             */
+  --indigo-400:     #818cf8;   /* active tab text, size badge text         */
+
+  /* Brand gradients (135deg is the house angle). */
+  --grad-brand:     linear-gradient(135deg, #6366f1, #8b5cf6); /* logo, avatars */
+  --grad-btn:       linear-gradient(135deg, #4f46e5, #6d28d9); /* CTA buttons   */
+  --wash-purple:    rgba(99,102,241,0.15);  /* selected card / chip wash    */
+  --wash-purple-18: rgba(99,102,241,0.18);  /* active tab fill              */
+
+  /* ====================== TEXT ========================================= */
+  --fg-1:           #f1f5f9;   /* headings, primary text (slate-100)       */
+  --fg-2:           #e2e8f0;   /* body text (slate-200)                    */
+  --fg-3:           #94a3b8;   /* muted / meta / labels (slate-400)        */
+  --fg-4:           #64748b;   /* faint hints (slate-500)                  */
+  --fg-on-purple:   #ffffff;   /* text on brand fills                      */
+
+  /* ====================== SEMANTIC / STATUS =========================== */
+  --ok:             #4ade80;   /* "● Connected" dot                        */
+  --ok-strong:      #059669;   /* success toast bg, gift "Sent"            */
+  --ok-soft-bg:     #f0fdf4;   /* success note bg (light modals)           */
+  --warn:           #fbbf24;   /* amber — coins, guest, warnings           */
+  --warn-strong:    #d97706;   /* warning toast bg                         */
+  --danger:         #f87171;   /* "○ Offline", errors                      */
+  --danger-strong:  #7f1d1d;   /* error banner bg                          */
+  --reconnect-bg:   #78350f;   /* reconnect banner bg                      */
+
+  /* ====================== ECONOMY / GOLD ============================== */
+  --coin:           #fbbf24;   /* coin amount text                         */
+  --coin-gold:      #FFD700;   /* NPC dialogue gold, premium accent        */
+  --coin-wash:      rgba(234,179,8,0.12);    /* coin pill bg               */
+
+  /* ====================== RARITY ====================================== */
+  --rarity-common-bg:    #374151;  --rarity-common-fg:    #9ca3af;
+  --rarity-uncommon-bg:  #064e3b;  --rarity-uncommon-fg:  #34d399;
+  --rarity-rare-bg:      #1e3a8a;  --rarity-rare-fg:      #60a5fa;
+  --rarity-legacy-bg:    #3b1f6e;  --rarity-legacy-fg:    #c084fc;
+
+  /* ====================== BORDERS ===================================== */
+  --border-1:       rgba(255,255,255,0.07);  /* default card border        */
+  --border-2:       rgba(255,255,255,0.12);  /* button / input border      */
+  --border-soft:    rgba(255,255,255,0.08);
+  --border-purple:  rgba(99,102,241,0.35);   /* active tab border          */
+  --border-gold:    rgba(255,200,0,0.25);    /* NPC dialogue border        */
+
+  /* ====================== RADII ======================================= */
+  --r-xs:  6px;    /* buttons, inputs, small chips                         */
+  --r-sm:  8px;    /* CTA buttons, list rows                               */
+  --r-md:  10px;   /* pills, emote palette                                 */
+  --r-lg:  12px;   /* popups, quest cards                                  */
+  --r-xl:  14px;   /* space cards, NPC dialogue, modals                    */
+  --r-2xl: 16px;   /* light modals (gift / avatar picker)                  */
+  --r-pill: 20px;  /* user pill, coin pill, gift button                    */
+
+  /* ====================== SHADOWS / ELEVATION ========================= */
+  --shadow-card:   0 2px 8px rgba(99,102,241,0.4);   /* glowing CTA        */
+  --shadow-pop:    0 8px 32px rgba(0,0,0,0.4);        /* interaction popup  */
+  --shadow-modal:  0 8px 40px rgba(0,0,0,0.5);        /* glass modals       */
+  --shadow-light:  0 8px 32px rgba(0,0,0,0.15);       /* light modals       */
+  --shadow-toast:  0 4px 12px rgba(0,0,0,0.15);       /* toasts             */
+  --shadow-pal:    0 4px 20px rgba(0,0,0,0.5);        /* emote palette      */
+
+  /* ====================== BLUR ======================================== */
+  --blur-modal: 10px;   /* glass modals          */
+  --blur-pop:   8px;    /* interaction popup     */
+  --blur-header: 12px;  /* sticky lobby header   */
+
+  /* ====================== TYPE FACES ================================= */
+  /* Body = the repo's original stack. Display = pixel substitutions.      */
+  --font-body:    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:    ui-monospace, "SF Mono", Menlo, monospace;
+  --font-pixel:   "Press Start 2P", "Silkscreen", monospace; /* tiny caps  */
+  --font-display: "Silkscreen", "Press Start 2P", system-ui;  /* headings  */
+
+  /* ====================== TYPE SCALE (px, from the codebase) ========= */
+  --t-display: 20px;  /* section titles (lobby h2)                         */
+  --t-h1:      17px;  /* header logo / game space name                     */
+  --t-h2:      16px;  /* modal titles                                      */
+  --t-h3:      14px;  /* card titles, quest titles                         */
+  --t-body:    13px;  /* default body / buttons                            */
+  --t-sm:      12px;  /* secondary buttons, badges                         */
+  --t-xs:      11px;  /* meta, labels                                      */
+  --t-2xs:     10px;  /* thumb labels, season label                        */
+  --t-9:        9px;  /* sprite captions                                   */
+
+  /* ====================== SPACING (the 4px-ish grid in use) ========== */
+  --sp-1: 4px;  --sp-2: 6px;  --sp-3: 8px;  --sp-4: 10px;
+  --sp-5: 12px; --sp-6: 14px; --sp-7: 16px; --sp-8: 20px;
+  --sp-9: 24px; --sp-10: 28px;
+}
+
+/* ============================================================================
+   LIGHT · ENERGETIC THEME  (the active brand direction)
+   The product ships dark; the design system was steered to a light, colorful,
+   "workaholic" energy with Lucide line icons. These are the working tokens —
+   use them for new OfficeVerse surfaces. The dark tokens above remain as the
+   legacy/in-canvas reference.
+   ============================================================================ */
+:root {
+  /* Surfaces */
+  --l-cloud:   #faf9ff;   /* app background — airy lavender-white          */
+  --l-paper:   #ffffff;   /* cards / inputs / toasts                       */
+  --l-mist:    #eef2ff;   /* tint wash / hover                             */
+  --l-violet:  #f3effe;   /* violet wash (active tabs, soft buttons)       */
+  --l-cream:   #fff7ed;   /* warm surface                                  */
+  --l-page:    linear-gradient(160deg,#f5f3ff 0%,#fdf2f8 50%,#eff6ff 100%);
+
+  /* Energetic gradients */
+  --l-grad-brand:  linear-gradient(135deg,#7c3aed,#a78bfa);   /* primary    */
+  --l-grad-energy: linear-gradient(135deg,#ec4899,#f59e0b);   /* hero/hustle*/
+  --l-grad-go:     linear-gradient(135deg,#34d399,#10b981);   /* success    */
+  --l-grad-cool:   linear-gradient(135deg,#22d3ee,#3b82f6);   /* focus      */
+  --l-grad-hero:   linear-gradient(135deg,#6366f1,#ec4899 55%,#f59e0b);
+
+  /* Brand purples (light) */
+  --l-violet-50:#f5f3ff; --l-violet-100:#ede9fe; --l-violet-200:#ddd6fe;
+  --l-violet-300:#c4b5fd; --l-violet-400:#a78bfa; --l-violet-500:#8b5cf6;
+  --l-violet-600:#7c3aed; --l-violet-700:#6d28d9; --l-indigo-400:#818cf8;
+
+  /* Text on light */
+  --l-ink:    #211c3b;   /* headings (deep aubergine-ink)                  */
+  --l-ink-2:  #4a4368;   /* body                                          */
+  --l-muted:  #8b82a8;   /* meta / labels                                 */
+  --l-faint:  #b3aacb;   /* placeholders                                  */
+
+  /* Status (light) */
+  --l-ok:#16a34a; --l-ok-bg:#dcfce7; --l-warn:#d97706; --l-warn-bg:#fef3c7;
+  --l-danger:#dc2626; --l-danger-bg:#fee2e2; --l-info:#7c3aed; --l-info-bg:#ede9fe;
+  --l-coin:#b45309; --l-coin-bg:#fef3c7;
+
+  /* Borders (light) */
+  --l-border:   #ece9f7;   /* hairline card border                        */
+  --l-border-2: #e7e2f5;   /* input border                                */
+  --l-border-on:#d6caf8;   /* active/hover border                         */
+
+  /* Radii (light, slightly rounder & friendlier) */
+  --l-r-chip:6px; --l-r-btn:11px; --l-r-card:16px; --l-r-modal:18px; --l-r-pill:22px;
+
+  /* Shadows (light — soft, indigo/violet-tinted) */
+  --l-shadow-card:  0 4px 14px rgba(99,102,241,0.10);
+  --l-shadow-lift:  0 10px 26px rgba(99,102,241,0.18);
+  --l-shadow-modal: 0 16px 40px rgba(76,29,149,0.22);
+  --l-glow-brand:   0 6px 16px rgba(124,58,237,0.32);
+  --l-glow-energy:  0 6px 16px rgba(236,72,153,0.30);
+  --l-glow-go:      0 6px 16px rgba(16,185,129,0.30);
+}
+
+/* ============================================================================
+   SEMANTIC ELEMENT STYLES — drop-in classes mirroring the product
+   ============================================================================ */
+body {
+  background: var(--bg-base);
+  color: var(--fg-2);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Pixel sprites must never blur when scaled up. */
+.pixelated { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+h1, .h1 { font-size: var(--t-h1); font-weight: 700; color: var(--fg-1); letter-spacing: -0.3px; margin: 0; }
+h2, .h2 { font-size: var(--t-display); font-weight: 700; color: var(--fg-1); margin: 0; }
+h3, .h3 { font-size: var(--t-h3); font-weight: 700; color: var(--fg-1); margin: 0; }
+p,  .p  { font-size: var(--t-body); color: var(--fg-2); line-height: 1.5; }
+.meta   { font-size: var(--t-xs); color: var(--fg-3); }
+.label  { font-size: var(--t-xs); color: var(--fg-3); }
+code, .code { font-family: var(--font-mono); font-size: var(--t-sm); }
+
+/* Pixel display accent — for retro headings/labels (substitution). */
+.pixel-title { font-family: var(--font-display); color: var(--fg-1); letter-spacing: 0.04em; }
+.pixel-cap   { font-family: var(--font-pixel); font-size: var(--t-2xs); letter-spacing: 0.05em;
+               text-transform: uppercase; }
+
+/* --- Buttons -------------------------------------------------------------- */
+.btn { font-family: var(--font-body); font-size: var(--t-body); font-weight: 600;
+       border-radius: var(--r-xs); padding: 5px 12px; cursor: pointer; border: none;
+       color: #fff; transition: opacity .15s, transform .1s, background .15s; }
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--grad-btn); box-shadow: var(--shadow-card); }
+.btn-primary:hover { opacity: .92; }
+.btn-ghost { background: var(--bg-panel-2); border: 1px solid var(--border-2); color: #fff; }
+.btn-ghost:hover { background: rgba(255,255,255,0.12); }
+.btn-ghost.active { background: var(--purple-600); }
+.btn-gold { background: var(--coin-wash); border: 1px solid var(--border-gold); color: var(--coin-gold); }
+
+/* --- Cards ---------------------------------------------------------------- */
+.card { background: var(--bg-panel); border: 1px solid var(--border-1);
+        border-radius: var(--r-xl); overflow: hidden;
+        transition: transform .15s, border-color .15s; }
+.card:hover { transform: translateY(-2px); border-color: var(--border-purple); }
+
+/* --- Pills / badges ------------------------------------------------------- */
+.pill { display: inline-flex; align-items: center; gap: var(--sp-2);
+        border-radius: var(--r-pill); padding: 4px 12px; font-size: var(--t-xs); }
+.badge { font-size: var(--t-2xs); font-weight: 600; border-radius: var(--r-xs); padding: 2px 7px; }
+.badge-size { color: var(--indigo-400); background: var(--wash-purple); }

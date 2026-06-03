@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
+import { Compass, Home, ShoppingBag, Package, Trophy, Plus, Settings, Coins, Gift, Bell, Search, User, MessageSquare, LogIn } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -74,13 +75,6 @@ interface MapTemplate {
 }
 
 // deterministic gradient from a string — used for space card thumbnails
-function spaceGradient(name: string): string {
-    let h = 0;
-    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-    const hue1 = h % 360;
-    const hue2 = (hue1 + 40) % 360;
-    return `linear-gradient(135deg, hsl(${hue1},55%,28%), hsl(${hue2},60%,18%))`;
-}
 
 const RARITY_COLOR: Record<string, { bg: string; text: string; label: string }> = {
     Common:   { bg: "#374151", text: "#9ca3af", label: "Common" },
@@ -335,30 +329,93 @@ export default function SpacePage() {
     const EmptyState = ({ icon, title, sub }: { icon: string; title: string; sub: string }) => (
         <div style={{ textAlign: "center", padding: "48px 24px" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>{icon}</div>
-            <p style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700, color: "#e2e8f0" }}>{title}</p>
-            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", maxWidth: 280, marginInline: "auto" }}>{sub}</p>
+            <p style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700, color: "#191427" }}>{title}</p>
+            <p style={{ margin: 0, fontSize: 13, color: "#6f6b82", maxWidth: 280, marginInline: "auto" }}>{sub}</p>
         </div>
     );
 
-    const SpaceCard = ({ space }: { space: Space }) => {
-        const dims = space.dimensions?.split("x") ?? ["?", "?"];
+    const FLOOR_TILES = ["office-floor", "cobblestone", "wood-floor", "cave-floor", "sand", "dirt", "path"];
+    const FLOOR_TINTS: Record<string, string> = { "office-floor": "#8a8fa8", cobblestone: "#6b6f78", "wood-floor": "#7a5230", "cave-floor": "#2a2438", sand: "#c8a96a", dirt: "#7a5a3a", path: "#888060" };
+    const SCENE_ITEMS: Record<string, { name: string; x: string; y: string; w: number; kind?: string }[]> = {
+        "office-floor":[{ name: "office-desk", x: "8%",  y: "42%", w: 76 }, { name: "computer", x: "10%", y: "28%", w: 40 }, { name: "meeting-table", x: "52%", y: "42%", w: 108 }, { name: "whiteboard", x: "55%", y: "15%", w: 54 }],
+        cobblestone:   [{ name: "fountain", x: "38%", y: "30%", w: 80 }, { name: "lamp", x: "10%", y: "18%", w: 36 }, { name: "sign", x: "72%", y: "40%", w: 46 }],
+        "wood-floor":  [{ name: "sofa", x: "12%", y: "42%", w: 88 }, { name: "table", x: "58%", y: "40%", w: 60 }, { name: "coffee-machine", x: "74%", y: "22%", w: 50 }],
+        "cave-floor":  [{ name: "chest", kind: "tiles", x: "12%", y: "44%", w: 54 }, { name: "crystal", x: "52%", y: "28%", w: 56 }, { name: "throne", x: "70%", y: "28%", w: 72 }],
+        sand:          [{ name: "cactus", kind: "tiles", x: "14%", y: "22%", w: 44 }, { name: "barrel", x: "56%", y: "38%", w: 42 }, { name: "campfire", x: "38%", y: "48%", w: 48 }],
+        dirt:          [{ name: "plant", x: "14%", y: "38%", w: 44 }, { name: "bookshelf", x: "62%", y: "28%", w: 56 }, { name: "rug", x: "34%", y: "46%", w: 80 }],
+        path:          [{ name: "lamp", x: "10%", y: "24%", w: 36 }, { name: "painting", x: "62%", y: "22%", w: 44 }, { name: "sign", x: "36%", y: "42%", w: 46 }],
+    };
+    const spaceTile = (name: string) => FLOOR_TILES[Math.abs(name.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0)) % FLOOR_TILES.length];
+
+    // WorldPreview — floor tile repeated + sprite items placed absolutely
+    const WorldPreview = ({ tile, height = 140, radius = 10 }: { tile: string; height?: number; radius?: number }) => {
+        const tint = FLOOR_TINTS[tile] ?? "#555";
+        const items = SCENE_ITEMS[tile] ?? [];
         return (
-            <div style={S.spaceCard}>
-                <div style={{ ...S.spaceThumb, background: spaceGradient(space.name) }}>
-                    <div style={S.spaceThumbLabel}>{space.dimensions}</div>
+            <div style={{ position: "relative", height, overflow: "hidden", borderRadius: radius, imageRendering: "pixelated",
+                backgroundColor: tint,
+                backgroundImage: `url(/tiles/${tile}.png)`,
+                backgroundSize: "44px 44px", backgroundRepeat: "repeat" }}>
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(0,0,0,0.12) 0%,transparent 36%,transparent 60%,rgba(0,0,0,0.28) 100%)" }} />
+                {items.map((it, i) => (
+                    <img key={i} src={`/${it.kind ?? "items"}/${it.name}.png`} alt=""
+                        style={{ position: "absolute", left: it.x, top: it.y, width: it.w, imageRendering: "pixelated", objectFit: "contain", filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.4))" }}
+                    />
+                ))}
+            </div>
+        );
+    };
+
+    const SpaceCard = ({ space, featured }: { space: Space; featured?: boolean }) => {
+        const [hover, setHover] = React.useState(false);
+        const tile = spaceTile(space.name);
+        // Derive a theme colour from the tile
+        const THEME_DOT: Record<string, string> = { "wood-floor": "#d97706", "cave-floor": "#7c3aed", sand: "#d97706", cobblestone: "#6366f1", "office-floor": "#6d28d9", dirt: "#92400e", path: "#64748b" };
+        const dot = THEME_DOT[tile] ?? "#6d28d9";
+        const THEME_NAME: Record<string, string> = { "wood-floor": "Social", "cave-floor": "Fantasy", sand: "Desert", cobblestone: "Town", "office-floor": "Office", dirt: "Village", path: "Town" };
+        const theme = THEME_NAME[tile] ?? "Space";
+        // Enter button gradient matched to theme
+        const BTN_GRAD: Record<string, string> = { "cave-floor": "linear-gradient(135deg,#7c3aed,#a78bfa)", sand: "linear-gradient(135deg,#fbbf24,#f59e0b)" };
+        const btnGrad = hover ? (BTN_GRAD[tile] ?? "linear-gradient(135deg,#7c3aed,#a78bfa)") : "linear-gradient(135deg,#818cf8,#a78bfa)";
+        const btnShadow = hover ? "0 6px 16px rgba(124,58,237,.32)" : "0 4px 12px rgba(129,140,248,.3)";
+        return (
+            <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+                style={{ background: "#fff", border: `1px solid ${hover ? "#d4d0e6" : "#ece9f7"}`, borderRadius: 16, overflow: "hidden", cursor: "pointer",
+                    boxShadow: hover ? "0 12px 26px rgba(99,102,241,.18)" : "0 6px 18px rgba(99,102,241,.10)",
+                    transform: hover ? "translateY(-3px)" : "none", transition: "transform 0.16s cubic-bezier(.2,.7,.3,1), box-shadow 0.16s, border-color 0.16s" }}>
+                {/* Pixel-art world preview */}
+                <div style={{ padding: 7, position: "relative" }}>
+                    <WorldPreview tile={tile} height={featured ? 220 : 140} radius={10} />
+                    {/* "N here now" presence pill — design system spec */}
+                    <div style={{ position: "absolute", bottom: 15, left: 14, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 700,
+                        color: "#fff", background: "rgba(16,16,30,0.45)", borderRadius: 999, padding: "3px 9px 3px 7px", backdropFilter: "blur(2px)" }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 0 3px rgba(74,222,128,0.3)" }} />
+                        online
+                    </div>
+                    {/* Dimension badge */}
+                    <div style={{ position: "absolute", top: 14, right: 14, fontSize: 10.5, fontWeight: 700, color: "#fff",
+                        background: "rgba(14,12,28,0.5)", borderRadius: 6, padding: "3px 8px", backdropFilter: "blur(4px)" }}>{space.dimensions}</div>
                 </div>
-                <div style={S.spaceCardBody}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                        <div style={S.spaceAvatar}>
+                {/* Card body */}
+                <div style={{ padding: "13px 15px 15px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 11 }}>
+                        <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#211c3b", letterSpacing: "-0.01em", flex: 1 }}>{space.name}</p>
+                        {/* Theme chip — matches design system */}
+                        <span style={{ fontSize: 10, fontWeight: 700, color: dot, background: `${dot}18`, borderRadius: 6, padding: "3px 8px" }}>{theme}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                        {/* Creator avatar */}
+                        <div style={{ width: 24, height: 24, borderRadius: "50%", background: `linear-gradient(135deg,#a78bfa,#818cf8)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0 }}>
                             {(space.createdBy?.[0] ?? "?").toUpperCase()}
                         </div>
-                        <div style={{ minWidth: 0 }}>
-                            <p style={S.spaceName}>{space.name}</p>
-                            {space.createdBy && <p style={S.spaceMeta}>by {space.createdBy}</p>}
-                        </div>
-                        <span style={S.sizeBadge}>{dims[0]}×{dims[1]}</span>
+                        <span style={{ fontSize: 11, color: "#8b82a8", flex: 1 }}>by {space.createdBy ?? "unknown"}</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: hover ? "#6d28d9" : "#8b82a8", transition: "color 0.15s" }}>
+                            Enter <LogIn size={13} />
+                        </span>
                     </div>
-                    <button style={S.joinBtn} onClick={() => navigate(`/arena?spaceId=${space.id}`)}>
+                    {/* Gradient CTA button — matched to theme */}
+                    <button style={{ width: "100%", padding: "9px", borderRadius: 9, border: "none", background: btnGrad, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", transition: "all 0.15s", boxShadow: btnShadow }}
+                        onClick={() => navigate(`/arena?spaceId=${space.id}`)}>
                         Enter Space →
                     </button>
                 </div>
@@ -366,696 +423,423 @@ export default function SpacePage() {
         );
     };
 
-    const tabs: { id: Tab; label: string; icon: string }[] = [
-        { id: "all",          label: "Discover",      icon: "🌍" },
+    const NAV_ITEMS = [
+        { id: "all" as Tab,           label: "Discover",   Icon: Compass },
         ...(isGuest ? [] : [
-            { id: "mine" as Tab,         label: "My Spaces",     icon: "🏠" },
-            { id: "create" as Tab,       label: "Create",        icon: "✨" },
-            { id: "shop" as Tab,         label: "Shop",          icon: "🛒" },
-            { id: "collection" as Tab,   label: "Collection",    icon: "📖" },
-            { id: "quests" as Tab,       label: "Quests",        icon: "⚔️" },
-            { id: "neighbourhood" as Tab,label: "Neighbours",    icon: "👥" },
-            { id: "guestbook" as Tab,    label: "Guestbook",     icon: "📝" },
-            { id: "creator" as Tab,      label: "Creator",       icon: "🎨" },
+            { id: "mine" as Tab,          label: "My Spaces",  Icon: Home },
+            { id: "shop" as Tab,          label: "Shop",        Icon: ShoppingBag },
+            { id: "collection" as Tab,    label: "Collection",  Icon: Package },
+            { id: "quests" as Tab,        label: "Quests",      Icon: Trophy },
         ]),
     ];
 
     return (
-        <div style={S.page}>
-            {/* ── Header ── */}
-            <header style={S.header}>
-                <div style={S.headerLeft}>
-                    <div style={S.logo}>
-                        <span style={S.logoPx}>M2D</span>
-                        <span style={S.logoText}>Metaverse 2D</span>
+        <div style={{ display: "flex", height: "100vh", background: "#f6f6fb", fontFamily: "system-ui,-apple-system,sans-serif", color: "#191427", overflow: "hidden" }}>
+
+            {/* ── Sidebar ── */}
+            <aside style={{ width: 248, flexShrink: 0, background: "#fff", borderRight: "1px solid #ecebf3", display: "flex", flexDirection: "column", height: "100%" }}>
+                {/* Logo */}
+                <div style={{ padding: "20px 20px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(140deg,#6366f1,#8b5cf6 52%,#d946ef)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 3px 8px rgba(124,58,237,.34), inset 0 1.5px 0 rgba(255,255,255,.4)" }}>
+                        <img src="/items/computer.png" alt="" style={{ width: 18, imageRendering: "pixelated", filter: "drop-shadow(0 1px 1px rgba(0,0,0,.4))" }} />
                     </div>
-                    {!isGuest && username && (
-                        <div style={S.userPill}>
-                            <div style={S.userAvatar}>{username[0]?.toUpperCase()}</div>
-                            <span style={S.userName}>{username}</span>
-                        </div>
-                    )}
-                    {isGuest && <span style={S.guestBadge}>Guest</span>}
+                    <span style={{ fontSize: 16, fontWeight: 700, color: "#191427", letterSpacing: "-0.02em" }}>
+                        OfficeVerse <span style={{ color: "#6f6b82", fontWeight: 600 }}>2D</span>
+                    </span>
                 </div>
-                <div style={S.headerRight}>
-                    {wallet && (
-                        <div style={S.coinDisplay}>
-                            <span style={{ fontSize: 16 }}>🪙</span>
-                            <span style={S.coinAmount}>{wallet.coins.toLocaleString()}</span>
-                        </div>
-                    )}
-                    {!isGuest && (
-                        <button
-                            onClick={handleClaimGift}
-                            disabled={claiming || giftStatus.claimed}
-                            style={{ ...S.giftBtn, opacity: giftStatus.claimed ? 0.55 : 1 }}
-                        >
-                            🎁 {claiming ? "Claiming…" : giftStatus.claimed ? "Claimed" : "Daily Gift"}
+
+                {/* Nav */}
+                <nav style={{ padding: "4px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#a3a0b3", letterSpacing: ".08em", textTransform: "uppercase", padding: "8px 12px 6px" }}>Browse</div>
+                    {NAV_ITEMS.map(n => {
+                        const on = tab === n.id;
+                        return (
+                            <button key={n.id} onClick={() => { setTab(n.id); setError(""); setCreateSuccess(""); setBuyMsg(""); setSelectedMap(null); }}
+                                style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 12px", borderRadius: 10, border: "none", cursor: "pointer",
+                                    background: on ? "#f4f0fe" : "transparent", color: on ? "#5b21b6" : "#4d495f",
+                                    fontSize: 13.5, fontWeight: on ? 700 : 500, fontFamily: "system-ui,sans-serif",
+                                    textAlign: "left", transition: "background .12s" }}>
+                                <n.Icon size={17} strokeWidth={on ? 2.2 : 1.8} />
+                                {n.label}
+                            </button>
+                        );
+                    })}
+                    {/* Extra nav for non-guests */}
+                    {!isGuest && <>
+                        <div style={{ height: 1, background: "#ecebf3", margin: "10px 12px" }} />
+                        {[
+                            { id: "neighbourhood" as Tab, label: "Neighbours" },
+                            { id: "guestbook" as Tab, label: "Guestbook" },
+                            { id: "creator" as Tab, label: "Creator" },
+                        ].map(n => (
+                            <button key={n.id} onClick={() => { setTab(n.id); setError(""); setBuyMsg(""); }}
+                                style={{ display: "flex", alignItems: "center", gap: 11, padding: "8px 12px", borderRadius: 10, border: "none", cursor: "pointer",
+                                    background: tab === n.id ? "#f4f0fe" : "transparent", color: tab === n.id ? "#5b21b6" : "#6f6b82",
+                                    fontSize: 13, fontWeight: tab === n.id ? 700 : 500, fontFamily: "system-ui,sans-serif", textAlign: "left" }}>
+                                {n.label}
+                            </button>
+                        ))}
+                        <div style={{ height: 1, background: "#ecebf3", margin: "8px 12px" }} />
+                        <button onClick={() => { setTab("create"); setError(""); setCreateSuccess(""); setBuyMsg(""); setSelectedMap(null); }}
+                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10, border: "1px solid #e7ddfb", cursor: "pointer",
+                                background: tab === "create" ? "#f4f0fe" : "#f9f7ff", color: "#5b21b6", fontSize: 13.5, fontWeight: 600, fontFamily: "system-ui,sans-serif", textAlign: "left" }}>
+                            <Plus size={16} />New space
                         </button>
-                    )}
-                    {claimResult && (
-                        <span style={{ fontSize: 12, color: claimResult.startsWith("+") ? "#4ade80" : "#f87171", fontWeight: 600 }}>
-                            {claimResult}
-                        </span>
-                    )}
-                    <button style={S.leaveBtn} onClick={handleSignOut}>
-                        {isGuest ? "Leave" : "Sign Out"}
-                    </button>
-                </div>
-            </header>
+                    </>}
+                </nav>
 
-            {/* ── Guest banner ── */}
-            {isGuest && (
-                <div style={S.guestBanner}>
-                    <span>Browsing as guest — join a space and explore, but full features need an account.</span>
-                    <button onClick={() => navigate("/login")} style={S.guestSignupBtn}>Create Account</button>
-                </div>
-            )}
-
-            {/* ── Season banner ── */}
-            {season && (
-                <div style={S.seasonBanner}>
-                    <div>
-                        <span style={S.seasonLabel}>Active Season</span>
-                        <span style={S.seasonName}>{season.name}</span>
-                        <span style={S.seasonTheme}>{season.theme}</span>
-                    </div>
-                    <span style={S.seasonTimer}>{season.daysRemaining}d remaining</span>
-                </div>
-            )}
-
-            {/* ── Tab bar ── */}
-            <nav style={S.tabBar}>
-                {tabs.map(t => (
-                    <button
-                        key={t.id}
-                        style={{ ...S.tabBtn, ...(tab === t.id ? S.tabBtnActive : {}) }}
-                        onClick={() => { setTab(t.id); setError(""); setCreateSuccess(""); setBuyMsg(""); setSelectedMap(null); }}
-                    >
-                        <span style={{ fontSize: 15 }}>{t.icon}</span>
-                        <span>{t.label}</span>
-                    </button>
-                ))}
-            </nav>
-
-            {/* ── Content ── */}
-            <main style={S.content}>
-
-                {/* Discover */}
-                {tab === "all" && (
-                    <section style={S.section}>
-                        <h2 style={S.sectionTitle}>Discover Spaces</h2>
-                        {loadingAll ? (
-                            <p style={S.muted}>Loading spaces…</p>
-                        ) : allSpaces.length === 0 ? (
-                            <EmptyState icon="🌐" title="No spaces yet" sub="Be the first to create a space and invite friends!" />
-                        ) : (
-                            <div style={S.spaceGrid}>
-                                {allSpaces.map(s => <SpaceCard key={s.id} space={s} />)}
+                {/* User footer */}
+                {!isGuest && username && (
+                    <div style={{ padding: 12, borderTop: "1px solid #ecebf3" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 10 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(140deg,#6366f1,#8b5cf6 52%,#d946ef)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                                {username[0]?.toUpperCase()}
                             </div>
-                        )}
-                    </section>
-                )}
-
-                {/* My Spaces */}
-                {tab === "mine" && (
-                    <section style={S.section}>
-                        <h2 style={S.sectionTitle}>My Spaces</h2>
-                        {loadingMine ? (
-                            <p style={S.muted}>Loading…</p>
-                        ) : mySpaces.length === 0 ? (
-                            <EmptyState icon="🏠" title="No spaces yet" sub="Create your first space to start building your world." />
-                        ) : (
-                            <div style={S.spaceGrid}>
-                                {mySpaces.map(s => <SpaceCard key={s.id} space={s} />)}
-                            </div>
-                        )}
-                    </section>
-                )}
-
-                {/* Create */}
-                {tab === "create" && (
-                    <section style={S.section}>
-                        <h2 style={S.sectionTitle}>Create a Space</h2>
-                        {mapTemplates.length > 0 && (
-                            <>
-                                <p style={S.subLabel}>Choose a map template (optional)</p>
-                                <div style={S.templateGrid}>
-                                    <div
-                                        onClick={() => { setSelectedMap(null); setNewSpaceDims("20x20"); }}
-                                        style={{ ...S.templateCard, ...(selectedMap === null ? S.templateCardActive : {}) }}
-                                    >
-                                        <div style={S.templateThumb}>🟦</div>
-                                        <p style={S.templateName}>Blank</p>
-                                        <p style={S.templateDims}>Custom size</p>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "#191427", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{username}</div>
+                                {wallet && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "#b25e09", fontWeight: 600, marginTop: 1 }}>
+                                        <Coins size={12} />{wallet.coins.toLocaleString()}
                                     </div>
-                                    {mapTemplates.map(tmpl => {
-                                        const active = selectedMap?.id === tmpl.id;
-                                        const dims = tmpl.dimensions.split("x");
+                                )}
+                            </div>
+                            <button onClick={handleSignOut} title="Sign out" style={{ width: 28, height: 28, borderRadius: 8, border: "1px solid #ecebf3", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#a3a0b3" }}>
+                                <Settings size={15} />
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {isGuest && (
+                    <div style={{ padding: "12px 16px", borderTop: "1px solid #ecebf3" }}>
+                        <button onClick={() => navigate("/login")} style={{ width: "100%", padding: "8px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(124,58,237,.25)" }}>
+                            Sign In / Create Account
+                        </button>
+                    </div>
+                )}
+            </aside>
+
+            {/* ── Main content ── */}
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100%" }}>
+                {/* Top bar */}
+                <div style={{ height: 60, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 28px", borderBottom: "1px solid #ecebf3", background: "rgba(246,246,251,0.8)", backdropFilter: "blur(12px)" }}>
+                    {/* Search — icon wrapper from components-inputs.html */}
+                    <div className="ov-input-wrap" style={{ width: 280, boxShadow: "0 2px 8px rgba(99,102,241,.06)" }}>
+                        <Search size={16} />
+                        <input type="text" placeholder="Search spaces, people…" readOnly style={{ cursor: "default" }} />
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "#a99fc4", background: "#f4f3f9", border: "1px solid #ece9f7", borderRadius: 6, padding: "1px 6px", flexShrink: 0 }}>⌘K</span>
+                    </div>
+                    {/* Actions */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {season && <span style={{ fontSize: 12, fontWeight: 600, color: "#6d28d9", background: "#f4f0fe", borderRadius: 999, padding: "4px 12px", border: "1px solid #e7ddfb" }}>✨ {season.name}</span>}
+                        {/* Daily Gift — "go" gradient from design system */}
+                        {!isGuest && (
+                            <button onClick={handleClaimGift} disabled={claiming || giftStatus.claimed}
+                                style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 9, border: "none",
+                                    background: giftStatus.claimed ? "#f4f3f9" : "linear-gradient(135deg,#34d399,#10b981)",
+                                    color: giftStatus.claimed ? "#a3a0b3" : "#fff", fontSize: 13, fontWeight: 700,
+                                    cursor: giftStatus.claimed ? "not-allowed" : "pointer",
+                                    boxShadow: giftStatus.claimed ? "none" : "0 6px 16px rgba(16,185,129,.30)", opacity: claiming ? 0.7 : 1 }}>
+                                <Gift size={15} />{claiming ? "Claiming…" : giftStatus.claimed ? "Claimed" : "Daily Gift"}
+                            </button>
+                        )}
+                        {claimResult && <span style={{ fontSize: 12, color: claimResult.startsWith("+") ? "#15a34a" : "#dc2626", fontWeight: 700 }}>{claimResult}</span>}
+                        <button style={{ width: 36, height: 36, borderRadius: 9, border: "1.5px solid #e7e2f5", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#6b6388" }}>
+                            <Bell size={16} />
+                        </button>
+                        {/* New Space — primary gradient from design system */}
+                        {!isGuest && (
+                            <button onClick={() => { setTab("create"); setError(""); setCreateSuccess(""); setSelectedMap(null); }}
+                                style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 16px", borderRadius: 11, border: "none",
+                                    background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 13, fontWeight: 800,
+                                    cursor: "pointer", boxShadow: "0 6px 16px rgba(124,58,237,.32)" }}>
+                                <Plus size={15} />New Space
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Guest banner */}
+                {isGuest && (
+                    <div style={{ padding: "8px 28px", background: "#fef3c7", borderBottom: "1px solid #f6e3c0", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, color: "#92400e" }}>
+                        <span>Browsing as guest — join a space and explore, but full features need an account.</span>
+                        <button onClick={() => navigate("/login")} style={{ padding: "4px 12px", borderRadius: 7, border: "none", background: "#b45309", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Create Account</button>
+                    </div>
+                )}
+
+                {/* Scrollable content */}
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                    <div style={{ maxWidth: 1040, margin: "0 auto", padding: "32px 28px 64px" }}>
+
+                        {/* Discover */}
+                        {tab === "all" && (
+                            <>
+                                <h1 style={{ margin: "0 0 4px", fontSize: 28, fontWeight: 760, color: "#191427", letterSpacing: "-0.03em" }}>Discover</h1>
+                                <p style={{ margin: "0 0 28px", fontSize: 14, color: "#6f6b82" }}>Jump into a live world — or build your own.</p>
+                                {loadingAll ? (
+                                    <p style={{ color: "#6f6b82", fontSize: 13 }}>Loading spaces…</p>
+                                ) : allSpaces.length === 0 ? (
+                                    <EmptyState icon="🌐" title="No spaces yet" sub="Be the first to create a space and invite friends!" />
+                                ) : (<>
+                                    {/* Featured */}
+                                    {allSpaces[0] && (
+                                        <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 0, background: "#fff", border: "1px solid #ecebf3", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(22,15,52,0.04), 0 6px 16px rgba(22,15,52,0.06)", marginBottom: 30 }}>
+                                            <div style={{ padding: 9 }}>
+                                                <WorldPreview tile={spaceTile(allSpaces[0].name)} height={232} radius={10} />
+                                            </div>
+                                            <div style={{ padding: "26px 28px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                                                <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: ".14em", color: "#6d28d9", marginBottom: 12, fontWeight: 700, textTransform: "uppercase" }}>Featured Space</div>
+                                                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 750, color: "#191427", letterSpacing: "-0.03em" }}>{allSpaces[0].name}</h2>
+                                                <div style={{ display: "flex", alignItems: "center", gap: 16, margin: "14px 0 20px", fontSize: 13, color: "#6f6b82" }}>
+                                                    <span>{allSpaces[0].dimensions}</span>
+                                                    <span>by {allSpaces[0].createdBy ?? "unknown"}</span>
+                                                </div>
+                                                <button onClick={() => navigate(`/arena?spaceId=${allSpaces[0].id}`)} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10, border: "none", background: "#6d28d9", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                                                    → Enter Space
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Grid */}
+                                    <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700, color: "#191427", letterSpacing: "-0.01em" }}>All spaces</h3>
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 18 }}>
+                                        {allSpaces.slice(1).map(s => <SpaceCard key={s.id} space={s} />)}
+                                    </div>
+                                </>)}
+                            </>
+                        )}
+
+                        {/* My Spaces */}
+                        {tab === "mine" && (
+                            <>
+                                <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 750, color: "#191427", letterSpacing: "-0.03em" }}>My Spaces</h1>
+                                {loadingMine ? <p style={{ color: "#6f6b82" }}>Loading…</p>
+                                : mySpaces.length === 0 ? <EmptyState icon="🏠" title="No spaces yet" sub="Create your first space to start building your world." />
+                                : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 18 }}>{mySpaces.map(s => <SpaceCard key={s.id} space={s} />)}</div>}
+                            </>
+                        )}
+
+                        {/* Create */}
+                        {tab === "create" && (
+                            <>
+                                <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 750, color: "#191427", letterSpacing: "-0.03em" }}>Create a Space</h1>
+                                {mapTemplates.length > 0 && (
+                                    <>
+                                        <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6f6b82" }}>Choose a map template (optional)</p>
+                                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 10, marginBottom: 24 }}>
+                                            <div onClick={() => { setSelectedMap(null); setNewSpaceDims("20x20"); }}
+                                                style={{ padding: 14, borderRadius: 12, border: `2px solid ${selectedMap === null ? "#6d28d9" : "#e3e1ee"}`, background: selectedMap === null ? "#f4f0fe" : "#fff", textAlign: "center", cursor: "pointer" }}>
+                                                <div style={{ fontSize: 28, marginBottom: 6 }}>🟦</div>
+                                                <p style={{ margin: "0 0 2px", fontSize: 12, fontWeight: 700, color: "#191427" }}>Blank</p>
+                                                <p style={{ margin: 0, fontSize: 10, color: "#6f6b82" }}>Custom size</p>
+                                            </div>
+                                            {mapTemplates.map(tmpl => {
+                                                const active = selectedMap?.id === tmpl.id;
+                                                const dims = tmpl.dimensions.split("x");
+                                                return (
+                                                    <div key={tmpl.id} onClick={() => { setSelectedMap(tmpl); setNewSpaceDims(tmpl.dimensions); }}
+                                                        style={{ padding: 14, borderRadius: 12, border: `2px solid ${active ? "#6d28d9" : "#e3e1ee"}`, background: active ? "#f4f0fe" : "#fff", textAlign: "center", cursor: "pointer" }}>
+                                                        <div style={{ fontSize: 28, marginBottom: 6 }}>🗺️</div>
+                                                        <p style={{ margin: "0 0 2px", fontSize: 12, fontWeight: 700, color: "#191427" }}>{tmpl.name}</p>
+                                                        <p style={{ margin: 0, fontSize: 10, color: "#6f6b82" }}>{dims[0]} × {dims[1]}</p>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                )}
+                                <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 420 }}>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: "#7c6f9c", letterSpacing: ".02em" }}>Space Name</label>
+                                        <div className="ov-input-wrap">
+                                            <User size={16} />
+                                            <input type="text" placeholder="My awesome space" value={newSpaceName} onChange={e => setNewSpaceName(e.target.value)} required />
+                                        </div>
+                                    </div>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: "#7c6f9c", letterSpacing: ".02em" }}>Dimensions</label>
+                                        <div className="ov-input-wrap">
+                                            <MessageSquare size={16} />
+                                            <select value={newSpaceDims} onChange={e => setNewSpaceDims(e.target.value)} disabled={!!selectedMap}>
+                                                <option value="10x10">10 × 10 — Small</option>
+                                                <option value="20x20">20 × 20 — Medium</option>
+                                                <option value="30x30">30 × 30 — Large</option>
+                                                <option value="50x50">50 × 50 — Huge</option>
+                                            </select>
+                                        </div>
+                                        {selectedMap && <span style={{ fontSize: 11, color: "#6f6b82" }}>Size set by template</span>}
+                                    </div>
+                                    {error && <p style={{ color: "#dc2626", fontSize: 13, margin: 0, padding: "8px 12px", background: "#fee2e2", borderRadius: 8 }}>{error}</p>}
+                                    {createSuccess && <p style={{ color: "#15a34a", fontSize: 13, margin: 0, padding: "8px 12px", background: "#dcfce7", borderRadius: 8 }}>{createSuccess}</p>}
+                                    <button style={{ padding: "12px 16px", borderRadius: 11, border: "none", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 6px 16px rgba(124,58,237,.32)" }} type="submit" disabled={creating}>
+                                        {creating ? "Creating…" : "✨ Create Space"}
+                                    </button>
+                                </form>
+                            </>
+                        )}
+
+                        {/* Shop */}
+                        {tab === "shop" && (
+                            <>
+                                <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 750, color: "#191427", letterSpacing: "-0.03em" }}>Daily Shop</h1>
+                                {buyMsg && <p style={{ color: "#15a34a", fontSize: 13, marginBottom: 16, padding: "8px 12px", background: "#dcfce7", borderRadius: 8 }}>{buyMsg}</p>}
+                                {shopItems.length === 0 ? <EmptyState icon="🛒" title="Shop is restocking" sub="New items rotate daily. Check back soon!" />
+                                : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 16 }}>
+                                    {shopItems.map(item => {
+                                        const r = RARITY_COLOR[item.rarity] ?? RARITY_COLOR.Common;
+                                        const price = RARITY_PRICE[item.rarity] ?? 50;
                                         return (
-                                            <div key={tmpl.id}
-                                                onClick={() => { setSelectedMap(tmpl); setNewSpaceDims(tmpl.dimensions); }}
-                                                style={{ ...S.templateCard, ...(active ? S.templateCardActive : {}) }}
-                                            >
-                                                <div style={S.templateThumb}>🗺️</div>
-                                                <p style={S.templateName}>{tmpl.name}</p>
-                                                <p style={S.templateDims}>{dims[0]} × {dims[1]}</p>
+                                            <div key={item.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "18px 14px 14px", borderRadius: 14, border: "1px solid #ecebf3", background: "#fff", textAlign: "center", gap: 6, boxShadow: "0 1px 2px rgba(22,15,52,0.04)" }}>
+                                                <div style={{ width: 72, height: 72, background: "#f4f3f9", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+                                                    <img src={`/items/${item.imageUrl.split("/").pop()}`} alt={item.name} style={{ maxWidth: 64, maxHeight: 64, imageRendering: "pixelated" }} onError={e => { (e.target as HTMLImageElement).src = `${API}${item.imageUrl}`; }} />
+                                                </div>
+                                                <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#191427" }}>{item.name}</p>
+                                                <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 9px", borderRadius: 10, background: r.bg, color: r.text }}>{r.label}</span>
+                                                <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+                                                    <Coins size={14} style={{ color: "#b25e09" }} />
+                                                    <span style={{ fontSize: 15, fontWeight: 700, color: "#b25e09" }}>{price}</span>
+                                                </div>
+                                                <button onClick={() => handleBuy(item.id)} disabled={buyingId === item.id} style={{ width: "100%", marginTop: 4, padding: "7px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(124,58,237,.25)" }}>
+                                                    {buyingId === item.id ? "…" : "Buy"}
+                                                </button>
                                             </div>
                                         );
                                     })}
-                                </div>
+                                </div>}
                             </>
                         )}
-                        <form onSubmit={handleCreate} style={S.form}>
-                            <div style={S.field}>
-                                <label style={S.label}>Space Name</label>
-                                <input style={S.input} type="text" placeholder="My awesome space"
-                                    value={newSpaceName} onChange={e => setNewSpaceName(e.target.value)} required />
-                            </div>
-                            <div style={S.field}>
-                                <label style={S.label}>Dimensions</label>
-                                <select style={S.input} value={newSpaceDims}
-                                    onChange={e => setNewSpaceDims(e.target.value)} disabled={!!selectedMap}>
-                                    <option value="10x10">10 × 10 — Small</option>
-                                    <option value="20x20">20 × 20 — Medium</option>
-                                    <option value="30x30">30 × 30 — Large</option>
-                                    <option value="50x50">50 × 50 — Huge</option>
-                                </select>
-                                {selectedMap && <span style={S.fieldHint}>Size set by template</span>}
-                            </div>
-                            {error && <p style={S.errorMsg}>{error}</p>}
-                            {createSuccess && <p style={S.successMsg}>{createSuccess}</p>}
-                            <button style={S.primaryBtn} type="submit" disabled={creating}>
-                                {creating ? "Creating…" : "✨ Create Space"}
-                            </button>
-                        </form>
-                    </section>
-                )}
 
-                {/* Shop */}
-                {tab === "shop" && (
-                    <section style={S.section}>
-                        <h2 style={S.sectionTitle}>Daily Shop</h2>
-                        {buyMsg && <p style={{ ...S.successMsg, marginBottom: 16 }}>{buyMsg}</p>}
-                        {shopItems.length === 0 ? (
-                            <EmptyState icon="🛒" title="Shop is restocking" sub="New items rotate daily. Check back soon!" />
-                        ) : (
-                            <div style={S.shopGrid}>
-                                {shopItems.map(item => {
-                                    const r = RARITY_COLOR[item.rarity] ?? RARITY_COLOR.Common;
-                                    const price = RARITY_PRICE[item.rarity] ?? 50;
-                                    return (
-                                        <div key={item.id} style={S.shopCard}>
-                                            <div style={S.shopSprite}>
-                                                <img src={`/items/${item.imageUrl.split("/").pop()}`} alt={item.name}
-                                                    style={{ maxWidth: 64, maxHeight: 64, imageRendering: "pixelated" }}
-                                                    onError={e => { (e.target as HTMLImageElement).src = `${API}${item.imageUrl}`; }}
-                                                />
-                                            </div>
-                                            <p style={S.shopItemName}>{item.name}</p>
-                                            <span style={{ ...S.rarityBadge, background: r.bg, color: r.text }}>{r.label}</span>
-                                            <div style={S.shopPrice}>
-                                                <span style={{ fontSize: 16 }}>🪙</span>
-                                                <span style={S.shopPriceNum}>{price}</span>
-                                            </div>
-                                            <button onClick={() => handleBuy(item.id)} disabled={buyingId === item.id} style={S.buyBtn}>
-                                                {buyingId === item.id ? "…" : "Buy"}
-                                            </button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </section>
-                )}
-
-                {/* Collection */}
-                {tab === "collection" && (
-                    <section style={S.section}>
-                        <h2 style={S.sectionTitle}>Collection Book</h2>
-                        {collection.length > 0 && (
-                            <p style={{ ...S.muted, marginBottom: 20 }}>
-                                {collection.filter(c => c.owned).length} / {collection.length} owned
-                            </p>
-                        )}
-                        {loadingCollection ? (
-                            <p style={S.muted}>Loading…</p>
-                        ) : collection.length === 0 ? (
-                            <EmptyState icon="📖" title="Collection is empty" sub="Buy items from the shop or earn them through quests to fill your collection." />
-                        ) : (
-                            <div style={S.collectionGrid}>
-                                {collection.map(item => {
-                                    const r = RARITY_COLOR[item.rarity] ?? RARITY_COLOR.Common;
-                                    return (
-                                        <div key={item.id} style={{ ...S.collectionCard, opacity: item.owned ? 1 : 0.4 }}>
-                                            <div style={S.collectionSprite}>
-                                                <img src={`/items/${item.imageUrl.split("/").pop()}`} alt={item.name}
-                                                    style={{ maxWidth: 48, maxHeight: 48, imageRendering: "pixelated", filter: item.owned ? "none" : "grayscale(1)" }}
-                                                    onError={e => { (e.target as HTMLImageElement).src = `${API}${item.imageUrl}`; }}
-                                                />
-                                            </div>
-                                            <p style={S.collectionName}>{item.name}</p>
-                                            <span style={{ ...S.rarityBadge, background: r.bg, color: r.text, fontSize: 9 }}>{r.label}</span>
-                                            {item.owned && <span style={S.ownedBadge}>✓ Owned</span>}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </section>
-                )}
-
-                {/* Quests */}
-                {tab === "quests" && (
-                    <section style={S.section}>
-                        <h2 style={S.sectionTitle}>Daily Quests</h2>
-                        {questsLoading ? (
-                            <p style={S.muted}>Loading…</p>
-                        ) : quests.length === 0 ? (
-                            <EmptyState icon="⚔️" title="No active quests" sub="Join a space and start exploring to unlock daily quests and earn rewards." />
-                        ) : (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                                {quests.map(q => {
-                                    const pct = Math.min(100, Math.round((q.progress / q.goalCount) * 100));
-                                    return (
-                                        <div key={q.id} style={{ ...S.questCard, ...(q.completed ? S.questCardDone : {}) }}>
-                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                                                <div>
-                                                    <p style={S.questTitle}>{q.title}</p>
-                                                    <p style={S.questDesc}>{q.description}</p>
-                                                </div>
-                                                <span style={{ ...S.questReward, ...(q.completed ? S.questRewardDone : {}) }}>
-                                                    {q.completed ? "✓ Done" : `${q.rewardType === "coins" ? "🪙" : "📦"} ${q.rewardValue}`}
-                                                </span>
-                                            </div>
-                                            <div style={S.questBar}>
-                                                <div style={{ ...S.questFill, width: `${pct}%`, ...(q.completed ? S.questFillDone : {}) }} />
-                                            </div>
-                                            <p style={S.questProgress}>{q.progress}/{q.goalCount}</p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </section>
-                )}
-
-                {/* Guestbook */}
-                {tab === "guestbook" && (
-                    <section style={S.section}>
-                        <h2 style={S.sectionTitle}>Guestbook</h2>
-                        <p style={S.subLabel}>Leave a message in any space's guestbook:</p>
-                        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-                            <select value={gbSpaceId} style={{ ...S.input, flex: 1 }}
-                                onChange={e => { setGbSpaceId(e.target.value); if (e.target.value) fetchGuestbook(e.target.value); }}>
-                                <option value="">Select a space…</option>
-                                {allSpaces.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
-                        </div>
-                        {gbSpaceId && (
-                            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                                <input style={{ ...S.input, flex: 1 }} placeholder="Write a message (max 200 chars)…"
-                                    maxLength={200} value={gbMsg} onChange={e => setGbMsg(e.target.value)}
-                                    onKeyDown={e => { if (e.key === "Enter") handleGuestbookPost(gbSpaceId); }} />
-                                <button onClick={() => handleGuestbookPost(gbSpaceId)}
-                                    disabled={gbSending || !gbMsg.trim()}
-                                    style={{ ...S.primaryBtn, marginTop: 0, padding: "10px 20px", flexShrink: 0 }}>
-                                    {gbSending ? "…" : "Post"}
-                                </button>
-                            </div>
-                        )}
-                        {gbError && <p style={{ ...S.errorMsg, marginBottom: 12 }}>{gbError}</p>}
-                        {!gbSpaceId ? (
-                            <EmptyState icon="📝" title="Pick a space above" sub="Select a space from the dropdown to read and write guestbook messages." />
-                        ) : guestbookLoading ? (
-                            <p style={S.muted}>Loading messages…</p>
-                        ) : guestbook.length === 0 ? (
-                            <EmptyState icon="✍️" title="No messages yet" sub="Be the first to leave a message in this space!" />
-                        ) : (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                {guestbook.map(entry => (
-                                    <div key={entry.id} style={S.gbEntry}>
-                                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                            <span style={S.gbAuthor} onClick={() => navigate(`/profile/${entry.userId}`)}>{entry.username}</span>
-                                            <span style={S.gbDate}>{new Date(entry.createdAt).toLocaleDateString()}</span>
-                                        </div>
-                                        <p style={{ margin: 0, fontSize: 13, color: "#cbd5e1" }}>{entry.message}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </section>
-                )}
-
-                {/* Neighbourhood */}
-                {tab === "neighbourhood" && (
-                    <section style={S.section}>
-                        <h2 style={S.sectionTitle}>Neighbourhood</h2>
-                        {loadingNeighbourhood ? (
-                            <p style={S.muted}>Loading…</p>
-                        ) : !neighbourhood ? (
-                            <EmptyState icon="👥" title="No neighbourhood yet" sub="Neighbourhoods form as you connect with other players. Start exploring spaces!" />
-                        ) : (
+                        {/* Collection */}
+                        {tab === "collection" && (
                             <>
-                                <p style={{ ...S.muted, marginBottom: 16 }}>{neighbourhood.name}</p>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                    {(neighbourhood.members ?? []).map(m => (
-                                        <div key={m.id} style={S.memberCard}>
-                                            <div style={S.memberAvatar}>
-                                                {(m.username?.[0] ?? "?").toUpperCase()}
+                                <h1 style={{ margin: "0 0 6px", fontSize: 26, fontWeight: 750, color: "#191427", letterSpacing: "-0.03em" }}>Collection</h1>
+                                {collection.length > 0 && <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6f6b82" }}>{collection.filter(c => c.owned).length} / {collection.length} owned</p>}
+                                {loadingCollection ? <p style={{ color: "#6f6b82" }}>Loading…</p>
+                                : collection.length === 0 ? <EmptyState icon="📦" title="Collection is empty" sub="Buy items from the shop or earn them through quests to fill your collection." />
+                                : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(120px,1fr))", gap: 12 }}>
+                                    {collection.map(item => {
+                                        const r = RARITY_COLOR[item.rarity] ?? RARITY_COLOR.Common;
+                                        return (
+                                            <div key={item.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 10px 10px", borderRadius: 12, textAlign: "center", gap: 4, border: "1px solid #ecebf3", background: "#fff", opacity: item.owned ? 1 : 0.4 }}>
+                                                <div style={{ width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f3f9", borderRadius: 8, marginBottom: 4 }}>
+                                                    <img src={`/items/${item.imageUrl.split("/").pop()}`} alt={item.name} style={{ maxWidth: 48, maxHeight: 48, imageRendering: "pixelated", filter: item.owned ? "none" : "grayscale(1)" }} onError={e => { (e.target as HTMLImageElement).src = `${API}${item.imageUrl}`; }} />
+                                                </div>
+                                                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#191427" }}>{item.name}</p>
+                                                <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 9px", borderRadius: 10, background: r.bg, color: r.text }}>{r.label}</span>
+                                                {item.owned && <span style={{ fontSize: 9, color: "#15a34a", fontWeight: 700 }}>✓ Owned</span>}
                                             </div>
-                                            <span style={S.memberName} onClick={() => navigate(`/profile/${m.id}`)}>
-                                                {m.username}
-                                            </span>
+                                        );
+                                    })}
+                                </div>}
+                            </>
+                        )}
+
+                        {/* Quests */}
+                        {tab === "quests" && (
+                            <>
+                                <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 750, color: "#191427", letterSpacing: "-0.03em" }}>Daily Quests</h1>
+                                {questsLoading ? <p style={{ color: "#6f6b82" }}>Loading…</p>
+                                : quests.length === 0 ? <EmptyState icon="🏆" title="No active quests" sub="Join a space and start exploring to unlock daily quests and earn rewards." />
+                                : <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                    {quests.map(q => {
+                                        const pct = Math.min(100, Math.round((q.progress / q.goalCount) * 100));
+                                        return (
+                                            <div key={q.id} style={{ padding: "16px 18px", borderRadius: 12, border: q.completed ? "1px solid #bbf7d0" : "1px solid #ecebf3", background: q.completed ? "#f0fdf4" : "#fff" }}>
+                                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                                                    <div>
+                                                        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#191427" }}>{q.title}</p>
+                                                        <p style={{ margin: "3px 0 0", fontSize: 12, color: "#6f6b82" }}>{q.description}</p>
+                                                    </div>
+                                                    <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 10, flexShrink: 0, background: q.completed ? "#dcfce7" : "#fef3c7", color: q.completed ? "#15a34a" : "#b25e09" }}>
+                                                        {q.completed ? "✓ Done" : `${q.rewardType === "coins" ? "🪙" : "📦"} ${q.rewardValue}`}
+                                                    </span>
+                                                </div>
+                                                <div style={{ width: "100%", height: 6, borderRadius: 3, background: "#f4f3f9", overflow: "hidden" }}>
+                                                    <div style={{ height: "100%", borderRadius: 3, background: q.completed ? "#15a34a" : "#6d28d9", width: `${pct}%`, transition: "width 0.3s" }} />
+                                                </div>
+                                                <p style={{ margin: "4px 0 0", fontSize: 11, color: "#a3a0b3" }}>{q.progress}/{q.goalCount}</p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>}
+                            </>
+                        )}
+
+                        {/* Guestbook */}
+                        {tab === "guestbook" && (
+                            <>
+                                <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 750, color: "#191427", letterSpacing: "-0.03em" }}>Guestbook</h1>
+                                <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6f6b82" }}>Leave a message in any space's guestbook:</p>
+                                <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                                    <select value={gbSpaceId} style={{ flex: 1, padding: "10px 12px", borderRadius: 11, border: "1.5px solid #e3e1ee", background: "#fff", color: "#191427", fontSize: 14, outline: "none" }}
+                                        onChange={e => { setGbSpaceId(e.target.value); if (e.target.value) fetchGuestbook(e.target.value); }}>
+                                        <option value="">Select a space…</option>
+                                        {allSpaces.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select>
+                                </div>
+                                {gbSpaceId && (
+                                    <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                                        <input style={{ flex: 1, padding: "10px 12px", borderRadius: 11, border: "1.5px solid #e3e1ee", background: "#fff", color: "#191427", fontSize: 14, outline: "none" }} placeholder="Write a message (max 200 chars)…" maxLength={200} value={gbMsg} onChange={e => setGbMsg(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleGuestbookPost(gbSpaceId); }} />
+                                        <button onClick={() => handleGuestbookPost(gbSpaceId)} disabled={gbSending || !gbMsg.trim()} style={{ padding: "10px 20px", borderRadius: 11, border: "none", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0, boxShadow: "0 4px 12px rgba(124,58,237,.25)" }}>{gbSending ? "…" : "Post"}</button>
+                                    </div>
+                                )}
+                                {gbError && <p style={{ color: "#dc2626", fontSize: 13, marginBottom: 12, padding: "8px 12px", background: "#fee2e2", borderRadius: 8 }}>{gbError}</p>}
+                                {!gbSpaceId ? <EmptyState icon="📝" title="Pick a space above" sub="Select a space from the dropdown to read and write guestbook messages." />
+                                : guestbookLoading ? <p style={{ color: "#6f6b82" }}>Loading messages…</p>
+                                : guestbook.length === 0 ? <EmptyState icon="✍️" title="No messages yet" sub="Be the first to leave a message in this space!" />
+                                : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    {guestbook.map(entry => (
+                                        <div key={entry.id} style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid #ecebf3", background: "#fff" }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                                <span style={{ fontWeight: 700, fontSize: 13, color: "#6d28d9", cursor: "pointer" }} onClick={() => navigate(`/profile/${entry.userId}`)}>{entry.username}</span>
+                                                <span style={{ fontSize: 11, color: "#a3a0b3" }}>{new Date(entry.createdAt).toLocaleDateString()}</span>
+                                            </div>
+                                            <p style={{ margin: 0, fontSize: 13, color: "#4d495f" }}>{entry.message}</p>
                                         </div>
                                     ))}
+                                </div>}
+                            </>
+                        )}
+
+                        {/* Neighbourhood */}
+                        {tab === "neighbourhood" && (
+                            <>
+                                <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 750, color: "#191427", letterSpacing: "-0.03em" }}>Neighbourhood</h1>
+                                {loadingNeighbourhood ? <p style={{ color: "#6f6b82" }}>Loading…</p>
+                                : !neighbourhood ? <EmptyState icon="👥" title="No neighbourhood yet" sub="Neighbourhoods form as you connect with other players. Start exploring spaces!" />
+                                : <>
+                                    <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6f6b82" }}>{neighbourhood.name}</p>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                        {(neighbourhood.members ?? []).map(m => (
+                                            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: "1px solid #ecebf3", background: "#fff" }}>
+                                                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(140deg,#6366f1,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{(m.username?.[0] ?? "?").toUpperCase()}</div>
+                                                <span style={{ fontSize: 14, fontWeight: 600, color: "#191427", cursor: "pointer" }} onClick={() => navigate(`/profile/${m.id}`)}>{m.username}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>}
+                            </>
+                        )}
+
+                        {/* Creator */}
+                        {tab === "creator" && (
+                            <>
+                                <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 750, color: "#191427", letterSpacing: "-0.03em" }}>Creator Studio</h1>
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "60px 24px", border: "1.5px dashed #d4d0e6", borderRadius: 16, background: "#fbfaff" }}>
+                                    <div style={{ fontSize: 64, marginBottom: 20 }}>🎨</div>
+                                    <h3 style={{ margin: "0 0 12px", fontSize: 22, fontWeight: 700, color: "#191427" }}>Coming Soon</h3>
+                                    <p style={{ margin: "0 0 32px", fontSize: 14, color: "#6f6b82", maxWidth: 360, lineHeight: 1.6 }}>Upload custom tile sets, design items, and submit them for the community to use.</p>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, width: "100%", maxWidth: 320 }}>
+                                        {["🖼️ Custom tile sprites", "🧩 Item design tools", "🏪 Publish to the shop", "💰 Earn coins from sales"].map(f => (
+                                            <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: "#fff", border: "1px solid #ecebf3", fontSize: 13, color: "#6f6b82", fontWeight: 500 }}>{f}</div>
+                                        ))}
+                                    </div>
                                 </div>
                             </>
                         )}
-                    </section>
-                )}
 
-                {/* Creator */}
-                {tab === "creator" && (
-                    <section style={S.section}>
-                        <h2 style={S.sectionTitle}>Creator Studio</h2>
-                        <div style={S.comingSoon}>
-                            <div style={{ fontSize: 64, marginBottom: 20 }}>🎨</div>
-                            <h3 style={S.comingSoonTitle}>Coming Soon</h3>
-                            <p style={S.comingSoonSub}>
-                                The Creator Studio will let you upload custom tile sets, design items, and submit them
-                                for the community to use in their spaces.
-                            </p>
-                            <div style={S.comingSoonFeatures}>
-                                <div style={S.featureItem}><span>🖼️</span> Custom tile sprites</div>
-                                <div style={S.featureItem}><span>🧩</span> Item design tools</div>
-                                <div style={S.featureItem}><span>🏪</span> Publish to the shop</div>
-                                <div style={S.featureItem}><span>💰</span> Earn coins from sales</div>
-                            </div>
-                        </div>
-                    </section>
-                )}
-            </main>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
-
-// ── Styles ─────────────────────────────────────────────────────────────────────
-
-const S: Record<string, React.CSSProperties> = {
-    page: {
-        minHeight: "100vh",
-        background: "linear-gradient(160deg, #0f172a 0%, #1a1035 50%, #0f1a2e 100%)",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        color: "#e2e8f0",
-    },
-
-    // ── Header ──
-    header: {
-        position: "sticky",
-        top: 0,
-        zIndex: 100,
-        background: "rgba(15,23,42,0.95)",
-        backdropFilter: "blur(12px)",
-        borderBottom: "1px solid rgba(255,255,255,0.07)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 28px",
-        height: 64,
-        gap: 16,
-    },
-    headerLeft: { display: "flex", alignItems: "center", gap: 16 },
-    headerRight: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0 },
-    logo: { display: "flex", alignItems: "center", gap: 10 },
-    logoPx: {
-        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-        color: "#fff",
-        fontWeight: 900,
-        fontSize: 13,
-        letterSpacing: "0.1em",
-        padding: "4px 8px",
-        borderRadius: 6,
-        fontFamily: "monospace",
-    },
-    logoText: {
-        fontSize: 17,
-        fontWeight: 700,
-        color: "#f1f5f9",
-        letterSpacing: "-0.3px",
-        whiteSpace: "nowrap",
-    },
-    userPill: {
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        background: "rgba(255,255,255,0.07)",
-        borderRadius: 20,
-        padding: "4px 12px 4px 4px",
-    },
-    userAvatar: {
-        width: 26, height: 26, borderRadius: "50%",
-        background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 11, fontWeight: 700, color: "#fff",
-    },
-    userName: { fontSize: 13, fontWeight: 600, color: "#e2e8f0" },
-    guestBadge: {
-        fontSize: 11, fontWeight: 600, color: "#94a3b8",
-        background: "rgba(255,255,255,0.07)", borderRadius: 10, padding: "3px 10px",
-    },
-    coinDisplay: {
-        display: "flex", alignItems: "center", gap: 6,
-        background: "rgba(234,179,8,0.12)", borderRadius: 20, padding: "5px 14px",
-    },
-    coinAmount: { fontSize: 14, fontWeight: 700, color: "#fbbf24" },
-    giftBtn: {
-        padding: "7px 16px", borderRadius: 20,
-        border: "none",
-        background: "linear-gradient(135deg,#16a34a,#15803d)",
-        color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
-        boxShadow: "0 2px 8px rgba(22,163,74,0.4)",
-        whiteSpace: "nowrap",
-    },
-    leaveBtn: {
-        padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.06)", color: "#94a3b8", fontSize: 12, cursor: "pointer",
-    },
-
-    // ── Banners ──
-    guestBanner: {
-        padding: "10px 28px", background: "rgba(251,191,36,0.1)", borderBottom: "1px solid rgba(251,191,36,0.2)",
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 16,
-        fontSize: 13, color: "#fcd34d",
-    },
-    guestSignupBtn: {
-        padding: "5px 14px", borderRadius: 8, border: "none",
-        background: "#fbbf24", color: "#1a1a1a", fontSize: 12, fontWeight: 700, cursor: "pointer",
-    },
-    seasonBanner: {
-        background: "linear-gradient(135deg,rgba(99,102,241,0.2),rgba(139,92,246,0.2))",
-        borderBottom: "1px solid rgba(139,92,246,0.2)",
-        padding: "10px 28px", display: "flex", alignItems: "center", justifyContent: "space-between",
-    },
-    seasonLabel: { fontSize: 10, fontWeight: 600, color: "#a78bfa", textTransform: "uppercase", letterSpacing: "0.1em", marginRight: 10 },
-    seasonName: { fontSize: 14, fontWeight: 700, color: "#e2e8f0" },
-    seasonTheme: { fontSize: 12, color: "#94a3b8", marginLeft: 10 },
-    seasonTimer: { fontSize: 12, color: "#a78bfa", fontWeight: 600 },
-
-    // ── Tab bar ──
-    tabBar: {
-        display: "flex", gap: 6, padding: "16px 28px 0",
-        overflowX: "auto", scrollbarWidth: "none",
-        borderBottom: "1px solid rgba(255,255,255,0.06)",
-    },
-    tabBtn: {
-        display: "flex", alignItems: "center", gap: 6,
-        padding: "8px 16px", borderRadius: "10px 10px 0 0",
-        border: "1px solid transparent", borderBottom: "none",
-        background: "rgba(255,255,255,0.04)",
-        color: "#94a3b8", fontSize: 13, fontWeight: 500,
-        cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-        transition: "all 0.15s",
-    },
-    tabBtnActive: {
-        background: "rgba(99,102,241,0.18)",
-        border: "1px solid rgba(99,102,241,0.35)", borderBottom: "none",
-        color: "#818cf8", fontWeight: 700,
-    },
-
-    // ── Content ──
-    content: { maxWidth: 860, margin: "0 auto", padding: "28px 16px 60px" },
-    section: {},
-    sectionTitle: { margin: "0 0 20px", fontSize: 20, fontWeight: 700, color: "#f1f5f9" },
-    subLabel: { margin: "0 0 12px", fontSize: 13, color: "#94a3b8" },
-    muted: { color: "#94a3b8", fontSize: 13, margin: 0 },
-
-    // ── Space cards ──
-    spaceGrid: {
-        display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16,
-    },
-    spaceCard: {
-        borderRadius: 14, overflow: "hidden",
-        border: "1px solid rgba(255,255,255,0.07)",
-        background: "rgba(255,255,255,0.04)",
-        transition: "transform 0.15s, border-color 0.15s",
-    },
-    spaceThumb: { height: 80, position: "relative", display: "flex", alignItems: "flex-end", padding: "0 10px 8px" },
-    spaceThumbLabel: {
-        fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)",
-        background: "rgba(0,0,0,0.4)", borderRadius: 6, padding: "2px 7px",
-    },
-    spaceCardBody: { padding: "12px 14px 14px" },
-    spaceAvatar: {
-        width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-        background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 12, fontWeight: 700, color: "#fff",
-    },
-    spaceName: { margin: 0, fontWeight: 700, fontSize: 14, color: "#f1f5f9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-    spaceMeta: { margin: "2px 0 0", fontSize: 11, color: "#94a3b8" },
-    sizeBadge: {
-        marginLeft: "auto", flexShrink: 0,
-        fontSize: 10, fontWeight: 600, color: "#818cf8",
-        background: "rgba(99,102,241,0.15)", borderRadius: 6, padding: "2px 7px",
-    },
-    joinBtn: {
-        width: "100%", marginTop: 10,
-        padding: "9px", borderRadius: 8, border: "none",
-        background: "linear-gradient(135deg,#4f46e5,#6d28d9)",
-        color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
-        transition: "opacity 0.15s",
-    },
-
-    // ── Create form ──
-    templateGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 24 },
-    templateCard: {
-        padding: 14, borderRadius: 12,
-        border: "2px solid rgba(255,255,255,0.08)",
-        background: "rgba(255,255,255,0.04)", textAlign: "center",
-        cursor: "pointer", transition: "all 0.15s",
-    },
-    templateCardActive: { border: "2px solid #6366f1", background: "rgba(99,102,241,0.12)" },
-    templateThumb: { fontSize: 28, marginBottom: 6 },
-    templateName: { margin: "0 0 2px", fontSize: 12, fontWeight: 700, color: "#e2e8f0" },
-    templateDims: { margin: 0, fontSize: 10, color: "#94a3b8" },
-    form: { display: "flex", flexDirection: "column", gap: 16 },
-    field: { display: "flex", flexDirection: "column", gap: 6 },
-    fieldHint: { fontSize: 11, color: "#94a3b8", marginTop: 2 },
-    label: { fontSize: 13, fontWeight: 600, color: "#94a3b8" },
-    input: {
-        padding: "10px 12px", borderRadius: 8,
-        border: "1px solid rgba(255,255,255,0.1)",
-        background: "rgba(255,255,255,0.07)", color: "#e2e8f0",
-        fontSize: 14, outline: "none",
-    },
-    primaryBtn: {
-        padding: "12px", borderRadius: 8, border: "none",
-        background: "linear-gradient(135deg,#4f46e5,#6d28d9)",
-        color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 4,
-    },
-    errorMsg: {
-        color: "#fca5a5", fontSize: 13, margin: 0,
-        padding: "8px 12px", background: "rgba(239,68,68,0.12)", borderRadius: 8,
-    },
-    successMsg: {
-        color: "#4ade80", fontSize: 13, margin: 0,
-        padding: "8px 12px", background: "rgba(74,222,128,0.1)", borderRadius: 8,
-    },
-
-    // ── Shop ──
-    shopGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16 },
-    shopCard: {
-        display: "flex", flexDirection: "column", alignItems: "center",
-        padding: "18px 14px 14px", borderRadius: 14,
-        border: "1px solid rgba(255,255,255,0.07)",
-        background: "rgba(255,255,255,0.04)", textAlign: "center",
-        gap: 6,
-    },
-    shopSprite: {
-        width: 72, height: 72, background: "rgba(0,0,0,0.3)", borderRadius: 10,
-        display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4,
-    },
-    shopItemName: { margin: 0, fontWeight: 700, fontSize: 13, color: "#e2e8f0" },
-    rarityBadge: {
-        fontSize: 10, fontWeight: 700, padding: "2px 9px", borderRadius: 10,
-    },
-    shopPrice: { display: "flex", alignItems: "center", gap: 4, marginTop: 2 },
-    shopPriceNum: { fontSize: 15, fontWeight: 700, color: "#fbbf24" },
-    buyBtn: {
-        width: "100%", marginTop: 4, padding: "7px", borderRadius: 7, border: "none",
-        background: "#4f46e5", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
-    },
-
-    // ── Collection ──
-    collectionGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 12 },
-    collectionCard: {
-        display: "flex", flexDirection: "column", alignItems: "center",
-        padding: "14px 10px 10px", borderRadius: 12, textAlign: "center", gap: 4,
-        border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.04)",
-        transition: "opacity 0.2s",
-    },
-    collectionSprite: {
-        width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center",
-        background: "rgba(0,0,0,0.3)", borderRadius: 8, marginBottom: 4,
-    },
-    collectionName: { margin: 0, fontSize: 11, fontWeight: 700, color: "#e2e8f0" },
-    ownedBadge: { fontSize: 9, color: "#4ade80", fontWeight: 700 },
-
-    // ── Quests ──
-    questCard: {
-        padding: "16px 18px", borderRadius: 12,
-        border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)",
-    },
-    questCardDone: { border: "1px solid rgba(74,222,128,0.2)", background: "rgba(74,222,128,0.05)" },
-    questTitle: { margin: 0, fontWeight: 700, fontSize: 14, color: "#e2e8f0" },
-    questDesc: { margin: "3px 0 0", fontSize: 12, color: "#94a3b8" },
-    questReward: {
-        fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 10, flexShrink: 0,
-        background: "rgba(245,158,11,0.15)", color: "#fbbf24",
-    },
-    questRewardDone: { background: "rgba(74,222,128,0.15)", color: "#4ade80" },
-    questBar: { width: "100%", height: 6, borderRadius: 3, background: "rgba(255,255,255,0.08)", overflow: "hidden", marginTop: 10 },
-    questFill: { height: "100%", borderRadius: 3, background: "#4f46e5", transition: "width 0.3s" },
-    questFillDone: { background: "#4ade80" },
-    questProgress: { margin: "4px 0 0", fontSize: 11, color: "#94a3b8" },
-
-    // ── Guestbook ──
-    gbEntry: {
-        padding: "12px 14px", borderRadius: 10,
-        border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.04)",
-    },
-    gbAuthor: { fontWeight: 700, fontSize: 13, color: "#818cf8", cursor: "pointer" },
-    gbDate: { fontSize: 11, color: "#94a3b8" },
-
-    // ── Neighbourhood ──
-    memberCard: {
-        display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
-        borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.04)",
-    },
-    memberAvatar: {
-        width: 36, height: 36, borderRadius: "50%",
-        background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0,
-    },
-    memberName: { fontSize: 14, fontWeight: 600, color: "#e2e8f0", cursor: "pointer" },
-
-    // ── Creator coming soon ──
-    comingSoon: {
-        display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center",
-        padding: "60px 24px",
-        border: "1px dashed rgba(99,102,241,0.3)", borderRadius: 16,
-        background: "rgba(99,102,241,0.04)",
-    },
-    comingSoonTitle: { margin: "0 0 12px", fontSize: 22, fontWeight: 700, color: "#e2e8f0" },
-    comingSoonSub: { margin: "0 0 32px", fontSize: 14, color: "#94a3b8", maxWidth: 360, lineHeight: 1.6 },
-    comingSoonFeatures: {
-        display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, width: "100%", maxWidth: 320,
-    },
-    featureItem: {
-        display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10,
-        background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)",
-        fontSize: 13, color: "#94a3b8", fontWeight: 500,
-    },
-};
