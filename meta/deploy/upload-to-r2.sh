@@ -5,9 +5,9 @@ set -euo pipefail
 # Requires: wrangler CLI logged in, or aws CLI configured with R2 S3-compatible endpoint
 #
 # Usage:
-  #  export R2_ENDPOINT=https://c943b6113b3e46ba2ca3e73a69e976ac.r2.cloudflarestorage.com
-  #  export R2_ACCESS_KEY_ID=a599e7624c46b7b1e1b0ca184007f377
-  #  export R2_SECRET_ACCESS_KEY=aaf43ace15a0b83fc429b6b2c3b2c208a3d4e74bbd91f8a6b798abab69c56a13
+  #  export R2_ENDPOINT=https://c943bsfsfsfsfsfsf976ac.r2.cloudflarestorage.com
+  #  export R2_ACCESS_KEY_ID=a59sfsfsfsfsfsfsfs4007f377
+  #  export R2_SECRET_ACCESS_KEY=asdsdsdsdd91sfsfsfsfsfsfsc56a13
   #  export R2_BUCKET=metaverse
   #  bash deploy/upload-to-r2.sh
 
