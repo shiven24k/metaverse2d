@@ -41,7 +41,7 @@ export const auth = betterAuth({
             },
         },
     },
-    trustedOrigins: ["http://localhost:5173"],
+    trustedOrigins: process.env.CORS_ORIGIN?.split(",") ?? ["http://localhost:5173", "http://localhost:5174"],
 });
 
 export type Auth = typeof auth;

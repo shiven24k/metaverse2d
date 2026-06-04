@@ -29,7 +29,7 @@ function PixelAvatar({ avatarId, size = 28, ring }: { avatarId?: string; size?: 
 
 interface DragItem { type: 'inventory-item' | 'element'; itemId?: string; elementId?: string; name?: string; width: number; height: number; imageUrl: string; }
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const ASSETS_URL = import.meta.env.VITE_ASSETS_URL || '';
 const MAX_RECONNECT_DELAY_MS = 30_000;

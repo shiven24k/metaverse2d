@@ -1,9 +1,11 @@
+import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { toNodeHandler } from 'better-auth/node';
 import { router } from './routes/v1';
 import { auth } from './lib/auth';
+import { attachWsServer } from './ws-server';
 
 const app = express();
 
@@ -24,6 +26,9 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api/v1", router);
 
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+const server = http.createServer(app);
+attachWsServer(server);
+
+server.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT} (HTTP + WS)`);
 });
