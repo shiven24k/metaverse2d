@@ -115,6 +115,9 @@ importers:
       '@types/jsonwebtoken':
         specifier: ^9.0.8
         version: 9.0.8
+      '@types/ws':
+        specifier: ^8.5.12
+        version: 8.5.14
       better-auth:
         specifier: ^1.6.11
         version: 1.6.11(@prisma/client@6.3.1(prisma@6.3.1(typescript@5.7.3))(typescript@5.7.3))(prisma@6.3.1(typescript@5.7.3))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(vitest@4.1.8(@types/node@20.17.6)(@vitest/coverage-v8@4.1.8)(vite@6.4.2(@types/node@20.17.6)(tsx@4.22.3)))
@@ -133,6 +136,9 @@ importers:
       multer:
         specifier: 1.4.5-lts.1
         version: 1.4.5-lts.1
+      ws:
+        specifier: ^8.18.0
+        version: 8.18.1(bufferutil@4.0.9)(utf-8-validate@5.0.10)
       zod:
         specifier: ^3.24.2
         version: 3.24.2
