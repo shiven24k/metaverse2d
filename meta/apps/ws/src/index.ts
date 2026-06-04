@@ -3,7 +3,8 @@ import { User } from './User';
 import { getRoomManager } from './getRoomManager';
 import client from '@repo/db/client';
 
-const wss = new WebSocketServer({ port: 3001 });
+const WS_PORT = parseInt(process.env.PORT || '3001', 10);
+const wss = new WebSocketServer({ port: WS_PORT });
 
 wss.on('connection', function connection(ws) {
   let user = new User(ws);

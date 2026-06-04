@@ -31,67 +31,67 @@ interface DragItem { type: 'inventory-item' | 'element'; itemId?: string; elemen
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const ASSETS_URL = import.meta.env.VITE_ASSETS_URL || '';
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
-// Frontend-hosted pixel art sprites (Vite public folder, no API prefix)
 const TILE_IMAGE: Record<string, string> = {
-    'el-grass':          '/tiles/grass.png',
-    'el-dirt':           '/tiles/dirt.png',
-    'el-water':          '/tiles/water.png',
-    'el-wall':           '/tiles/wall.png',
-    'el-path':           '/tiles/path.png',
-    'el-tree':           '/tiles/tree.png',
-    'el-fence':          '/tiles/fence.png',
-    'el-flower':         '/tiles/flower.png',
-    'el-sand':           '/tiles/sand.png',
-    'el-snow':           '/tiles/snow.png',
-    'el-lava':           '/tiles/lava.png',
-    'el-cobblestone':    '/tiles/cobblestone.png',
-    'el-wood-floor':     '/tiles/wood-floor.png',
-    'el-cave-floor':     '/tiles/cave-floor.png',
-    'el-bush':           '/tiles/bush.png',
-    'el-cactus':         '/tiles/cactus.png',
-    'el-rock':           '/tiles/rock.png',
-    'el-mushroom':       '/tiles/mushroom.png',
-    'el-pine-tree':      '/tiles/pine-tree.png',
-    'el-shallow-water':  '/tiles/shallow-water.png',
-    'el-waterfall':      '/tiles/waterfall.png',
-    'el-brick-wall':     '/tiles/brick-wall.png',
-    'el-window':         '/tiles/window.png',
-    'el-door':           '/tiles/door.png',
-    'el-roof':           '/tiles/roof.png',
-    'el-chest':          '/tiles/chest.png',
-    'el-office-carpet':  '/tiles/office-carpet.png',
-    'el-office-floor':   '/tiles/office-floor.png',
-    'el-glass-wall':     '/tiles/glass-wall.png',
+    'el-grass':          `${ASSETS_URL}/tiles/grass.png`,
+    'el-dirt':           `${ASSETS_URL}/tiles/dirt.png`,
+    'el-water':          `${ASSETS_URL}/tiles/water.png`,
+    'el-wall':           `${ASSETS_URL}/tiles/wall.png`,
+    'el-path':           `${ASSETS_URL}/tiles/path.png`,
+    'el-tree':           `${ASSETS_URL}/tiles/tree.png`,
+    'el-fence':          `${ASSETS_URL}/tiles/fence.png`,
+    'el-flower':         `${ASSETS_URL}/tiles/flower.png`,
+    'el-sand':           `${ASSETS_URL}/tiles/sand.png`,
+    'el-snow':           `${ASSETS_URL}/tiles/snow.png`,
+    'el-lava':           `${ASSETS_URL}/tiles/lava.png`,
+    'el-cobblestone':    `${ASSETS_URL}/tiles/cobblestone.png`,
+    'el-wood-floor':     `${ASSETS_URL}/tiles/wood-floor.png`,
+    'el-cave-floor':     `${ASSETS_URL}/tiles/cave-floor.png`,
+    'el-bush':           `${ASSETS_URL}/tiles/bush.png`,
+    'el-cactus':         `${ASSETS_URL}/tiles/cactus.png`,
+    'el-rock':           `${ASSETS_URL}/tiles/rock.png`,
+    'el-mushroom':       `${ASSETS_URL}/tiles/mushroom.png`,
+    'el-pine-tree':      `${ASSETS_URL}/tiles/pine-tree.png`,
+    'el-shallow-water':  `${ASSETS_URL}/tiles/shallow-water.png`,
+    'el-waterfall':      `${ASSETS_URL}/tiles/waterfall.png`,
+    'el-brick-wall':     `${ASSETS_URL}/tiles/brick-wall.png`,
+    'el-window':         `${ASSETS_URL}/tiles/window.png`,
+    'el-door':           `${ASSETS_URL}/tiles/door.png`,
+    'el-roof':           `${ASSETS_URL}/tiles/roof.png`,
+    'el-chest':          `${ASSETS_URL}/tiles/chest.png`,
+    'el-office-carpet':  `${ASSETS_URL}/tiles/office-carpet.png`,
+    'el-office-floor':   `${ASSETS_URL}/tiles/office-floor.png`,
+    'el-glass-wall':     `${ASSETS_URL}/tiles/glass-wall.png`,
 };
 
 const ITEM_IMAGE: Record<string, string> = {
-    'item-sofa':             '/items/sofa.png',
-    'item-table':            '/items/table.png',
-    'item-chair':            '/items/chair.png',
-    'item-rug':              '/items/rug.png',
-    'item-plant':            '/items/plant.png',
-    'item-lamp':             '/items/lamp.png',
-    'item-painting':         '/items/painting.png',
-    'item-bookshelf':        '/items/bookshelf.png',
-    'item-crystal':          '/items/crystal.png',
-    'item-throne':           '/items/throne.png',
-    'item-bed':              '/items/bed.png',
-    'item-counter':          '/items/counter.png',
-    'item-barrel':           '/items/barrel.png',
-    'item-sign':             '/items/sign.png',
-    'item-campfire':         '/items/campfire.png',
-    'item-fountain':         '/items/fountain.png',
-    'item-office-desk':      '/items/office-desk.png',
-    'item-office-chair':     '/items/office-chair.png',
-    'item-computer':         '/items/computer.png',
-    'item-whiteboard':       '/items/whiteboard.png',
-    'item-coffee-machine':   '/items/coffee-machine.png',
-    'item-filing-cabinet':   '/items/filing-cabinet.png',
-    'item-meeting-table':    '/items/meeting-table.png',
-    'item-vending-machine':  '/items/vending-machine.png',
-    'item-office-printer':   '/items/office-printer.png',
+    'item-sofa':             `${ASSETS_URL}/items/sofa.png`,
+    'item-table':            `${ASSETS_URL}/items/table.png`,
+    'item-chair':            `${ASSETS_URL}/items/chair.png`,
+    'item-rug':              `${ASSETS_URL}/items/rug.png`,
+    'item-plant':            `${ASSETS_URL}/items/plant.png`,
+    'item-lamp':             `${ASSETS_URL}/items/lamp.png`,
+    'item-painting':         `${ASSETS_URL}/items/painting.png`,
+    'item-bookshelf':        `${ASSETS_URL}/items/bookshelf.png`,
+    'item-crystal':          `${ASSETS_URL}/items/crystal.png`,
+    'item-throne':           `${ASSETS_URL}/items/throne.png`,
+    'item-bed':              `${ASSETS_URL}/items/bed.png`,
+    'item-counter':          `${ASSETS_URL}/items/counter.png`,
+    'item-barrel':           `${ASSETS_URL}/items/barrel.png`,
+    'item-sign':             `${ASSETS_URL}/items/sign.png`,
+    'item-campfire':         `${ASSETS_URL}/items/campfire.png`,
+    'item-fountain':         `${ASSETS_URL}/items/fountain.png`,
+    'item-office-desk':      `${ASSETS_URL}/items/office-desk.png`,
+    'item-office-chair':     `${ASSETS_URL}/items/office-chair.png`,
+    'item-computer':         `${ASSETS_URL}/items/computer.png`,
+    'item-whiteboard':       `${ASSETS_URL}/items/whiteboard.png`,
+    'item-coffee-machine':   `${ASSETS_URL}/items/coffee-machine.png`,
+    'item-filing-cabinet':   `${ASSETS_URL}/items/filing-cabinet.png`,
+    'item-meeting-table':    `${ASSETS_URL}/items/meeting-table.png`,
+    'item-vending-machine':  `${ASSETS_URL}/items/vending-machine.png`,
+    'item-office-printer':   `${ASSETS_URL}/items/office-printer.png`,
 };
 
 const ALL_TILE_PATHS = [...Object.values(TILE_IMAGE), ...Object.values(ITEM_IMAGE)];
@@ -309,8 +309,7 @@ const ArenaInner = () => {
         urls.forEach(url => {
             if (url && !imageCache.current.has(url)) {
                 const img = new Image();
-                // Tiles and items are frontend-hosted (Vite public/), not proxied through API
-                const isLocal = url.startsWith('/tiles/') || url.startsWith('/items/');
+                const isLocal = url.startsWith(ASSETS_URL + '/tiles/') || url.startsWith(ASSETS_URL + '/items/') || url.startsWith('/tiles/') || url.startsWith('/items/');
                 const fullUrl = url.startsWith('http') ? url : (isLocal ? url : `${API}${url}`);
                 img.onload = () => {
                     rerender();
@@ -2278,7 +2277,7 @@ const ArenaInner = () => {
                     <div style={{ position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)', background: '#fff', border: `1px solid ${interactionPopup.type === 'chest' ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.12)'}`, backdropFilter: 'blur(10px)', borderRadius: 14, padding: '20px 24px', minWidth: 240, maxWidth: 320, zIndex: 200, textAlign: 'center', boxShadow: interactionPopup.type === 'chest' ? '0 8px 32px rgba(251,191,36,0.2)' : '0 8px 32px rgba(0,0,0,0.4)' }}>
                         {interactionPopup.type === 'chest' && (
                             <div style={{ width: 68, height: 68, margin: '0 auto 12px', borderRadius: 14, background: 'radial-gradient(circle at 50% 36%, #fff6e0, #fde7a8 62%, #f6c64e)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(246,198,78,0.4)', position: 'relative' }}>
-                                <img src="/tiles/chest.png" alt="chest" style={{ width: 40, imageRendering: 'pixelated', filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.3))' }} />
+                                <img src={`${ASSETS_URL}/tiles/chest.png`} alt="chest" style={{ width: 40, imageRendering: 'pixelated', filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.3))' }} />
                                 {(['#f59e0b','#a855f7','#22c55e'] as string[]).map((c, i) => {
                                     const tops = [6, 4, 2]; const lefts = ['12%', '72%', '42%'];
                                     return <span key={i} style={{ position: 'absolute', top: tops[i], left: lefts[i], width: 5, height: 5, borderRadius: 2, background: c, transform: `rotate(${i*50}deg)` }} />;

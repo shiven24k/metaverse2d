@@ -4,6 +4,7 @@ import { useAuthStore } from "./stores/authStore";
 import { Compass, Home, ShoppingBag, Package, Trophy, Plus, Settings, Coins, Gift, Bell, Search, User, MessageSquare, LogIn } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const ASSETS_URL = import.meta.env.VITE_ASSETS_URL || "";
 
 interface Space {
     id: string;
@@ -354,11 +355,11 @@ export default function SpacePage() {
         return (
             <div style={{ position: "relative", height, overflow: "hidden", borderRadius: radius, imageRendering: "pixelated",
                 backgroundColor: tint,
-                backgroundImage: `url(/tiles/${tile}.png)`,
+                backgroundImage: `url(${ASSETS_URL}/tiles/${tile}.png)`,
                 backgroundSize: "44px 44px", backgroundRepeat: "repeat" }}>
                 <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(0,0,0,0.12) 0%,transparent 36%,transparent 60%,rgba(0,0,0,0.28) 100%)" }} />
                 {items.map((it, i) => (
-                    <img key={i} src={`/${it.kind ?? "items"}/${it.name}.png`} alt=""
+                    <img key={i} src={`${ASSETS_URL}/${it.kind ?? "items"}/${it.name}.png`} alt=""
                         style={{ position: "absolute", left: it.x, top: it.y, width: it.w, imageRendering: "pixelated", objectFit: "contain", filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.4))" }}
                     />
                 ))}
@@ -441,7 +442,7 @@ export default function SpacePage() {
                 {/* Logo */}
                 <div style={{ padding: "20px 20px 14px", display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(140deg,#6366f1,#8b5cf6 52%,#d946ef)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 3px 8px rgba(124,58,237,.34), inset 0 1.5px 0 rgba(255,255,255,.4)" }}>
-                        <img src="/items/computer.png" alt="" style={{ width: 18, imageRendering: "pixelated", filter: "drop-shadow(0 1px 1px rgba(0,0,0,.4))" }} />
+                        <img src={`${ASSETS_URL}/items/computer.png`} alt="" style={{ width: 18, imageRendering: "pixelated", filter: "drop-shadow(0 1px 1px rgba(0,0,0,.4))" }} />
                     </div>
                     <span style={{ fontSize: 16, fontWeight: 700, color: "#191427", letterSpacing: "-0.02em" }}>
                         OfficeVerse <span style={{ color: "#6f6b82", fontWeight: 600 }}>2D</span>
@@ -690,7 +691,7 @@ export default function SpacePage() {
                                         return (
                                             <div key={item.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "18px 14px 14px", borderRadius: 14, border: "1px solid #ecebf3", background: "#fff", textAlign: "center", gap: 6, boxShadow: "0 1px 2px rgba(22,15,52,0.04)" }}>
                                                 <div style={{ width: 72, height: 72, background: "#f4f3f9", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
-                                                    <img src={`/items/${item.imageUrl.split("/").pop()}`} alt={item.name} style={{ maxWidth: 64, maxHeight: 64, imageRendering: "pixelated" }} onError={e => { (e.target as HTMLImageElement).src = `${API}${item.imageUrl}`; }} />
+                                                    <img src={`${ASSETS_URL}/items/${item.imageUrl.split("/").pop()}`} alt={item.name} style={{ maxWidth: 64, maxHeight: 64, imageRendering: "pixelated" }} onError={e => { (e.target as HTMLImageElement).src = `${API}${item.imageUrl}`; }} />
                                                 </div>
                                                 <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#191427" }}>{item.name}</p>
                                                 <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 9px", borderRadius: 10, background: r.bg, color: r.text }}>{r.label}</span>
@@ -721,7 +722,7 @@ export default function SpacePage() {
                                         return (
                                             <div key={item.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 10px 10px", borderRadius: 12, textAlign: "center", gap: 4, border: "1px solid #ecebf3", background: "#fff", opacity: item.owned ? 1 : 0.4 }}>
                                                 <div style={{ width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f3f9", borderRadius: 8, marginBottom: 4 }}>
-                                                    <img src={`/items/${item.imageUrl.split("/").pop()}`} alt={item.name} style={{ maxWidth: 48, maxHeight: 48, imageRendering: "pixelated", filter: item.owned ? "none" : "grayscale(1)" }} onError={e => { (e.target as HTMLImageElement).src = `${API}${item.imageUrl}`; }} />
+                                                    <img src={`${ASSETS_URL}/items/${item.imageUrl.split("/").pop()}`} alt={item.name} style={{ maxWidth: 48, maxHeight: 48, imageRendering: "pixelated", filter: item.owned ? "none" : "grayscale(1)" }} onError={e => { (e.target as HTMLImageElement).src = `${API}${item.imageUrl}`; }} />
                                                 </div>
                                                 <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#191427" }}>{item.name}</p>
                                                 <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 9px", borderRadius: 10, background: r.bg, color: r.text }}>{r.label}</span>
