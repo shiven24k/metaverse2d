@@ -13,6 +13,7 @@ const PIXEL_PALETTES: Record<string, { skin: string; hair: string; shirt: string
     teal:             { skin: '#f1c27d', hair: '#134e4a', shirt: '#14b8a6' },
     rose:             { skin: '#f1c27d', hair: '#831843', shirt: '#ec4899' },
 };
+
 function PixelAvatar({ avatarId, size = 28, ring }: { avatarId?: string; size?: number; ring?: string }) {
     const P = PIXEL_PALETTES[avatarId ?? 'default'] ?? PIXEL_PALETTES.default;
     const u = size / 8;
