@@ -33,7 +33,6 @@ interface DragItem { type: 'inventory-item' | 'element'; itemId?: string; elemen
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const ASSETS_URL = import.meta.env.VITE_ASSETS_URL || '';
-const MAX_RECONNECT_DELAY_MS = 30_000;
 
 const TILE_IMAGE: Record<string, string> = {
     'el-grass':          `${ASSETS_URL}/tiles/grass.png`,
@@ -192,6 +191,7 @@ const ArenaInner = () => {
     const containerRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectAttempts = useRef(0);
+    const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [reconnecting, setReconnecting] = useState(false);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -650,6 +650,12 @@ const ArenaInner = () => {
                 type: 'join',
                 payload: { spaceId, token: token || '' },
             }));
+            if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+            heartbeatRef.current = setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 25_000);
         };
 
         ws.onmessage = (event) => {
@@ -658,9 +664,13 @@ const ArenaInner = () => {
         };
 
         ws.onclose = () => {
+            if (heartbeatRef.current) {
+                clearInterval(heartbeatRef.current);
+                heartbeatRef.current = null;
+            }
             setConnected(false);
             reconnectAttempts.current++;
-            const delay = Math.min(1000 * reconnectAttempts.current, MAX_RECONNECT_DELAY_MS);
+            const delay = Math.min(500 * Math.pow(2, reconnectAttempts.current - 1), 4_000);
             setReconnecting(true);
             setError(`Reconnecting (attempt ${reconnectAttempts.current})...`);
             setTimeout(connect, delay);
@@ -674,6 +684,10 @@ const ArenaInner = () => {
     useEffect(() => {
         connect();
         return () => {
+            if (heartbeatRef.current) {
+                clearInterval(heartbeatRef.current);
+                heartbeatRef.current = null;
+            }
             wsRef.current?.close();
             wsRef.current = null;
         };
@@ -1179,6 +1193,9 @@ const ArenaInner = () => {
                 }
                 break;
             }
+
+            case 'pong':
+                break;
         }
     };
     handleMessageRef.current = handleMessage;

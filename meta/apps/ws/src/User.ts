@@ -246,6 +246,10 @@ export class User {
                     break;
                 }
 
+                case "ping":
+                    this.send({ type: "pong" });
+                    break;
+
                 case "move": {
                     const moveX = parsedData.payload.x;
                     const moveY = parsedData.payload.y;

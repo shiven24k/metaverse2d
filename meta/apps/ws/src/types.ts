@@ -45,6 +45,10 @@ type ActivityChangedIncoming = {
     payload: { activity: 'sitting' | 'working' | null };
 };
 
+type PingMessage = {
+    type: 'ping';
+};
+
 export type IncomingMessage =
     | JoinMessage
     | MoveMessage
@@ -54,7 +58,8 @@ export type IncomingMessage =
     | AvatarChangedIncomingMessage
     | GiftIncomingMessage
     | EditorRelayIncoming
-    | ActivityChangedIncoming;
+    | ActivityChangedIncoming
+    | PingMessage;
 
 // ─── Outgoing messages (server → client) ─────────────────────────────────────
 
@@ -131,6 +136,10 @@ type ActivityChangedOutgoing = {
     payload: { userId?: string; activity: 'sitting' | 'working' | null };
 };
 
+type PongMessage = {
+    type: 'pong';
+};
+
 export type OutgoingMessage =
     | SpaceJoinedMessage
     | UserJoinedMessage
@@ -144,4 +153,5 @@ export type OutgoingMessage =
     | AvatarChangedOutgoingMessage
     | EditorRelayOutgoing
     | NpcMovedMessage
-    | ActivityChangedOutgoing;
+    | ActivityChangedOutgoing
+    | PongMessage;

@@ -1,4 +1,4 @@
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'http';
 import { User } from '../../ws/src/User';
 import { getRoomManager } from '../../ws/src/getRoomManager';
@@ -192,4 +192,11 @@ export function attachWsServer(httpServer: Server): void {
     });
 
     setInterval(npcTick, 500);
+
+    // Keep connections alive through Cloudflare (drops idle WS after ~100s on free plan)
+    setInterval(() => {
+        wss.clients.forEach(socket => {
+            if (socket.readyState === WebSocket.OPEN) socket.ping();
+        });
+    }, 30_000);
 }
