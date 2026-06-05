@@ -382,6 +382,7 @@ const ArenaInner = () => {
     const [selectedPlaced, setSelectedPlaced] = useState<{ type: 'element' | 'item'; id: string } | null>(null);
     const [editorTab, setEditorTab] = useState<'elements' | 'items' | 'npcs'>('elements');
     const isPainting = useRef(false);
+    const paintSnapshotSaved = useRef(false);
     const lastPlacedCell = useRef<{ x: number; y: number } | null>(null);
     const paintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isMoving = useRef(false);
@@ -590,7 +591,6 @@ const ArenaInner = () => {
     const batchBuffer = useRef<{ type: 'element' | 'item'; id: string; x: number; y: number }[]>([]);
     const batchFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const flushBatch = useCallback(async () => {
-        saveUndoSnapshot();
         if (batchFlushTimer.current) { clearTimeout(batchFlushTimer.current); batchFlushTimer.current = null; }
         const buf = batchBuffer.current;
         if (buf.length === 0) return;
@@ -614,7 +614,9 @@ const ArenaInner = () => {
                 });
                 if (!res.ok) { const d = await res.json(); setEditorError(d.message || 'Batch item placement failed'); }
             }
-            await Promise.all([fetchSpace(), itemBuf.length > 0 ? fetchInventory() : Promise.resolve()]);
+            // Sync server truth in background — optimistic tiles are already on screen
+            fetchSpace();
+            if (itemBuf.length > 0) fetchInventory();
         } catch (err) {
             console.error('Batch placement error:', err);
         }
@@ -1413,20 +1415,38 @@ const ArenaInner = () => {
         }
         if (selectedElement) {
             if (!isAreaFree(pos.x, pos.y, selectedElement.width, selectedElement.height)) return;
+            // Snapshot captured before first optimistic tile so undo restores clean state
+            if (!paintSnapshotSaved.current) { saveUndoSnapshot(); paintSnapshotSaved.current = true; }
+            // Optimistic: show tile immediately, server syncs in background
+            const tempId = `_opt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+            const newEntry: SpaceElement = { id: tempId, element: selectedElement, x: pos.x, y: pos.y };
+            spaceElementsRef.current = [...spaceElementsRef.current, newEntry];
+            setSpaceElements(spaceElementsRef.current);
             batchBuffer.current.push({ type: 'element', id: selectedElement.id, x: pos.x, y: pos.y });
             if (!batchFlushTimer.current) {
-                batchFlushTimer.current = setTimeout(() => flushBatch(), 300);
+                batchFlushTimer.current = setTimeout(() => flushBatch(), 500);
             }
             return;
         }
         if (selectedItem) {
             if (!isAreaFree(pos.x, pos.y, selectedItem.width, selectedItem.height)) return;
+            if (!paintSnapshotSaved.current) { saveUndoSnapshot(); paintSnapshotSaved.current = true; }
+            const tempId = `_opt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+            const newEntry: PlacedItem = {
+                id: tempId,
+                item: { id: selectedItem.itemId, name: selectedItem.name, imageUrl: selectedItem.imageUrl, width: selectedItem.width, height: selectedItem.height, blocking: selectedItem.blocking },
+                x: pos.x,
+                y: pos.y,
+                layer: placementLayer,
+            };
+            placedItemsRef.current = [...placedItemsRef.current, newEntry];
+            setPlacedItems(placedItemsRef.current);
             batchBuffer.current.push({ type: 'item', id: selectedItem.itemId, x: pos.x, y: pos.y });
             if (!batchFlushTimer.current) {
-                batchFlushTimer.current = setTimeout(() => flushBatch(), 300);
+                batchFlushTimer.current = setTimeout(() => flushBatch(), 500);
             }
         }
-    }, [editMode, eraserMode, selectedElement, selectedItem, isAreaFree, deletePlacedElement, deletePlacedItem, flushBatch]);
+    }, [editMode, eraserMode, selectedElement, selectedItem, placementLayer, isAreaFree, deletePlacedElement, deletePlacedItem, flushBatch]);
 
     const handleCanvasDrop = useCallback((e: React.DragEvent<HTMLCanvasElement>) => {
         e.preventDefault();
@@ -1477,6 +1497,7 @@ const ArenaInner = () => {
 
         if (eraserMode || selectedElement || selectedItem) {
             isPainting.current = true;
+            paintSnapshotSaved.current = false;
             lastPlacedCell.current = pos;
             paintPlace(pos);
         } else if (selectedPlaced) {
