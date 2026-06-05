@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "build": "npx esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --tsconfig=tsconfig.json",
+    "build": "npx esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --tsconfig=tsconfig.json --external:@prisma/client",
     "start": "node --env-file=.env dist/index.js",
     "dev": "node_modules/.bin/tsx watch --env-file=.env src/index.ts"
   },
@@ -15,6 +15,7 @@
     "tsx": "^4.22.3"
   },
   "dependencies": {
+    "@prisma/client": "^6.3.1",
     "@repo/db": "workspace:*",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/ws": "^8.5.12",
