@@ -604,7 +604,26 @@ const ArenaInner = () => {
                     headers: authHeaders,
                     body: JSON.stringify({ spaceId, elements: elementBuf }),
                 });
-                if (!res.ok) { const d = await res.json(); setEditorError(d.message || 'Batch element placement failed'); }
+                if (!res.ok) {
+                    const d = await res.json();
+                    setEditorError(d.message || 'Batch element placement failed');
+                } else {
+                    const data = await res.json();
+                    const created: { id: string; x: number; y: number }[] = data.elements || [];
+                    const realIdByPos = new Map(created.map(c => [`${c.x},${c.y}`, c.id]));
+                    const sentPositions = new Set(elementBuf.map(b => `${b.x},${b.y}`));
+                    spaceElementsRef.current = spaceElementsRef.current.reduce<SpaceElement[]>((acc, e) => {
+                        if (e.id.startsWith('_opt_') && sentPositions.has(`${e.x},${e.y}`)) {
+                            const realId = realIdByPos.get(`${e.x},${e.y}`);
+                            if (realId) acc.push({ ...e, id: realId });
+                            // server rejected this placement (collision/out-of-bounds) — drop the optimistic tile
+                        } else {
+                            acc.push(e);
+                        }
+                        return acc;
+                    }, []);
+                    setSpaceElements(spaceElementsRef.current);
+                }
             }
             if (itemBuf.length > 0) {
                 const res = await fetch(`${API}/api/v1/space/place/batch`, {
@@ -612,11 +631,28 @@ const ArenaInner = () => {
                     headers: authHeaders,
                     body: JSON.stringify({ spaceId, items: itemBuf.map(i => ({ ...i, layer: placementLayer })) }),
                 });
-                if (!res.ok) { const d = await res.json(); setEditorError(d.message || 'Batch item placement failed'); }
+                if (!res.ok) {
+                    const d = await res.json();
+                    setEditorError(d.message || 'Batch item placement failed');
+                } else {
+                    const data = await res.json();
+                    const created: { id: string; x: number; y: number }[] = data.items || [];
+                    const realIdByPos = new Map(created.map(c => [`${c.x},${c.y}`, c.id]));
+                    const sentPositions = new Set(itemBuf.map(b => `${b.x},${b.y}`));
+                    placedItemsRef.current = placedItemsRef.current.reduce<PlacedItem[]>((acc, p) => {
+                        if (p.id.startsWith('_opt_') && sentPositions.has(`${p.x},${p.y}`)) {
+                            const realId = realIdByPos.get(`${p.x},${p.y}`);
+                            if (realId) acc.push({ ...p, id: realId });
+                            // server rejected this placement (collision/out-of-bounds/no inventory) — drop the optimistic tile
+                        } else {
+                            acc.push(p);
+                        }
+                        return acc;
+                    }, []);
+                    setPlacedItems(placedItemsRef.current);
+                }
+                fetchInventory();
             }
-            // Sync server truth in background — optimistic tiles are already on screen
-            fetchSpace();
-            if (itemBuf.length > 0) fetchInventory();
         } catch (err) {
             console.error('Batch placement error:', err);
         }

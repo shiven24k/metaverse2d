@@ -309,8 +309,11 @@ spaceRouter.post("/element/batch", userMiddleware, async (req, res) => {
         return;
     }
 
-    await client.spaceElements.createMany({ data: toCreate });
-    res.json({ message: `Placed ${toCreate.length} elements`, count: toCreate.length });
+    const created = await client.spaceElements.createManyAndReturn({
+        data: toCreate,
+        select: { id: true, elementId: true, x: true, y: true },
+    });
+    res.json({ message: `Placed ${created.length} elements`, count: created.length, elements: created });
 });
 
 spaceRouter.post("/place/batch", userMiddleware, async (req, res) => {
@@ -385,17 +388,20 @@ spaceRouter.post("/place/batch", userMiddleware, async (req, res) => {
         return;
     }
 
-    await client.$transaction(async (tx) => {
+    const created = await client.$transaction(async (tx) => {
         for (const [itemId, qty] of toDeduct) {
             await tx.inventoryItem.updateMany({
                 where: { userId: req.userId!, itemId },
                 data: { quantity: { decrement: qty } },
             });
         }
-        await tx.placedItem.createMany({ data: toPlace });
+        return tx.placedItem.createManyAndReturn({
+            data: toPlace,
+            select: { id: true, itemId: true, x: true, y: true, layer: true },
+        });
     });
 
-    res.json({ message: `Placed ${toPlace.length} items`, count: toPlace.length });
+    res.json({ message: `Placed ${created.length} items`, count: created.length, items: created });
 });
 
 // ─── Placement routes ──────────────────────────────────────────────────────────
