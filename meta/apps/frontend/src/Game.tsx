@@ -186,6 +186,7 @@ const ArenaInner = () => {
     const spaceId = searchParams.get('spaceId') || '';
 
     const isGuest = useAuthStore((s) => s.isGuest);
+    const clearAuth = useAuthStore((s) => s.clearAuth);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -228,6 +229,11 @@ const ArenaInner = () => {
     const [questsLoading, setQuestsLoading] = useState(false);
     const [editorError, setEditorError] = useState('');
     const [toasts, setToasts] = useState<{ id: string; message: string; type: 'info' | 'success' | 'warning' }[]>([]);
+    const addToast = useCallback((message: string, type: 'info' | 'success' | 'warning' = 'info') => {
+        const id = Math.random().toString(36).slice(2);
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+    }, []);
     const [spaceName, setSpaceName] = useState('');
     const [walletCoins, setWalletCoins] = useState<number | null>(null);
     const [showNewMap, setShowNewMap] = useState(false);
@@ -590,6 +596,17 @@ const ArenaInner = () => {
 
     const batchBuffer = useRef<{ type: 'element' | 'item'; id: string; x: number; y: number }[]>([]);
     const batchFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Session expired / invalid token (e.g. BETTER_AUTH_SECRET rotated, stale localStorage token) —
+    // surface it to the user and send them back to sign in, instead of silently dropping placements.
+    const handleAuthFailure = useCallback(() => {
+        batchBuffer.current = [];
+        if (batchFlushTimer.current) { clearTimeout(batchFlushTimer.current); batchFlushTimer.current = null; }
+        addToast('Session expired, please sign in again', 'warning');
+        clearAuth();
+        navigate('/login');
+    }, [addToast, clearAuth, navigate]);
+
     const flushBatch = useCallback(async () => {
         if (batchFlushTimer.current) { clearTimeout(batchFlushTimer.current); batchFlushTimer.current = null; }
         const buf = batchBuffer.current;
@@ -599,16 +616,26 @@ const ArenaInner = () => {
         const itemBuf = buf.filter(b => b.type === 'item').map(b => ({ itemId: b.id, x: b.x, y: b.y }));
         try {
             if (elementBuf.length > 0) {
+                const elementPayload = { spaceId, elements: elementBuf };
+                console.log('[batch] POST /space/element/batch request:', elementPayload, 'auth header present:', !!authHeaders.Authorization);
                 const res = await fetch(`${API}/api/v1/space/element/batch`, {
                     method: 'POST',
                     headers: authHeaders,
-                    body: JSON.stringify({ spaceId, elements: elementBuf }),
+                    body: JSON.stringify(elementPayload),
                 });
+                if (res.status === 401 || res.status === 403) {
+                    const d = await res.json().catch(() => ({}));
+                    console.error('[batch] POST /space/element/batch auth failure:', res.status, d);
+                    handleAuthFailure();
+                    return;
+                }
                 if (!res.ok) {
                     const d = await res.json();
+                    console.error('[batch] POST /space/element/batch failed:', res.status, d);
                     setEditorError(d.message || 'Batch element placement failed');
                 } else {
                     const data = await res.json();
+                    console.log('[batch] POST /space/element/batch response:', data);
                     const created: { id: string; x: number; y: number }[] = data.elements || [];
                     const realIdByPos = new Map(created.map(c => [`${c.x},${c.y}`, c.id]));
                     const sentPositions = new Set(elementBuf.map(b => `${b.x},${b.y}`));
@@ -631,6 +658,12 @@ const ArenaInner = () => {
                     headers: authHeaders,
                     body: JSON.stringify({ spaceId, items: itemBuf.map(i => ({ ...i, layer: placementLayer })) }),
                 });
+                if (res.status === 401 || res.status === 403) {
+                    const d = await res.json().catch(() => ({}));
+                    console.error('[batch] POST /space/place/batch auth failure:', res.status, d);
+                    handleAuthFailure();
+                    return;
+                }
                 if (!res.ok) {
                     const d = await res.json();
                     setEditorError(d.message || 'Batch item placement failed');
@@ -659,7 +692,7 @@ const ArenaInner = () => {
         if (batchBuffer.current.length > 0) {
             flushBatch();
         }
-    }, [spaceId, authHeaders, placementLayer]);
+    }, [spaceId, authHeaders, placementLayer, handleAuthFailure]);
 
     const canvasToGrid = (clientX: number, clientY: number): { x: number; y: number } | null => {
         const canvas = canvasRef.current;
@@ -1047,12 +1080,6 @@ const ArenaInner = () => {
         }, 200);
         return () => clearInterval(timer);
     }, [chatBubbles.length]);
-
-    const addToast = useCallback((message: string, type: 'info' | 'success' | 'warning' = 'info') => {
-        const id = Math.random().toString(36).slice(2);
-        setToasts(prev => [...prev, { id, message, type }]);
-        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
-    }, []);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleMessage = (message: any) => {
@@ -1822,15 +1849,29 @@ const ArenaInner = () => {
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        const container = containerRef.current;
+        if (!canvas || !container) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
+
+        // Keep the canvas backing-store resolution in sync with its displayed (container) size.
+        // If this drifts (e.g. canvas still at its default 300x150 while CSS stretches it to fill
+        // the container), the world/camera math below is computed in the wrong coordinate space
+        // and the world renders shifted off-canvas to the left/top.
+        const cw = container.clientWidth;
+        const ch = container.clientHeight;
+        if (cw > 0 && ch > 0 && (canvas.width !== cw || canvas.height !== ch)) {
+            canvas.width = cw;
+            canvas.height = ch;
+        }
+
         const vpW = canvas.width;
         const vpH = canvas.height;
         const worldW = spaceDims.width * 50;
         const worldH = spaceDims.height * 50;
 
-        // When the world fits inside the viewport, center it; otherwise pan to follow player.
+        // When the world fits inside the viewport, center it; otherwise clamp the camera so it
+        // pans to follow the player without ever exposing space beyond the world's edges.
         const offsetX = worldW < vpW ? Math.floor((vpW - worldW) / 2) : 0;
         const offsetY = worldH < vpH ? Math.floor((vpH - worldH) / 2) : 0;
         const playerCX = (currentUser ? animPosRef.current.x : 0) * 50 + 25;
