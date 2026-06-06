@@ -116,6 +116,7 @@ interface SpaceElement {
     element: { id: string; imageUrl: string; width: number; height: number; static: boolean; blocking: boolean };
     x: number;
     y: number;
+    failedToSave?: boolean;
 }
 
 interface ElementType {
@@ -134,6 +135,7 @@ interface PlacedItem {
     y: number;
     layer: string;
     metadata?: { text?: string } | null;
+    failedToSave?: boolean;
 }
 
 interface SpacePortal {
@@ -228,6 +230,8 @@ const ArenaInner = () => {
     const [quests, setQuests] = useState<QuestInfo[]>([]);
     const [questsLoading, setQuestsLoading] = useState(false);
     const [editorError, setEditorError] = useState('');
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+    const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [toasts, setToasts] = useState<{ id: string; message: string; type: 'info' | 'success' | 'warning' }[]>([]);
     const addToast = useCallback((message: string, type: 'info' | 'success' | 'warning' = 'info') => {
         const id = Math.random().toString(36).slice(2);
@@ -614,6 +618,11 @@ const ArenaInner = () => {
         batchBuffer.current = [];
         const elementBuf = buf.filter(b => b.type === 'element').map(b => ({ elementId: b.id, x: b.x, y: b.y }));
         const itemBuf = buf.filter(b => b.type === 'item').map(b => ({ itemId: b.id, x: b.x, y: b.y }));
+
+        if (saveStatusTimerRef.current) { clearTimeout(saveStatusTimerRef.current); saveStatusTimerRef.current = null; }
+        setSaveStatus('saving');
+        let requestFailed = false;
+
         try {
             if (elementBuf.length > 0) {
                 const elementPayload = { spaceId, elements: elementBuf };
@@ -629,26 +638,29 @@ const ArenaInner = () => {
                     handleAuthFailure();
                     return;
                 }
-                if (!res.ok) {
-                    const d = await res.json();
-                    console.error('[batch] POST /space/element/batch failed:', res.status, d);
+                const sentPositions = new Set(elementBuf.map(b => `${b.x},${b.y}`));
+                if (res.status !== 200 && res.status !== 201) {
+                    const d = await res.json().catch(() => ({}));
+                    console.error('[batch] POST /space/element/batch unexpected status, full response:', res.status, d);
+                    requestFailed = true;
                     setEditorError(d.message || 'Batch element placement failed');
+                    // keep optimistic tiles visible, mark them so the canvas can render a red "failed to save" tint
+                    spaceElementsRef.current = spaceElementsRef.current.map(e =>
+                        (e.id.startsWith('_opt_') && sentPositions.has(`${e.x},${e.y}`)) ? { ...e, failedToSave: true } : e
+                    );
+                    setSpaceElements(spaceElementsRef.current);
                 } else {
                     const data = await res.json();
                     console.log('[batch] POST /space/element/batch response:', data);
                     const created: { id: string; x: number; y: number }[] = data.elements || [];
                     const realIdByPos = new Map(created.map(c => [`${c.x},${c.y}`, c.id]));
-                    const sentPositions = new Set(elementBuf.map(b => `${b.x},${b.y}`));
-                    spaceElementsRef.current = spaceElementsRef.current.reduce<SpaceElement[]>((acc, e) => {
+                    spaceElementsRef.current = spaceElementsRef.current.map(e => {
                         if (e.id.startsWith('_opt_') && sentPositions.has(`${e.x},${e.y}`)) {
                             const realId = realIdByPos.get(`${e.x},${e.y}`);
-                            if (realId) acc.push({ ...e, id: realId });
-                            // server rejected this placement (collision/out-of-bounds) — drop the optimistic tile
-                        } else {
-                            acc.push(e);
+                            return realId ? { ...e, id: realId, failedToSave: false } : { ...e, failedToSave: true };
                         }
-                        return acc;
-                    }, []);
+                        return e;
+                    });
                     setSpaceElements(spaceElementsRef.current);
                 }
             }
@@ -664,33 +676,65 @@ const ArenaInner = () => {
                     handleAuthFailure();
                     return;
                 }
-                if (!res.ok) {
-                    const d = await res.json();
+                const sentPositions = new Set(itemBuf.map(b => `${b.x},${b.y}`));
+                if (res.status !== 200 && res.status !== 201) {
+                    const d = await res.json().catch(() => ({}));
+                    console.error('[batch] POST /space/place/batch unexpected status, full response:', res.status, d);
+                    requestFailed = true;
                     setEditorError(d.message || 'Batch item placement failed');
+                    // keep optimistic tiles visible, mark them so the canvas can render a red "failed to save" tint
+                    placedItemsRef.current = placedItemsRef.current.map(p =>
+                        (p.id.startsWith('_opt_') && sentPositions.has(`${p.x},${p.y}`)) ? { ...p, failedToSave: true } : p
+                    );
+                    setPlacedItems(placedItemsRef.current);
                 } else {
                     const data = await res.json();
+                    console.log('[batch] POST /space/place/batch response:', data);
                     const created: { id: string; x: number; y: number }[] = data.items || [];
                     const realIdByPos = new Map(created.map(c => [`${c.x},${c.y}`, c.id]));
-                    const sentPositions = new Set(itemBuf.map(b => `${b.x},${b.y}`));
-                    placedItemsRef.current = placedItemsRef.current.reduce<PlacedItem[]>((acc, p) => {
+                    placedItemsRef.current = placedItemsRef.current.map(p => {
                         if (p.id.startsWith('_opt_') && sentPositions.has(`${p.x},${p.y}`)) {
                             const realId = realIdByPos.get(`${p.x},${p.y}`);
-                            if (realId) acc.push({ ...p, id: realId });
-                            // server rejected this placement (collision/out-of-bounds/no inventory) — drop the optimistic tile
-                        } else {
-                            acc.push(p);
+                            return realId ? { ...p, id: realId, failedToSave: false } : { ...p, failedToSave: true };
                         }
-                        return acc;
-                    }, []);
+                        return p;
+                    });
                     setPlacedItems(placedItemsRef.current);
                 }
                 fetchInventory();
             }
         } catch (err) {
             console.error('Batch placement error:', err);
+            requestFailed = true;
+            const sentElementPositions = new Set(elementBuf.map(b => `${b.x},${b.y}`));
+            const sentItemPositions = new Set(itemBuf.map(b => `${b.x},${b.y}`));
+            if (sentElementPositions.size > 0) {
+                spaceElementsRef.current = spaceElementsRef.current.map(e =>
+                    (e.id.startsWith('_opt_') && sentElementPositions.has(`${e.x},${e.y}`)) ? { ...e, failedToSave: true } : e
+                );
+                setSpaceElements(spaceElementsRef.current);
+            }
+            if (sentItemPositions.size > 0) {
+                placedItemsRef.current = placedItemsRef.current.map(p =>
+                    (p.id.startsWith('_opt_') && sentItemPositions.has(`${p.x},${p.y}`)) ? { ...p, failedToSave: true } : p
+                );
+                setPlacedItems(placedItemsRef.current);
+            }
         }
+
         if (batchBuffer.current.length > 0) {
             flushBatch();
+            return;
+        }
+
+        if (requestFailed) {
+            setSaveStatus('failed');
+        } else {
+            setSaveStatus('saved');
+            saveStatusTimerRef.current = setTimeout(() => {
+                setSaveStatus('idle');
+                saveStatusTimerRef.current = null;
+            }, 2000);
         }
     }, [spaceId, authHeaders, placementLayer, handleAuthFailure]);
 
@@ -780,6 +824,7 @@ const ArenaInner = () => {
     useEffect(() => {
         return () => {
             if (batchFlushTimer.current) { clearTimeout(batchFlushTimer.current); }
+            if (saveStatusTimerRef.current) { clearTimeout(saveStatusTimerRef.current); }
             if (batchBuffer.current.length > 0) {
                 flushBatch();
             }
@@ -1316,6 +1361,10 @@ const ArenaInner = () => {
 
     const handleMove = (newX: number, newY: number) => {
         if (!currentUser || !wsRef.current) return;
+        if (newX < 0 || newY < 0 || newX > spaceDims.width - 1 || newY > spaceDims.height - 1) {
+            bumpAnimRef.current = { startTime: performance.now(), duration: 200 };
+            return;
+        }
         if (isCellBlocked(newX, newY)) {
             bumpAnimRef.current = { startTime: performance.now(), duration: 200 };
             return;
@@ -1908,6 +1957,13 @@ const ArenaInner = () => {
             // Prefer frontend-hosted tile sprite, fall back to API-hosted imageUrl
             const tileUrl = TILE_IMAGE[e.element.id] || e.element.imageUrl;
             drawImageOnCanvas(ctx, tileUrl, x, y, w, h, '#ede9fe', 'rgba(0,0,0,0.15)');
+            if (e.failedToSave) {
+                ctx.fillStyle = 'rgba(220, 38, 38, 0.4)';
+                ctx.fillRect(x, y, w, h);
+                ctx.strokeStyle = 'rgba(220, 38, 38, 0.9)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+            }
         });
 
         placedItems.forEach(p => {
@@ -1917,6 +1973,13 @@ const ArenaInner = () => {
             const h = p.item.height * 50;
             const itemUrl = ITEM_IMAGE[p.item.id] || p.item.imageUrl;
             drawImageOnCanvas(ctx, itemUrl, x, y, w, h, '#fef3c7', 'rgba(0,0,0,0.20)', editMode ? p.item.name : undefined);
+            if (p.failedToSave) {
+                ctx.fillStyle = 'rgba(220, 38, 38, 0.4)';
+                ctx.fillRect(x, y, w, h);
+                ctx.strokeStyle = 'rgba(220, 38, 38, 0.9)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+            }
         });
 
         // Portals — animated shimmering gate
@@ -2338,6 +2401,18 @@ const ArenaInner = () => {
                         </div>
                     )}
 
+                {/* ── Saving indicator (top-left overlay) ── */}
+                {saveStatus !== 'idle' && (
+                    <div style={{
+                        position: 'absolute', top: 40, left: 12, zIndex: 11, pointerEvents: 'none',
+                        fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 8, backdropFilter: 'blur(4px)',
+                        background: saveStatus === 'saving' ? 'rgba(0,0,0,0.6)' : saveStatus === 'saved' ? 'rgba(22,163,74,0.15)' : 'rgba(220,38,38,0.15)',
+                        color: saveStatus === 'saving' ? '#e2e8f0' : saveStatus === 'saved' ? '#16a34a' : '#dc2626',
+                    }}>
+                        {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved ✓' : 'Save failed'}
+                    </div>
+                )}
+
                 {/* ── Mode hint (top-left overlay) ── */}
                 {(portalPlacingMode || npcPickingPos || editMode) && (
                     <div style={{ position: 'absolute', top: 8, left: 12, pointerEvents: 'none', zIndex: 10 }}>
@@ -2726,7 +2801,7 @@ const ArenaInner = () => {
 
                 {/* ── Editor sidebar (overlays canvas) ── */}
                 {editMode && (
-                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 280, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
+                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 280, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', zIndex: 50 }}>
                         <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15, color: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <span>Editor</span>
                             <div style={{ display: 'flex', gap: 6 }}>
