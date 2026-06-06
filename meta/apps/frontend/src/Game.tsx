@@ -1139,6 +1139,14 @@ const ArenaInner = () => {
             case 'item-placed':
             case 'element-deleted':
             case 'item-deleted':
+                // Skip self-originated events — the optimistic update already applied this change,
+                // and reconciling here would race with (and overwrite) the in-flight batch flush.
+                if (message.payload.userId !== currentUserRef.current?.userId) {
+                    fetchSpace();
+                    fetchInventory();
+                }
+                break;
+
             case 'element-moved':
             case 'item-moved':
                 fetchSpace();
