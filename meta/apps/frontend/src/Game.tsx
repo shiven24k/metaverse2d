@@ -742,8 +742,13 @@ const ArenaInner = () => {
         const canvas = canvasRef.current;
         if (!canvas) return null;
         const rect = canvas.getBoundingClientRect();
-        const canvasX = clientX - rect.left;
-        const canvasY = clientY - rect.top;
+        // Convert from CSS pixels (rect / clientX,Y space) to backing-store pixels (the space
+        // offsetX/camX are computed in) — they can differ if the canvas's displayed size drifts
+        // from its drawing-buffer resolution, which would otherwise shift every click off-grid.
+        const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+        const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+        const canvasX = (clientX - rect.left) * scaleX;
+        const canvasY = (clientY - rect.top) * scaleY;
         return {
             x: Math.floor((canvasX - camRef.current.offsetX + camRef.current.x) / 50),
             y: Math.floor((canvasY - camRef.current.offsetY + camRef.current.y) / 50),
@@ -1521,6 +1526,7 @@ const ArenaInner = () => {
 
     const paintPlace = useCallback((pos: { x: number; y: number }) => {
         if (!editMode) return;
+        if (pos.x < 0 || pos.y < 0 || pos.x >= spaceDims.width || pos.y >= spaceDims.height) return;
         if (eraserMode) {
             const allPlaced = [
                 ...spaceElementsRef.current.map(e => ({ type: 'element' as const, id: e.id, x: e.x, y: e.y, w: e.element.width, h: e.element.height })),
@@ -1566,7 +1572,7 @@ const ArenaInner = () => {
                 batchFlushTimer.current = setTimeout(() => flushBatch(), 500);
             }
         }
-    }, [editMode, eraserMode, selectedElement, selectedItem, placementLayer, isAreaFree, deletePlacedElement, deletePlacedItem, flushBatch]);
+    }, [editMode, eraserMode, selectedElement, selectedItem, placementLayer, isAreaFree, deletePlacedElement, deletePlacedItem, flushBatch, spaceDims]);
 
     const handleCanvasDrop = useCallback((e: React.DragEvent<HTMLCanvasElement>) => {
         e.preventDefault();
@@ -1921,8 +1927,8 @@ const ArenaInner = () => {
 
         // When the world fits inside the viewport, center it; otherwise clamp the camera so it
         // pans to follow the player without ever exposing space beyond the world's edges.
-        const offsetX = worldW < vpW ? Math.floor((vpW - worldW) / 2) : 0;
-        const offsetY = worldH < vpH ? Math.floor((vpH - worldH) / 2) : 0;
+        const offsetX = Math.max(0, Math.floor((vpW - worldW) / 2));
+        const offsetY = Math.max(0, Math.floor((vpH - worldH) / 2));
         const playerCX = (currentUser ? animPosRef.current.x : 0) * 50 + 25;
         const playerCY = (currentUser ? animPosRef.current.y : 0) * 50 + 25;
         const camX = worldW < vpW ? 0 : Math.round(Math.max(0, Math.min(worldW - vpW, playerCX - vpW / 2)));
