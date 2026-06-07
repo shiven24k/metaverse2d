@@ -52,6 +52,16 @@ export const BatchPlaceItemSchema = z.object({
 })
 
 
+export const BatchDeleteElementSchema = z.object({
+    spaceId: z.string(),
+    ids: z.array(z.string()).min(1).max(200),
+});
+
+export const BatchDeleteItemSchema = z.object({
+    spaceId: z.string(),
+    ids: z.array(z.string()).min(1).max(200),
+});
+
 export const CreateElementSchema = z.object({
     imageUrl: z.string(),
     width: z.number(),

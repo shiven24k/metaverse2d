@@ -1,7 +1,7 @@
 import { Router } from "express";
 import client from "@repo/db/client";
 import { userMiddleware } from "../../middleware/user";
-import { AddElementSchema, CreateSpaceSchema, DeleteElementSchema, BatchAddElementSchema, BatchPlaceItemSchema } from "../../types";
+import { AddElementSchema, CreateSpaceSchema, DeleteElementSchema, BatchAddElementSchema, BatchPlaceItemSchema, BatchDeleteElementSchema, BatchDeleteItemSchema } from "../../types";
 
 export const spaceRouter = Router();
 
@@ -402,6 +402,50 @@ spaceRouter.post("/place/batch", userMiddleware, async (req, res) => {
     });
 
     res.json({ message: `Placed ${created.length} items`, count: created.length, items: created });
+});
+
+// ─── Batch delete routes ───────────────────────────────────────────────────────
+
+spaceRouter.post("/element/batch-delete", userMiddleware, async (req, res) => {
+    const parsed = BatchDeleteElementSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
+        return;
+    }
+    const { spaceId, ids } = parsed.data;
+    const space = await client.space.findUnique({ where: { id: spaceId, creatorId: req.userId! } });
+    if (!space) { res.status(403).json({ message: "Space not found or not yours" }); return; }
+
+    const { count } = await client.spaceElements.deleteMany({ where: { id: { in: ids }, spaceId } });
+    res.json({ message: `Deleted ${count} elements`, count });
+});
+
+spaceRouter.post("/placed/batch-delete", userMiddleware, async (req, res) => {
+    const parsed = BatchDeleteItemSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
+        return;
+    }
+    const { spaceId, ids } = parsed.data;
+    const space = await client.space.findUnique({ where: { id: spaceId, creatorId: req.userId! } });
+    if (!space) { res.status(403).json({ message: "Space not found or not yours" }); return; }
+
+    const toDelete = await client.placedItem.findMany({
+        where: { id: { in: ids }, spaceId },
+        select: { itemId: true },
+    });
+    await client.$transaction(async (tx) => {
+        await tx.placedItem.deleteMany({ where: { id: { in: ids }, spaceId } });
+        const itemCounts = new Map<string, number>();
+        for (const p of toDelete) itemCounts.set(p.itemId, (itemCounts.get(p.itemId) || 0) + 1);
+        for (const [itemId, qty] of itemCounts) {
+            await tx.inventoryItem.updateMany({
+                where: { userId: req.userId!, itemId },
+                data: { quantity: { increment: qty } },
+            });
+        }
+    });
+    res.json({ message: `Deleted ${toDelete.length} items`, count: toDelete.length });
 });
 
 // ─── Placement routes ──────────────────────────────────────────────────────────

@@ -627,12 +627,16 @@ const ArenaInner = () => {
 
     const batchBuffer = useRef<{ type: 'element' | 'item'; id: string; x: number; y: number }[]>([]);
     const batchFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const deleteBuffer = useRef<{ elementIds: string[]; itemIds: string[] }>({ elementIds: [], itemIds: [] });
+    const deleteFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Session expired / invalid token (e.g. BETTER_AUTH_SECRET rotated, stale localStorage token) —
     // surface it to the user and send them back to sign in, instead of silently dropping placements.
     const handleAuthFailure = useCallback(() => {
         batchBuffer.current = [];
         if (batchFlushTimer.current) { clearTimeout(batchFlushTimer.current); batchFlushTimer.current = null; }
+        deleteBuffer.current = { elementIds: [], itemIds: [] };
+        if (deleteFlushTimer.current) { clearTimeout(deleteFlushTimer.current); deleteFlushTimer.current = null; }
         addToast('Session expired, please sign in again', 'warning');
         clearAuth();
         navigate('/login');
@@ -858,9 +862,8 @@ const ArenaInner = () => {
         return () => {
             if (batchFlushTimer.current) { clearTimeout(batchFlushTimer.current); }
             if (saveStatusTimerRef.current) { clearTimeout(saveStatusTimerRef.current); }
-            if (batchBuffer.current.length > 0) {
-                flushBatch();
-            }
+            if (deleteFlushTimer.current) { clearTimeout(deleteFlushTimer.current); }
+            if (batchBuffer.current.length > 0) flushBatch();
         };
     }, [flushBatch]);
 
@@ -1069,6 +1072,62 @@ const ArenaInner = () => {
             console.error(err);
         }
     }, [authHeaders, preloadImages]);
+
+    const flushDeleteBatch = useCallback(async () => {
+        if (deleteFlushTimer.current) { clearTimeout(deleteFlushTimer.current); deleteFlushTimer.current = null; }
+        const { elementIds, itemIds } = deleteBuffer.current;
+        if (elementIds.length === 0 && itemIds.length === 0) return;
+        deleteBuffer.current = { elementIds: [], itemIds: [] };
+
+        if (saveStatusTimerRef.current) { clearTimeout(saveStatusTimerRef.current); saveStatusTimerRef.current = null; }
+        setSaveStatus('saving');
+        let requestFailed = false;
+
+        try {
+            if (elementIds.length > 0) {
+                const res = await fetch(`${API}/api/v1/space/element/batch-delete`, {
+                    method: 'POST',
+                    headers: authHeaders,
+                    body: JSON.stringify({ spaceId, ids: elementIds }),
+                });
+                if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
+                if (!res.ok) requestFailed = true;
+            }
+            if (itemIds.length > 0) {
+                const res = await fetch(`${API}/api/v1/space/placed/batch-delete`, {
+                    method: 'POST',
+                    headers: authHeaders,
+                    body: JSON.stringify({ spaceId, ids: itemIds }),
+                });
+                if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
+                if (!res.ok) requestFailed = true;
+            }
+        } catch (err) {
+            console.error('Batch delete error:', err);
+            requestFailed = true;
+        }
+
+        if (deleteBuffer.current.elementIds.length > 0 || deleteBuffer.current.itemIds.length > 0) {
+            flushDeleteBatch();
+            return;
+        }
+
+        if (requestFailed) {
+            setSaveStatus('failed');
+        } else {
+            fetchInventory();
+            setSaveStatus('saved');
+            saveStatusTimerRef.current = setTimeout(() => { setSaveStatus('idle'); saveStatusTimerRef.current = null; }, 2000);
+        }
+    }, [spaceId, authHeaders, handleAuthFailure, fetchInventory]);
+
+    useEffect(() => {
+        return () => {
+            if (deleteFlushTimer.current) { clearTimeout(deleteFlushTimer.current); }
+            const db = deleteBuffer.current;
+            if (db.elementIds.length > 0 || db.itemIds.length > 0) flushDeleteBatch();
+        };
+    }, [flushDeleteBatch]);
 
     const fetchGuestbook = useCallback(async () => {
         setGbLoading(true);
@@ -1625,9 +1684,20 @@ const ArenaInner = () => {
                 ...placedItemsRef.current.map(p => ({ type: 'item' as const, id: p.id, x: p.x, y: p.y, w: p.item.width, h: p.item.height })),
             ];
             const found = allPlaced.find(p => pos.x >= p.x && pos.x < p.x + p.w && pos.y >= p.y && pos.y < p.y + p.h);
-            if (found) {
-                if (found.type === 'element') deletePlacedElement(found.id);
-                else deletePlacedItem(found.id);
+            if (found && !found.id.startsWith('_opt_')) {
+                if (!paintSnapshotSaved.current) { saveUndoSnapshot(); paintSnapshotSaved.current = true; }
+                if (found.type === 'element') {
+                    spaceElementsRef.current = spaceElementsRef.current.filter(e => e.id !== found.id);
+                    setSpaceElements(spaceElementsRef.current);
+                    deleteBuffer.current.elementIds.push(found.id);
+                } else {
+                    placedItemsRef.current = placedItemsRef.current.filter(p => p.id !== found.id);
+                    setPlacedItems(placedItemsRef.current);
+                    deleteBuffer.current.itemIds.push(found.id);
+                }
+                if (!deleteFlushTimer.current) {
+                    deleteFlushTimer.current = setTimeout(() => flushDeleteBatch(), 500);
+                }
             }
             return;
         }
@@ -1664,7 +1734,7 @@ const ArenaInner = () => {
                 batchFlushTimer.current = setTimeout(() => flushBatch(), 500);
             }
         }
-    }, [editMode, eraserMode, selectedElement, selectedItem, placementLayer, isAreaFree, deletePlacedElement, deletePlacedItem, flushBatch, spaceDims]);
+    }, [editMode, eraserMode, selectedElement, selectedItem, placementLayer, isAreaFree, deletePlacedElement, deletePlacedItem, flushBatch, flushDeleteBatch, spaceDims]);
 
     const handleCanvasDrop = useCallback((e: React.DragEvent<HTMLCanvasElement>) => {
         e.preventDefault();
@@ -1806,6 +1876,11 @@ const ArenaInner = () => {
         if (batchBuffer.current.length > 0) {
             if (batchFlushTimer.current) { clearTimeout(batchFlushTimer.current); batchFlushTimer.current = null; }
             flushBatch();
+        }
+        const db = deleteBuffer.current;
+        if (db.elementIds.length > 0 || db.itemIds.length > 0) {
+            if (deleteFlushTimer.current) { clearTimeout(deleteFlushTimer.current); deleteFlushTimer.current = null; }
+            flushDeleteBatch();
         }
         if (isMoving.current && moveTarget.current && movePreview) {
             const target = moveTarget.current;
