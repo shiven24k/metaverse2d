@@ -741,9 +741,9 @@ spaceRouter.post("/:spaceId/portal", userMiddleware, async (req, res) => {
 // ─── Resize route ──────────────────────────────────────────────────────────────
 
 spaceRouter.put("/:spaceId/resize", userMiddleware, async (req, res) => {
-    const { width, height } = req.body;
-    if (!width || !height || width < 5 || height < 5 || width > 100 || height > 100) {
-        res.status(400).json({ message: "width and height required (5–100)" });
+    const { width, height, offsetX, offsetY } = req.body;
+    if (!width || !height || width < 5 || height < 5 || width > 200 || height > 200) {
+        res.status(400).json({ message: "width and height required (5–200)" });
         return;
     }
     const space = await client.space.findUnique({
@@ -753,7 +753,34 @@ spaceRouter.put("/:spaceId/resize", userMiddleware, async (req, res) => {
         res.status(403).json({ message: "Space not found or not yours" });
         return;
     }
-    await client.space.update({ where: { id: req.params.spaceId }, data: { width, height } });
+
+    const dX = typeof offsetX === "number" ? offsetX : 0;
+    const dY = typeof offsetY === "number" ? offsetY : 0;
+
+    await client.$transaction(async (tx) => {
+        await tx.space.update({ where: { id: req.params.spaceId }, data: { width, height } });
+        if (dX !== 0) {
+            await tx.spaceElements.updateMany({
+                where: { spaceId: req.params.spaceId },
+                data: { x: { increment: dX } },
+            });
+            await tx.placedItem.updateMany({
+                where: { spaceId: req.params.spaceId },
+                data: { x: { increment: dX } },
+            });
+        }
+        if (dY !== 0) {
+            await tx.spaceElements.updateMany({
+                where: { spaceId: req.params.spaceId },
+                data: { y: { increment: dY } },
+            });
+            await tx.placedItem.updateMany({
+                where: { spaceId: req.params.spaceId },
+                data: { y: { increment: dY } },
+            });
+        }
+    });
+
     res.json({ message: "Space resized", width, height });
 });
 

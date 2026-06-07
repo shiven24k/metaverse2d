@@ -303,6 +303,8 @@ const ArenaInner = () => {
     const [showResizeModal, setShowResizeModal] = useState(false);
     const [resizeW, setResizeW] = useState('');
     const [resizeH, setResizeH] = useState('');
+    const [showExpandModal, setShowExpandModal] = useState(false);
+    const [spaceHeld, setSpaceHeld] = useState(false);
     useEffect(() => { portalsRef.current = portals; }, [portals]);
 
     // ── Activities ───────────────────────────────────────────────────────────
@@ -404,6 +406,11 @@ const ArenaInner = () => {
     const animPosRef = useRef({ x: 0, y: 0 });
     const camRef = useRef({ x: 0, y: 0, offsetX: 0, offsetY: 0 });
     const facingRef = useRef<'down' | 'up' | 'left' | 'right'>('down');
+    const zoomRef = useRef(1);
+    const panOffsetRef = useRef({ x: 0, y: 0 });
+    const isSpaceHeld = useRef(false);
+    const isPanningRef = useRef(false);
+    const panStartRef = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 });
     const moveAnimRef = useRef<{ fromX: number; fromY: number; toX: number; toY: number; startTime: number; duration: number } | null>(null);
     const moveQueueRef = useRef<{ x: number; y: number }[]>([]);
     const walkBobRef = useRef(0);
@@ -749,9 +756,10 @@ const ArenaInner = () => {
         const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
         const canvasX = (clientX - rect.left) * scaleX;
         const canvasY = (clientY - rect.top) * scaleY;
+        const tileSize = 50 * zoomRef.current;
         return {
-            x: Math.floor((canvasX - camRef.current.offsetX + camRef.current.x) / 50),
-            y: Math.floor((canvasY - camRef.current.offsetY + camRef.current.y) / 50),
+            x: Math.floor((canvasX - camRef.current.offsetX + camRef.current.x) / tileSize),
+            y: Math.floor((canvasY - camRef.current.offsetY + camRef.current.y) / tileSize),
         };
     };
 
@@ -855,6 +863,22 @@ const ArenaInner = () => {
         return () => observer.disconnect();
     }, [rerender]);
 
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const onWheel = (e: WheelEvent) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const step = e.deltaY > 0 ? -0.1 : 0.1;
+                zoomRef.current = Math.round(Math.max(0.5, Math.min(3, zoomRef.current + step)) * 10) / 10;
+                panOffsetRef.current = { x: 0, y: 0 };
+                rerender();
+            }
+        };
+        canvas.addEventListener('wheel', onWheel, { passive: false });
+        return () => canvas.removeEventListener('wheel', onWheel);
+    }, [rerender]);
+
     const fetchElementsCatalog = useCallback(async () => {
         setElementsLoading(true);
         try {
@@ -874,6 +898,19 @@ const ArenaInner = () => {
     }, [editMode, fetchElementsCatalog]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === ' ' && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            isSpaceHeld.current = true;
+            setSpaceHeld(true);
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+            e.preventDefault();
+            zoomRef.current = 1;
+            panOffsetRef.current = { x: 0, y: 0 };
+            rerender();
+            return;
+        }
         if (editMode) {
             if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
                 e.preventDefault();
@@ -973,6 +1010,14 @@ const ArenaInner = () => {
         }
     };
 
+    const handleKeyUp = (e: React.KeyboardEvent) => {
+        if (e.key === ' ') {
+            isSpaceHeld.current = false;
+            setSpaceHeld(false);
+            isPanningRef.current = false;
+        }
+    };
+
     const fetchSpace = useCallback(async () => {
         try {
             const res = await fetch(`${API}/api/v1/space/${spaceId}`);
@@ -1040,6 +1085,33 @@ const ArenaInner = () => {
             }
         } catch {}
     }, [spaceId]);
+
+    const handleExpand = useCallback(async (direction: 'north' | 'south' | 'east' | 'west') => {
+        const { width, height } = spaceDims;
+        let newWidth = width, newHeight = height, offX = 0, offY = 0;
+        if (direction === 'north') { newHeight = height + 10; offY = 10; }
+        else if (direction === 'south') { newHeight = height + 10; }
+        else if (direction === 'west') { newWidth = width + 10; offX = 10; }
+        else if (direction === 'east') { newWidth = width + 10; }
+        try {
+            const res = await fetch(`${API}/api/v1/space/${spaceId}/resize`, {
+                method: 'PUT',
+                headers: authHeaders,
+                body: JSON.stringify({ width: newWidth, height: newHeight, offsetX: offX, offsetY: offY }),
+            });
+            if (res.ok) {
+                setSpaceDims({ width: newWidth, height: newHeight });
+                addToast(`Expanded ${direction} (+10 tiles)`, 'success');
+                fetchSpace();
+            } else {
+                const d = await res.json();
+                addToast(d.message || 'Expand failed', 'warning');
+            }
+        } catch {
+            addToast('Network error expanding space', 'warning');
+        }
+        setShowExpandModal(false);
+    }, [spaceDims, spaceId, authHeaders, addToast, fetchSpace]);
 
     const handleCreateMap = useCallback(async () => {
         if (!newMapName.trim()) return;
@@ -1595,6 +1667,13 @@ const ArenaInner = () => {
     }, [placeItem, placeElement, isAreaFree]);
 
     const startPaint = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (e.button === 1 || (isSpaceHeld.current && e.button === 0)) {
+            e.preventDefault();
+            isPanningRef.current = true;
+            panStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, panX: panOffsetRef.current.x, panY: panOffsetRef.current.y };
+            rerender();
+            return;
+        }
         if (!editMode) return;
         if (e.button !== 0) return;
         const pos = canvasToGrid(e.clientX, e.clientY);
@@ -1659,6 +1738,18 @@ const ArenaInner = () => {
     };
 
     const paintMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (isPanningRef.current) {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const dx = (e.clientX - panStartRef.current.mouseX) * scaleX;
+            const dy = (e.clientY - panStartRef.current.mouseY) * scaleY;
+            panOffsetRef.current = { x: panStartRef.current.panX - dx, y: panStartRef.current.panY - dy };
+            rerender();
+            return;
+        }
         if (!editMode) return;
         const pos = canvasToGrid(e.clientX, e.clientY);
         if (!pos) return;
@@ -1750,6 +1841,11 @@ const ArenaInner = () => {
     };
 
     const handleCanvasMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (isPanningRef.current) {
+            isPanningRef.current = false;
+            rerender();
+            return;
+        }
         if (editMode) {
             if (portalPlacingMode) {
                 const pos = canvasToGrid(e.clientX, e.clientY);
@@ -1920,19 +2016,24 @@ const ArenaInner = () => {
             canvas.height = ch;
         }
 
+        const zoom = zoomRef.current;
         const vpW = canvas.width;
         const vpH = canvas.height;
-        const worldW = spaceDims.width * 50;
-        const worldH = spaceDims.height * 50;
+        const preWorldW = spaceDims.width * 50;
+        const preWorldH = spaceDims.height * 50;
+        const worldW = preWorldW * zoom;
+        const worldH = preWorldH * zoom;
 
         // When the world fits inside the viewport, center it; otherwise clamp the camera so it
         // pans to follow the player without ever exposing space beyond the world's edges.
         const offsetX = Math.max(0, Math.floor((vpW - worldW) / 2));
         const offsetY = Math.max(0, Math.floor((vpH - worldH) / 2));
-        const playerCX = (currentUser ? animPosRef.current.x : 0) * 50 + 25;
-        const playerCY = (currentUser ? animPosRef.current.y : 0) * 50 + 25;
-        const camX = worldW < vpW ? 0 : Math.round(Math.max(0, Math.min(worldW - vpW, playerCX - vpW / 2)));
-        const camY = worldH < vpH ? 0 : Math.round(Math.max(0, Math.min(worldH - vpH, playerCY - vpH / 2)));
+        const playerCX = (currentUser ? animPosRef.current.x : 0) * 50 * zoom + 25 * zoom;
+        const playerCY = (currentUser ? animPosRef.current.y : 0) * 50 * zoom + 25 * zoom;
+        const baseCamX = worldW < vpW ? 0 : Math.round(Math.max(0, Math.min(worldW - vpW, playerCX - vpW / 2)));
+        const baseCamY = worldH < vpH ? 0 : Math.round(Math.max(0, Math.min(worldH - vpH, playerCY - vpH / 2)));
+        const camX = baseCamX + panOffsetRef.current.x;
+        const camY = baseCamY + panOffsetRef.current.y;
         camRef.current = { x: camX, y: camY, offsetX, offsetY };
 
         ctx.clearRect(0, 0, vpW, vpH);
@@ -1940,19 +2041,20 @@ const ArenaInner = () => {
         ctx.fillRect(0, 0, vpW, vpH);
         ctx.save();
         ctx.translate(offsetX - camX, offsetY - camY);
+        ctx.scale(zoom, zoom);
 
         // Empty background — user must place tiles to fill the canvas
         ctx.fillStyle = '#f0fdf4';
-        ctx.fillRect(0, 0, worldW, worldH);
+        ctx.fillRect(0, 0, preWorldW, preWorldH);
 
         // Grid lines (subtle)
         ctx.strokeStyle = 'rgba(0,0,0,0.10)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= worldW; i += 50) {
-            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, worldH); ctx.stroke();
+        ctx.lineWidth = 1 / zoom;
+        for (let i = 0; i <= preWorldW; i += 50) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, preWorldH); ctx.stroke();
         }
-        for (let i = 0; i <= worldH; i += 50) {
-            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(worldW, i); ctx.stroke();
+        for (let i = 0; i <= preWorldH; i += 50) {
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(preWorldW, i); ctx.stroke();
         }
 
         spaceElements.forEach(e => {
@@ -2383,6 +2485,7 @@ const ArenaInner = () => {
                     ref={containerRef}
                     style={{ position: 'absolute', top: 56, left: 0, right: 0, bottom: 0, overflow: 'hidden', outline: 'none' }}
                     onKeyDown={handleKeyDown}
+                    onKeyUp={handleKeyUp}
                     onClick={() => setShowEmotePalette(false)}
                     tabIndex={0}
                 >
@@ -2390,13 +2493,13 @@ const ArenaInner = () => {
                         ref={canvasRef}
                         onMouseDown={startPaint}
                         onMouseUp={handleCanvasMouseUp}
-                        onMouseLeave={() => { stopPaint(); setHoverPos(null); }}
+                        onMouseLeave={() => { isPanningRef.current = false; stopPaint(); setHoverPos(null); }}
                         onMouseMove={handleCanvasMouseMove}
                         onContextMenu={handleCanvasContextMenu}
                         onDragOver={e => { e.preventDefault(); setCanvasIsOver(true); }}
                         onDragLeave={() => { setCanvasIsOver(false); setHoverPos(null); }}
                         onDrop={handleCanvasDrop}
-                        style={{ display: 'block', width: '100%', height: '100%', cursor: editMode ? (selectedElement || selectedItem ? 'cell' : 'crosshair') : 'default', outline: canvasIsOver ? '2px solid #4f46e5' : 'none' }}
+                        style={{ display: 'block', width: '100%', height: '100%', cursor: isPanningRef.current ? 'grabbing' : spaceHeld ? 'grab' : editMode ? (selectedElement || selectedItem ? 'cell' : 'crosshair') : 'default', outline: canvasIsOver ? '2px solid #4f46e5' : 'none' }}
                     />
 
                     {/* ── Error / reconnect banner ── */}
@@ -2406,6 +2509,11 @@ const ArenaInner = () => {
                             {reconnecting && <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', fontSize: 14 }}>↻</span>}
                         </div>
                     )}
+
+                {/* ── Zoom indicator (bottom-right) ── */}
+                <div style={{ position: 'absolute', bottom: 8, right: editMode ? 292 : 8, pointerEvents: 'none', zIndex: 10, fontSize: 11, fontWeight: 600, color: '#e2e8f0', background: 'rgba(0,0,0,0.55)', padding: '3px 8px', borderRadius: 6, backdropFilter: 'blur(4px)' }}>
+                    {Math.round(zoomRef.current * 100)}%
+                </div>
 
                 {/* ── Saving indicator (top-left overlay) ── */}
                 {saveStatus !== 'idle' && (
@@ -2793,6 +2901,35 @@ const ArenaInner = () => {
                 )}
                 {showResizeModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.28)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setShowResizeModal(false)} />}
 
+                {/* ── Space expand modal ── */}
+                {showExpandModal && (
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #ecebf3', borderRadius: 14, padding: '24px 28px', width: 300, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)' }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#191427', marginBottom: 6 }}>⊕ Expand Space</div>
+                        <p style={{ margin: '0 0 18px', fontSize: 12, color: '#6f6b82', lineHeight: 1.5 }}>Adds 10 tiles in the chosen direction. Existing elements shift when expanding North or West.</p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                            {(['north', 'south', 'west', 'east'] as const).map(dir => {
+                                const icons: Record<string, string> = { north: '▲ North', south: '▼ South', west: '◀ West', east: '▶ East' };
+                                return (
+                                    <button
+                                        key={dir}
+                                        onClick={() => handleExpand(dir)}
+                                        style={{ padding: '10px', borderRadius: 8, border: '1px solid #d1d5db', background: '#f9fafb', color: '#059669', fontSize: 13, cursor: 'pointer', fontWeight: 700, transition: 'all 0.15s' }}
+                                        onMouseEnter={e => { e.currentTarget.style.background = '#d1fae5'; e.currentTarget.style.borderColor = '#059669'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = '#d1d5db'; }}
+                                    >
+                                        {icons[dir]}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9ca3af' }}>Current size: {spaceDims.width}×{spaceDims.height} · Max 200×200</p>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <button onClick={() => setShowExpandModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                        </div>
+                    </div>
+                )}
+                {showExpandModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.28)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setShowExpandModal(false)} />}
+
                 {playerPopup && (
                     <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.15)', zIndex: 1100, textAlign: 'center' }}>
                         <p style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', margin: '0 0 16px' }}>{playerPopup.username}</p>
@@ -2840,6 +2977,13 @@ const ArenaInner = () => {
                                     title="Resize Space"
                                 >
                                     ↔ Resize
+                                </button>
+                                <button
+                                    onClick={() => setShowExpandModal(true)}
+                                    style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#059669', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                    title="Expand Space"
+                                >
+                                    ⊕ Expand
                                 </button>
                                 <button
                                     onClick={() => { setEraserMode(m => !m); setSelectedItem(null); setSelectedElement(null); setSelectedPlaced(null); }}
