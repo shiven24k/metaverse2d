@@ -311,6 +311,108 @@ async function main() {
     create: { id: "item-office-printer", name: "Printer", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/office-printer.png", width: 1, height: 1, blocking: true },
   });
 
+  // ── Extended items ──────────────────────────────────────────────────────────
+  await client.item.upsert({
+    where: { id: "item-armchair" },
+    update: { name: "Armchair", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/armchair.png", width: 1, height: 1, blocking: true },
+    create: { id: "item-armchair", name: "Armchair", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/armchair.png", width: 1, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-coffee-table" },
+    update: { name: "Coffee Table", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/coffee-table.png", width: 2, height: 1, blocking: true },
+    create: { id: "item-coffee-table", name: "Coffee Table", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/coffee-table.png", width: 2, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-kitchen-counter" },
+    update: { name: "Kitchen Counter", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/kitchen-counter.png", width: 2, height: 1, blocking: true },
+    create: { id: "item-kitchen-counter", name: "Kitchen Counter", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/kitchen-counter.png", width: 2, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-microwave" },
+    update: { name: "Microwave", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/microwave.png", width: 1, height: 1, blocking: true },
+    create: { id: "item-microwave", name: "Microwave", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/microwave.png", width: 1, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-mini-fridge" },
+    update: { name: "Mini Fridge", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/mini-fridge.png", width: 1, height: 1, blocking: true },
+    create: { id: "item-mini-fridge", name: "Mini Fridge", category: "Furniture", rarity: "Common", imageUrl: "/uploads/defaults/mini-fridge.png", width: 1, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-tall-plant" },
+    update: { name: "Tall Plant", category: "Decoration", rarity: "Common", imageUrl: "/uploads/defaults/tall-plant.png", width: 1, height: 1, blocking: true },
+    create: { id: "item-tall-plant", name: "Tall Plant", category: "Decoration", rarity: "Common", imageUrl: "/uploads/defaults/tall-plant.png", width: 1, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-trash-bin" },
+    update: { name: "Trash Bin", category: "Decoration", rarity: "Common", imageUrl: "/uploads/defaults/trash-bin.png", width: 1, height: 1, blocking: false },
+    create: { id: "item-trash-bin", name: "Trash Bin", category: "Decoration", rarity: "Common", imageUrl: "/uploads/defaults/trash-bin.png", width: 1, height: 1, blocking: false },
+  });
+  await client.item.upsert({
+    where: { id: "item-recycling-bin" },
+    update: { name: "Recycling Bin", category: "Decoration", rarity: "Common", imageUrl: "/uploads/defaults/recycling-bin.png", width: 1, height: 1, blocking: false },
+    create: { id: "item-recycling-bin", name: "Recycling Bin", category: "Decoration", rarity: "Common", imageUrl: "/uploads/defaults/recycling-bin.png", width: 1, height: 1, blocking: false },
+  });
+  await client.item.upsert({
+    where: { id: "item-phone-booth" },
+    update: { name: "Phone Booth", category: "Decoration", rarity: "Uncommon", imageUrl: "/uploads/defaults/phone-booth.png", width: 1, height: 2, blocking: true },
+    create: { id: "item-phone-booth", name: "Phone Booth", category: "Decoration", rarity: "Uncommon", imageUrl: "/uploads/defaults/phone-booth.png", width: 1, height: 2, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-copier" },
+    update: { name: "Copier", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/copier.png", width: 1, height: 1, blocking: true },
+    create: { id: "item-copier", name: "Copier", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/copier.png", width: 1, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-corkboard" },
+    update: { name: "Corkboard", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/corkboard.png", width: 2, height: 1, isWallItem: true, blocking: false },
+    create: { id: "item-corkboard", name: "Corkboard", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/corkboard.png", width: 2, height: 1, isWallItem: true, blocking: false },
+  });
+  await client.item.upsert({
+    where: { id: "item-desk-phone" },
+    update: { name: "Desk Phone", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/desk-phone.png", width: 1, height: 1, blocking: false },
+    create: { id: "item-desk-phone", name: "Desk Phone", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/desk-phone.png", width: 1, height: 1, blocking: false },
+  });
+  await client.item.upsert({
+    where: { id: "item-dual-monitor" },
+    update: { name: "Dual Monitor", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/dual-monitor.png", width: 2, height: 1, blocking: false },
+    create: { id: "item-dual-monitor", name: "Dual Monitor", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/dual-monitor.png", width: 2, height: 1, blocking: false },
+  });
+  await client.item.upsert({
+    where: { id: "item-flip-chart" },
+    update: { name: "Flip Chart", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/flip-chart.png", width: 1, height: 2, blocking: true },
+    create: { id: "item-flip-chart", name: "Flip Chart", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/flip-chart.png", width: 1, height: 2, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-laptop" },
+    update: { name: "Laptop", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/laptop.png", width: 1, height: 1, blocking: false },
+    create: { id: "item-laptop", name: "Laptop", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/laptop.png", width: 1, height: 1, blocking: false },
+  });
+  await client.item.upsert({
+    where: { id: "item-reception-desk" },
+    update: { name: "Reception Desk", category: "Office", rarity: "Rare", imageUrl: "/uploads/defaults/reception-desk.png", width: 3, height: 1, blocking: true },
+    create: { id: "item-reception-desk", name: "Reception Desk", category: "Office", rarity: "Rare", imageUrl: "/uploads/defaults/reception-desk.png", width: 3, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-server-rack" },
+    update: { name: "Server Rack", category: "Office", rarity: "Rare", imageUrl: "/uploads/defaults/server-rack.png", width: 1, height: 2, blocking: true },
+    create: { id: "item-server-rack", name: "Server Rack", category: "Office", rarity: "Rare", imageUrl: "/uploads/defaults/server-rack.png", width: 1, height: 2, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-standing-desk" },
+    update: { name: "Standing Desk", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/standing-desk.png", width: 2, height: 1, blocking: true },
+    create: { id: "item-standing-desk", name: "Standing Desk", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/standing-desk.png", width: 2, height: 1, blocking: true },
+  });
+  await client.item.upsert({
+    where: { id: "item-wall-tv" },
+    update: { name: "Wall TV", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/wall-tv.png", width: 2, height: 1, isWallItem: true, blocking: false },
+    create: { id: "item-wall-tv", name: "Wall TV", category: "Office", rarity: "Uncommon", imageUrl: "/uploads/defaults/wall-tv.png", width: 2, height: 1, isWallItem: true, blocking: false },
+  });
+  await client.item.upsert({
+    where: { id: "item-water-cooler" },
+    update: { name: "Water Cooler", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/water-cooler.png", width: 1, height: 1, blocking: true },
+    create: { id: "item-water-cooler", name: "Water Cooler", category: "Office", rarity: "Common", imageUrl: "/uploads/defaults/water-cooler.png", width: 1, height: 1, blocking: true },
+  });
+
   console.log("Items created");
 
   // ─── Map ────────────────────────────────────────────────────────────────────
