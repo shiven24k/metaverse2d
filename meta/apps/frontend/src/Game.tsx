@@ -2965,14 +2965,15 @@ const ArenaInner = () => {
                 {/* ── Editor sidebar (overlays canvas) ── */}
                 {editMode && (
                     <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 280, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', zIndex: 50 }}>
-                        <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15, color: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        {/* ── Header row 1: title + undo/redo ── */}
+                        <div style={{ padding: '10px 14px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15, color: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                             <span>Editor</span>
-                            <div style={{ display: 'flex', gap: 6 }}>
+                            <div style={{ display: 'flex', gap: 5 }}>
                                 <button
                                     onClick={handleUndo}
                                     disabled={!canUndo}
                                     title="Undo (Ctrl+Z)"
-                                    style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: canUndo ? '#fff' : '#f3f4f6', color: canUndo ? '#333' : '#bbb', fontSize: 11, cursor: canUndo ? 'pointer' : 'not-allowed', fontWeight: 600 }}
+                                    style={{ padding: '4px 9px', borderRadius: 4, border: '1px solid #d1d5db', background: canUndo ? '#fff' : '#f3f4f6', color: canUndo ? '#333' : '#bbb', fontSize: 11, cursor: canUndo ? 'pointer' : 'not-allowed', fontWeight: 600 }}
                                 >
                                     ↩ Undo
                                 </button>
@@ -2980,58 +2981,61 @@ const ArenaInner = () => {
                                     onClick={handleRedo}
                                     disabled={!canRedo}
                                     title="Redo (Ctrl+Shift+Z)"
-                                    style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: canRedo ? '#fff' : '#f3f4f6', color: canRedo ? '#333' : '#bbb', fontSize: 11, cursor: canRedo ? 'pointer' : 'not-allowed', fontWeight: 600 }}
+                                    style={{ padding: '4px 9px', borderRadius: 4, border: '1px solid #d1d5db', background: canRedo ? '#fff' : '#f3f4f6', color: canRedo ? '#333' : '#bbb', fontSize: 11, cursor: canRedo ? 'pointer' : 'not-allowed', fontWeight: 600 }}
                                 >
                                     ↪ Redo
                                 </button>
-                                <button
-                                    onClick={() => setShowNewMap(true)}
-                                    style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#6d28d9', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
-                                    title="New Map"
-                                >
-                                    + New Map
-                                </button>
-                                <button
-                                    onClick={() => { setResizeW(String(spaceDims.width)); setResizeH(String(spaceDims.height)); setShowResizeModal(true); }}
-                                    style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#6366f1', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
-                                    title="Resize Space"
-                                >
-                                    ↔ Resize
-                                </button>
-                                <button
-                                    onClick={() => setShowExpandModal(true)}
-                                    style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#059669', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
-                                    title="Expand Space"
-                                >
-                                    ⊕ Expand
-                                </button>
-                                <button
-                                    onClick={() => { setEraserMode(m => !m); setSelectedItem(null); setSelectedElement(null); setSelectedPlaced(null); }}
-                                    style={{ padding: '4px 10px', borderRadius: 4, border: `2px solid ${eraserMode ? '#ef4444' : '#d1d5db'}`, background: eraserMode ? '#fef2f2' : '#fff', color: eraserMode ? '#ef4444' : '#666', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
-                                    title="Eraser (E)"
-                                >
-                                    🧹 Eraser
-                                </button>
-                                <button
-                                    onClick={() => { setPortalPlacingMode(m => !m); setEraserMode(false); setSelectedItem(null); setSelectedElement(null); }}
-                                    style={{ padding: '4px 10px', borderRadius: 4, border: `2px solid ${portalPlacingMode ? '#7c3aed' : '#d1d5db'}`, background: portalPlacingMode ? '#f5f3ff' : '#fff', color: '#7c3aed', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
-                                    title="Click canvas to place a portal"
-                                >
-                                    🌀 Portal
-                                </button>
-                                {selectedPlaced && (
-                                    <button
-                                        onClick={() => {
-                                            if (selectedPlaced.type === 'element') deletePlacedElement(selectedPlaced.id);
-                                            else deletePlacedItem(selectedPlaced.id);
-                                            setSelectedPlaced(null);
-                                        }}
-                                        style={{ padding: '4px 10px', borderRadius: 4, border: 'none', background: '#ef4444', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
-                                    >
-                                        Delete
-                                    </button>
-                                )}
                             </div>
+                        </div>
+                        {/* ── Header row 2: tools toolbar ── */}
+                        <div style={{ padding: '8px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', flexWrap: 'wrap', gap: 5, flexShrink: 0 }}>
+                            <button
+                                onClick={() => setShowNewMap(true)}
+                                style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', color: '#6d28d9', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                title="New Map"
+                            >
+                                + New Map
+                            </button>
+                            <button
+                                onClick={() => { setResizeW(String(spaceDims.width)); setResizeH(String(spaceDims.height)); setShowResizeModal(true); }}
+                                style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', color: '#6366f1', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                title="Resize Space"
+                            >
+                                ↔ Resize
+                            </button>
+                            <button
+                                onClick={() => setShowExpandModal(true)}
+                                style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', color: '#059669', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                title="Expand Space"
+                            >
+                                ⊕ Expand
+                            </button>
+                            <button
+                                onClick={() => { setEraserMode(m => !m); setSelectedItem(null); setSelectedElement(null); setSelectedPlaced(null); }}
+                                style={{ padding: '5px 10px', borderRadius: 5, border: `2px solid ${eraserMode ? '#ef4444' : '#d1d5db'}`, background: eraserMode ? '#fef2f2' : '#fff', color: eraserMode ? '#ef4444' : '#666', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                title="Eraser (E)"
+                            >
+                                🧹 Eraser
+                            </button>
+                            <button
+                                onClick={() => { setPortalPlacingMode(m => !m); setEraserMode(false); setSelectedItem(null); setSelectedElement(null); }}
+                                style={{ padding: '5px 10px', borderRadius: 5, border: `2px solid ${portalPlacingMode ? '#7c3aed' : '#d1d5db'}`, background: portalPlacingMode ? '#f5f3ff' : '#fff', color: '#7c3aed', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                title="Click canvas to place a portal"
+                            >
+                                🌀 Portal
+                            </button>
+                            {selectedPlaced && (
+                                <button
+                                    onClick={() => {
+                                        if (selectedPlaced.type === 'element') deletePlacedElement(selectedPlaced.id);
+                                        else deletePlacedItem(selectedPlaced.id);
+                                        setSelectedPlaced(null);
+                                    }}
+                                    style={{ padding: '5px 10px', borderRadius: 5, border: 'none', background: '#ef4444', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                    🗑 Delete
+                                </button>
+                            )}
                         </div>
                         {selectedPlacedGroup.length > 1 && (
                             <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#f5f3ff', fontSize: 12, color: '#7c3aed', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
