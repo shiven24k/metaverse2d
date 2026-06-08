@@ -830,7 +830,45 @@ spaceRouter.put("/:spaceId/resize", userMiddleware, async (req, res) => {
 
 // ─── Dynamic routes last ──────────────────────────────────────────────────────
 
-// DELETE /space/:spaceId — owner only
+// DELETE /space/:spaceId/clear — wipe all tiles/items but keep the space itself
+spaceRouter.delete("/:spaceId/clear", userMiddleware, async (req, res) => {
+    const space = await client.space.findUnique({
+        where: { id: req.params.spaceId },
+        select: { creatorId: true },
+    });
+
+    if (!space) {
+        res.status(400).json({ message: "Space not found" });
+        return;
+    }
+
+    if (space.creatorId !== req.userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+    }
+
+    await client.$transaction(async (tx) => {
+        const placed = await tx.placedItem.findMany({
+            where: { spaceId: req.params.spaceId },
+            select: { itemId: true },
+        });
+        await tx.spaceElements.deleteMany({ where: { spaceId: req.params.spaceId } });
+        await tx.placedItem.deleteMany({ where: { spaceId: req.params.spaceId } });
+        const itemCounts = new Map<string, number>();
+        for (const p of placed) itemCounts.set(p.itemId, (itemCounts.get(p.itemId) || 0) + 1);
+        for (const [itemId, qty] of itemCounts) {
+            await tx.inventoryItem.upsert({
+                where: { userId_itemId: { userId: req.userId!, itemId } },
+                create: { userId: req.userId!, itemId, quantity: qty },
+                update: { quantity: { increment: qty } },
+            });
+        }
+    });
+
+    res.json({ message: "Space cleared" });
+});
+
+// DELETE /space/:spaceId — owner only, cascades to all related records
 spaceRouter.delete("/:spaceId", userMiddleware, async (req, res) => {
     const space = await client.space.findUnique({
         where: { id: req.params.spaceId },
@@ -847,7 +885,11 @@ spaceRouter.delete("/:spaceId", userMiddleware, async (req, res) => {
         return;
     }
 
-    await client.space.delete({ where: { id: req.params.spaceId } });
+    await client.$transaction(async (tx) => {
+        await tx.spaceElements.deleteMany({ where: { spaceId: req.params.spaceId } });
+        await tx.space.delete({ where: { id: req.params.spaceId } });
+    });
+
     res.json({ message: "Space deleted" });
 });
 

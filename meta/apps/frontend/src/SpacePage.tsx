@@ -134,6 +134,9 @@ export default function SpacePage() {
     const [questsLoading, setQuestsLoading] = useState(false);
     const [_userRole, setUserRole] = useState<string | null>(null);
 
+    const [deleteTarget, setDeleteTarget] = useState<Space | null>(null);
+    const [deletingSpace, setDeletingSpace] = useState(false);
+
     const authHeaders: Record<string, string> = {
         "Content-Type": "application/json",
         ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
@@ -304,6 +307,22 @@ export default function SpacePage() {
         } catch { setBuyMsg("Failed to buy"); } finally { setBuyingId(null); }
     };
 
+    const handleDeleteSpace = async (space: Space) => {
+        setDeletingSpace(true);
+        try {
+            const res = await fetch(`${API}/api/v1/space/${space.id}`, {
+                method: "DELETE", credentials: "include", headers: authHeaders,
+            });
+            if (res.ok) {
+                setMySpaces(prev => prev.filter(s => s.id !== space.id));
+                setAllSpaces(prev => prev.filter(s => s.id !== space.id));
+            }
+        } catch {} finally {
+            setDeletingSpace(false);
+            setDeleteTarget(null);
+        }
+    };
+
     const handleSignOut = async () => {
         try {
             if (!isGuest && bearerToken) {
@@ -367,7 +386,7 @@ export default function SpacePage() {
         );
     };
 
-    const SpaceCard = ({ space, featured }: { space: Space; featured?: boolean }) => {
+    const SpaceCard = ({ space, featured, onDelete }: { space: Space; featured?: boolean; onDelete?: () => void }) => {
         const [hover, setHover] = React.useState(false);
         const tile = spaceTile(space.name);
         // Derive a theme colour from the tile
@@ -419,6 +438,14 @@ export default function SpacePage() {
                         onClick={() => navigate(`/arena?spaceId=${space.id}`)}>
                         Enter Space →
                     </button>
+                    {onDelete && (
+                        <button
+                            onClick={e => { e.stopPropagation(); onDelete(); }}
+                            style={{ width: "100%", marginTop: 6, padding: "7px", borderRadius: 9, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                        >
+                            🗑 Delete Space
+                        </button>
+                    )}
                 </div>
             </div>
         );
@@ -615,7 +642,7 @@ export default function SpacePage() {
                                 <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 750, color: "#191427", letterSpacing: "-0.03em" }}>My Spaces</h1>
                                 {loadingMine ? <p style={{ color: "#6f6b82" }}>Loading…</p>
                                 : mySpaces.length === 0 ? <EmptyState icon="🏠" title="No spaces yet" sub="Create your first space to start building your world." />
-                                : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 18 }}>{mySpaces.map(s => <SpaceCard key={s.id} space={s} />)}</div>}
+                                : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 18 }}>{mySpaces.map(s => <SpaceCard key={s.id} space={s} onDelete={() => setDeleteTarget(s)} />)}</div>}
                             </>
                         )}
 
@@ -841,6 +868,35 @@ export default function SpacePage() {
                     </div>
                 </div>
             </div>
+
+            {/* ── Delete Space confirmation dialog ── */}
+            {deleteTarget && (
+                <>
+                    <div style={{ position: "fixed", inset: 0, background: "rgba(20,15,40,0.4)", backdropFilter: "blur(3px)", zIndex: 1199 }} onClick={() => !deletingSpace && setDeleteTarget(null)} />
+                    <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: "#fff", border: "1px solid #ecebf3", borderRadius: 14, padding: "28px 28px 24px", width: 360, zIndex: 1200, boxShadow: "0 24px 60px rgba(22,15,52,0.22)" }}>
+                        <p style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700, color: "#191427" }}>Delete Space</p>
+                        <p style={{ margin: "0 0 24px", fontSize: 13, color: "#6f6b82", lineHeight: 1.5 }}>
+                            Are you sure you want to delete <strong>{deleteTarget.name}</strong>? This cannot be undone.
+                        </p>
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                            <button
+                                onClick={() => handleDeleteSpace(deleteTarget)}
+                                disabled={deletingSpace}
+                                style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: deletingSpace ? 0.7 : 1 }}
+                            >
+                                {deletingSpace ? "Deleting…" : "Delete"}
+                            </button>
+                            <button
+                                onClick={() => setDeleteTarget(null)}
+                                disabled={deletingSpace}
+                                style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #ecebf3", background: "#fff", color: "#6f6b82", fontSize: 13, cursor: "pointer" }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 }

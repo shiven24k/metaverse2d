@@ -324,6 +324,8 @@ const ArenaInner = () => {
     const [resizeW, setResizeW] = useState('');
     const [resizeH, setResizeH] = useState('');
     const [showExpandModal, setShowExpandModal] = useState(false);
+    const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
+    const [clearingAll, setClearingAll] = useState(false);
     const [spaceHeld, setSpaceHeld] = useState(false);
     useEffect(() => { portalsRef.current = portals; }, [portals]);
 
@@ -1191,6 +1193,36 @@ const ArenaInner = () => {
         }
         setShowExpandModal(false);
     }, [spaceDims, spaceId, authHeaders, addToast, fetchSpace]);
+
+    const handleClearAll = useCallback(async () => {
+        setClearingAll(true);
+        try {
+            const res = await fetch(`${API}/api/v1/space/${spaceId}/clear`, {
+                method: 'DELETE',
+                headers: authHeaders,
+            });
+            if (res.ok) {
+                batchBuffer.current = [];
+                if (batchFlushTimer.current) { clearTimeout(batchFlushTimer.current); batchFlushTimer.current = null; }
+                deleteBuffer.current = { elementIds: [], itemIds: [] };
+                if (deleteFlushTimer.current) { clearTimeout(deleteFlushTimer.current); deleteFlushTimer.current = null; }
+                undoStackRef.current = [];
+                redoStackRef.current = [];
+                setCanUndo(false);
+                setCanRedo(false);
+                setSpaceElements([]);
+                setPlacedItems([]);
+                addToast('Canvas cleared', 'success');
+            } else {
+                const d = await res.json();
+                addToast(d.message || 'Clear failed', 'warning');
+            }
+        } catch {
+            addToast('Network error clearing canvas', 'warning');
+        }
+        setClearingAll(false);
+        setShowClearAllConfirm(false);
+    }, [spaceId, authHeaders, addToast]);
 
     const handleCreateMap = useCallback(async () => {
         if (!newMapName.trim()) return;
@@ -3025,6 +3057,31 @@ const ArenaInner = () => {
                 )}
                 {showExpandModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.28)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setShowExpandModal(false)} />}
 
+                {/* ── Clear All confirmation modal ── */}
+                {showClearAllConfirm && (
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #ecebf3', borderRadius: 14, padding: '24px 28px', width: 340, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)' }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#191427', marginBottom: 8 }}>🗑️ Clear All Tiles</div>
+                        <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6f6b82', lineHeight: 1.5 }}>Clear all tiles from this space? This cannot be undone.</p>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={handleClearAll}
+                                disabled={clearingAll}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#dc2626', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: clearingAll ? 0.7 : 1 }}
+                            >
+                                {clearingAll ? 'Clearing…' : 'Clear All'}
+                            </button>
+                            <button
+                                onClick={() => setShowClearAllConfirm(false)}
+                                disabled={clearingAll}
+                                style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {showClearAllConfirm && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.28)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => !clearingAll && setShowClearAllConfirm(false)} />}
+
                 {playerPopup && (
                     <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.15)', zIndex: 1100, textAlign: 'center' }}>
                         <p style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', margin: '0 0 16px' }}>{playerPopup.username}</p>
@@ -3091,6 +3148,13 @@ const ArenaInner = () => {
                                 title="Eraser (E)"
                             >
                                 🧹 Eraser
+                            </button>
+                            <button
+                                onClick={() => setShowClearAllConfirm(true)}
+                                style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid #fca5a5', background: '#fff5f5', color: '#dc2626', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                title="Clear All — remove every tile from this space"
+                            >
+                                🗑️ Clear All
                             </button>
                             <button
                                 onClick={() => { setPortalPlacingMode(m => !m); setEraserMode(false); setSelectedItem(null); setSelectedElement(null); }}
