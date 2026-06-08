@@ -18,6 +18,7 @@ import { billingRouter } from "./billing";
 import { mapsRouter } from "./maps";
 import { uploadRouter } from "./upload";
 import { economyRouter } from "./economy";
+import { boardRouter } from "./board";
 import client from "@repo/db/client";
 
 export const router = Router();
@@ -67,3 +68,4 @@ router.use("/maps", mapsRouter);
 router.use("/upload", uploadRouter);
 router.use("/admin", adminBanRouter);
 router.use("/economy", economyRouter);
+router.use("/board", boardRouter);

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Smile, MessageCircle } from 'lucide-react';
+import { KanbanPanel } from './KanbanPanel';
 
 // ── PixelAvatar — CSS pixel art character, ported from design system ──────────
 const PIXEL_PALETTES: Record<string, { skin: string; hair: string; shirt: string }> = {
@@ -246,6 +247,9 @@ const ArenaInner = () => {
     const [gbMessages, setGbMessages] = useState<GuestbookMsg[]>([]);
     const [gbMessage, setGbMessage] = useState('');
     const [gbLoading, setGbLoading] = useState(false);
+    const [spaceOwnerId, setSpaceOwnerId] = useState('');
+    const [showBoard, setShowBoard] = useState(false);
+    const [boardWsFlag, setBoardWsFlag] = useState(0);
     const [emotes, setEmotes] = useState<EmoteBubble[]>([]);
     const [interactions, setInteractions] = useState<{ id: string; text: string; x: number; y: number; createdAt: number }[]>([]);
     const [showQuests, setShowQuests] = useState(false);
@@ -1065,6 +1069,7 @@ const ArenaInner = () => {
             setPlacedItems(data.placedItems || []);
             setPortals(data.portals || []);
             if (data.name) setSpaceName(data.name);
+            if (data.creatorId) setSpaceOwnerId(data.creatorId);
             if (data.dimensions) {
                 const parts = data.dimensions.split('x');
                 setSpaceDims({ width: parseInt(parts[0]), height: parseInt(parts[1]) });
@@ -1513,6 +1518,10 @@ const ArenaInner = () => {
                 }
                 break;
             }
+
+            case 'board-updated':
+                setBoardWsFlag(f => f + 1);
+                break;
 
             case 'pong':
                 break;
@@ -2611,6 +2620,9 @@ const ArenaInner = () => {
                         <button title="Quests" onClick={() => { setShowQuests(!showQuests); setShowGuestbook(false); }} style={{ width: 32, height: 32, borderRadius: 7, border: showQuests ? '1px solid #e7ddfb' : '1px solid transparent', background: showQuests ? '#f4f0fe' : 'transparent', color: showQuests ? '#5b21b6' : '#4d495f', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                             <Trophy size={16} />
                         </button>
+                        <button title="Board" onClick={() => setShowBoard(b => !b)} style={{ width: 32, height: 32, borderRadius: 7, border: showBoard ? '1px solid #e7ddfb' : '1px solid transparent', background: showBoard ? '#f4f0fe' : 'transparent', color: showBoard ? '#5b21b6' : '#4d495f', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 15 }}>
+                            📋
+                        </button>
                         {!isGuest && (
                             <button title={editMode ? 'Exit Edit' : 'Edit space'} onClick={() => setEditMode(!editMode)} style={{ width: 32, height: 32, borderRadius: 7, border: editMode ? '1px solid #e7ddfb' : '1px solid transparent', background: editMode ? '#f4f0fe' : 'transparent', color: editMode ? '#5b21b6' : '#4d495f', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                                 <Pencil size={16} />
@@ -3517,6 +3529,18 @@ const ArenaInner = () => {
                             )}
                         </div>
                     </div>
+                )}
+
+                {!editMode && showBoard && (
+                    <KanbanPanel
+                        spaceId={spaceId}
+                        token={token ?? ''}
+                        isOwner={!!currentUser && currentUser.userId === spaceOwnerId}
+                        currentUserId={currentUser?.userId ?? ''}
+                        users={[...users.values()].map(u => ({ userId: u.userId, username: u.username, avatarId: u.avatarId }))}
+                        onClose={() => setShowBoard(false)}
+                        refreshFlag={boardWsFlag}
+                    />
                 )}
 
                 {showNewMap && (

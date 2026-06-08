@@ -899,6 +899,86 @@ spaceRouter.delete("/:spaceId", userMiddleware, async (req, res) => {
     res.json({ message: "Space deleted" });
 });
 
+// GET /space/:spaceId/board — get board with columns and cards
+spaceRouter.get("/:spaceId/board", async (req, res) => {
+    const board = await client.kanbanBoard.findUnique({
+        where: { spaceId: req.params.spaceId },
+        include: {
+            columns: {
+                orderBy: { order: "asc" },
+                include: {
+                    cards: {
+                        orderBy: { order: "asc" },
+                        include: { assignee: { select: { username: true, name: true, avatarId: true } } },
+                    },
+                },
+            },
+        },
+    });
+
+    if (!board) { res.status(404).json({ message: "No board" }); return; }
+
+    res.json({
+        board: {
+            id: board.id,
+            name: board.name,
+            columns: board.columns.map((col) => ({
+                id: col.id,
+                name: col.name,
+                order: col.order,
+                color: col.color,
+                cards: col.cards.map((card) => ({
+                    id: card.id,
+                    columnId: card.columnId,
+                    title: card.title,
+                    description: card.description,
+                    assigneeId: card.assigneeId,
+                    assigneeUsername: card.assignee?.username ?? card.assignee?.name ?? null,
+                    assigneeAvatarId: card.assignee?.avatarId ?? null,
+                    priority: card.priority,
+                    dueDate: card.dueDate?.toISOString() ?? null,
+                    order: card.order,
+                })),
+            })),
+        },
+    });
+});
+
+// POST /space/:spaceId/board — create board (space owner only)
+spaceRouter.post("/:spaceId/board", userMiddleware, async (req, res) => {
+    const { name } = req.body;
+    if (!name || typeof name !== "string" || !name.trim()) {
+        res.status(400).json({ message: "Board name required" });
+        return;
+    }
+
+    const space = await client.space.findUnique({ where: { id: req.params.spaceId } });
+    if (!space) { res.status(404).json({ message: "Space not found" }); return; }
+    if (space.creatorId !== req.userId) { res.status(403).json({ message: "Not the space owner" }); return; }
+
+    const existing = await client.kanbanBoard.findUnique({ where: { spaceId: req.params.spaceId } });
+    if (existing) { res.status(409).json({ message: "Board already exists" }); return; }
+
+    const board = await client.kanbanBoard.create({
+        data: {
+            spaceId: req.params.spaceId,
+            name: name.trim(),
+            columns: {
+                createMany: {
+                    data: [
+                        { name: "To Do",      order: 0, color: "#6366f1" },
+                        { name: "In Progress", order: 1, color: "#f59e0b" },
+                        { name: "In Review",  order: 2, color: "#8b5cf6" },
+                        { name: "Done",       order: 3, color: "#10b981" },
+                    ],
+                },
+            },
+        },
+    });
+
+    res.json({ board: { id: board.id, name: board.name } });
+});
+
 // GET /space/:spaceId — public, anyone can read space details (needed to join)
 spaceRouter.get("/:spaceId", async (req, res) => {
     const space = await client.space.findUnique({
@@ -917,6 +997,7 @@ spaceRouter.get("/:spaceId", async (req, res) => {
 
     res.json({
         name: space.name,
+        creatorId: space.creatorId,
         dimensions: `${space.width}x${space.height}`,
         elements: space.elements.map((e) => ({
             id: e.id,
