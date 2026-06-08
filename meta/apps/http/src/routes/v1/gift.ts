@@ -48,7 +48,7 @@ giftRouter.post("/claim", userMiddleware, async (req, res) => {
         where: { rarity: "Common" },
     });
 
-    let randomItem;
+    let randomItem: typeof commonItems[0] | undefined;
     if (commonItems.length > 0) {
         randomItem = commonItems[Math.floor(Math.random() * commonItems.length)];
     }

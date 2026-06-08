@@ -321,14 +321,21 @@ model ChestInteraction {
 }
 
 model SpacePortal {
-  id          String @id @default(cuid())
+  id          String    @id @default(cuid())
   fromSpaceId String
   toSpaceId   String
-  x           Int
-  y           Int
-  label       String @default("Portal")
-  fromSpace   Space  @relation("FromPortals", fields: [fromSpaceId], references: [id], onDelete: Cascade)
-  toSpace     Space  @relation("ToPortals", fields: [toSpaceId], references: [id], onDelete: Cascade)
+  fromEdge    SpaceEdge
+  toEdge      SpaceEdge
+  label       String    @default("Portal")
+  fromSpace   Space     @relation("FromPortals", fields: [fromSpaceId], references: [id], onDelete: Cascade)
+  toSpace     Space     @relation("ToPortals", fields: [toSpaceId], references: [id], onDelete: Cascade)
+}
+
+enum SpaceEdge {
+  NORTH
+  SOUTH
+  EAST
+  WEST
 }
 
 enum Layer {

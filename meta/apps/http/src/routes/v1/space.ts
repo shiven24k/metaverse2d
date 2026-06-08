@@ -358,7 +358,7 @@ spaceRouter.post("/place/batch", userMiddleware, async (req, res) => {
     });
     const invMap = new Map(inventory.map(i => [i.itemId, i.quantity]));
 
-    const toPlace: { spaceId: string; itemId: string; x: number; y: number; layer: string }[] = [];
+    const toPlace: { spaceId: string; itemId: string; x: number; y: number; layer: "FLOOR" | "WALL" }[] = [];
     const toDeduct = new Map<string, number>();
 
     for (const it of items) {
@@ -758,10 +758,16 @@ spaceRouter.delete("/portal/:id", userMiddleware, async (req, res) => {
     res.json({ message: "Portal deleted" });
 });
 
+const VALID_EDGES = new Set(["NORTH", "SOUTH", "EAST", "WEST"]);
+
 spaceRouter.post("/:spaceId/portal", userMiddleware, async (req, res) => {
-    const { toSpaceId, x, y, label } = req.body;
-    if (!toSpaceId || x == null || y == null) {
-        res.status(400).json({ message: "toSpaceId, x, y required" });
+    const { toSpaceId, fromEdge, toEdge, label } = req.body;
+    if (!toSpaceId || !fromEdge || !toEdge) {
+        res.status(400).json({ message: "toSpaceId, fromEdge, toEdge required" });
+        return;
+    }
+    if (!VALID_EDGES.has(fromEdge) || !VALID_EDGES.has(toEdge)) {
+        res.status(400).json({ message: "fromEdge and toEdge must be NORTH, SOUTH, EAST, or WEST" });
         return;
     }
     const space = await client.space.findUnique({
@@ -777,7 +783,7 @@ spaceRouter.post("/:spaceId/portal", userMiddleware, async (req, res) => {
         return;
     }
     const portal = await client.spacePortal.create({
-        data: { fromSpaceId: req.params.spaceId, toSpaceId, x, y, label: label || "Portal" },
+        data: { fromSpaceId: req.params.spaceId, toSpaceId, fromEdge, toEdge, label: label || "Portal" },
     });
     res.json({ portal });
 });
@@ -943,8 +949,8 @@ spaceRouter.get("/:spaceId", async (req, res) => {
         portals: space.fromPortals.map((p) => ({
             id: p.id,
             toSpaceId: p.toSpaceId,
-            x: p.x,
-            y: p.y,
+            fromEdge: p.fromEdge,
+            toEdge: p.toEdge,
             label: p.label,
         })),
     });

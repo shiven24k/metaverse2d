@@ -158,11 +158,13 @@ interface PlacedItem {
     failedToSave?: boolean;
 }
 
+type SpaceEdge = 'NORTH' | 'SOUTH' | 'EAST' | 'WEST';
+
 interface SpacePortal {
     id: string;
     toSpaceId: string;
-    x: number;
-    y: number;
+    fromEdge: SpaceEdge;
+    toEdge: SpaceEdge;
     label: string;
 }
 
@@ -315,11 +317,13 @@ const ArenaInner = () => {
     const [portals, setPortals] = useState<SpacePortal[]>([]);
     const portalsRef = useRef<SpacePortal[]>([]);
     const [portalTravel, setPortalTravel] = useState<SpacePortal | null>(null);
-    const [showPortalModal, setShowPortalModal] = useState(false);
-    const [newPortalPos, setNewPortalPos] = useState<{ x: number; y: number } | null>(null);
-    const [newPortalTarget, setNewPortalTarget] = useState('');
+    // Editor portal form
+    const [newPortalFromEdge, setNewPortalFromEdge] = useState<SpaceEdge>('NORTH');
+    const [newPortalToEdge, setNewPortalToEdge] = useState<SpaceEdge>('SOUTH');
+    const [newPortalToSpaceId, setNewPortalToSpaceId] = useState('');
     const [newPortalLabel, setNewPortalLabel] = useState('Portal');
-    const [portalPlacingMode, setPortalPlacingMode] = useState(false);
+    const [savingPortal, setSavingPortal] = useState(false);
+    const [allSpaces, setAllSpaces] = useState<{ id: string; name: string }[]>([]);
     const [showResizeModal, setShowResizeModal] = useState(false);
     const [resizeW, setResizeW] = useState('');
     const [resizeH, setResizeH] = useState('');
@@ -414,7 +418,7 @@ const ArenaInner = () => {
     const [canvasIsOver, setCanvasIsOver] = useState(false);
     const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
     const [selectedPlaced, setSelectedPlaced] = useState<{ type: 'element' | 'item'; id: string } | null>(null);
-    const [editorTab, setEditorTab] = useState<'elements' | 'items' | 'npcs'>('elements');
+    const [editorTab, setEditorTab] = useState<'elements' | 'items' | 'npcs' | 'portals'>('elements');
     const isPainting = useRef(false);
     const paintSnapshotSaved = useRef(false);
     const lastPlacedCell = useRef<{ x: number; y: number } | null>(null);
@@ -533,7 +537,7 @@ const ArenaInner = () => {
                 }
                 if (anyActive) rerender();
             }
-            // Portal shimmer animation
+            // Portal edge pulse animation
             if (portalsRef.current.length > 0) rerender();
             id = requestAnimationFrame(tick);
         }
@@ -960,7 +964,6 @@ const ArenaInner = () => {
                 setSelectedItem(null);
                 setSelectedElement(null);
                 setEraserMode(false);
-                setPortalPlacingMode(false);
                 setSelectedNpcId(null);
                 setNpcPickingPos(false);
                 npcDragRef.current = null;
@@ -1019,12 +1022,13 @@ const ArenaInner = () => {
                 setInteractionPopup({ type: 'sign', title: '🍫 Vending Machine', text: 'You grab a snack. Yum!' });
                 return;
             }
-            // Step on portal
-            const portalHere = portalsRef.current.find(p => p.x === x && p.y === y);
-            if (portalHere) {
-                setPortalTravel(portalHere);
-                return;
-            }
+        }
+
+        // Confirm portal travel with Enter
+        if (e.key === 'Enter' && portalTravel) {
+            navigate(`/arena?spaceId=${portalTravel.toSpaceId}`);
+            setPortalTravel(null);
+            return;
         }
 
         switch (e.key) {
@@ -1042,6 +1046,16 @@ const ArenaInner = () => {
             isPanningRef.current = false;
         }
     };
+
+    const fetchPublicSpaces = useCallback(async () => {
+        try {
+            const res = await fetch(`${API}/api/v1/space/public`);
+            if (res.ok) {
+                const d = await res.json();
+                setAllSpaces((d.spaces || []).filter((s: { id: string }) => s.id !== spaceId));
+            }
+        } catch {}
+    }, [spaceId]);
 
     const fetchSpace = useCallback(async () => {
         try {
@@ -1566,9 +1580,17 @@ const ArenaInner = () => {
                 wsRef.current.send(JSON.stringify({ type: 'activity-changed', payload: { activity: null } }));
             }
         }
-        // Check portal
-        const portal = portalsRef.current.find(p => p.x === newX && p.y === newY);
-        if (portal) setTimeout(() => setPortalTravel(portal), 300);
+        // Edge-based portal detection
+        const dims = spaceDims;
+        let edge: SpaceEdge | null = null;
+        if (newY === 0) edge = 'NORTH';
+        else if (newY === dims.height - 1) edge = 'SOUTH';
+        else if (newX === dims.width - 1) edge = 'EAST';
+        else if (newX === 0) edge = 'WEST';
+        if (edge) {
+            const portal = portalsRef.current.find(p => p.fromEdge === edge);
+            if (portal) setTimeout(() => setPortalTravel(portal), 300);
+        }
     };
 
     const placeItem = useCallback(async (itemId: string, x: number, y: number) => {
@@ -1948,14 +1970,6 @@ const ArenaInner = () => {
         if (!editMode) return;
         const pos = canvasToGrid(e.clientX, e.clientY);
         if (!pos) return;
-        // Right-click on existing portal: delete it
-        const hitPortal = portalsRef.current.find(p => p.x === pos.x && p.y === pos.y);
-        if (hitPortal) {
-            fetch(`${API}/api/v1/space/portal/${hitPortal.id}`, { method: 'DELETE', headers: authHeaders })
-                .then(() => fetchSpace())
-                .catch(() => {});
-            return;
-        }
         const allPlaced = [
             ...spaceElements.map(e => ({ type: 'element' as const, id: e.id, x: e.x, y: e.y, w: e.element.width, h: e.element.height })),
             ...placedItems.map(p => ({ type: 'item' as const, id: p.id, x: p.x, y: p.y, w: p.item.width, h: p.item.height })),
@@ -1974,11 +1988,6 @@ const ArenaInner = () => {
             return;
         }
         if (editMode) {
-            if (portalPlacingMode) {
-                const pos = canvasToGrid(e.clientX, e.clientY);
-                if (pos) { setNewPortalPos(pos); setShowPortalModal(true); setPortalPlacingMode(false); }
-                return;
-            }
             if (npcPickingPos) {
                 const pos = canvasToGrid(e.clientX, e.clientY);
                 if (pos) {
@@ -2217,33 +2226,45 @@ const ArenaInner = () => {
             }
         });
 
-        // Portals — animated shimmering gate
-        const portalPhase = (performance.now() / 600) % (Math.PI * 2);
+        // Edge portals — arrow indicators at map boundaries
+        const portalPulse = 0.6 + 0.4 * Math.sin((performance.now() / 500) % (Math.PI * 2));
         portals.forEach(portal => {
-            const px = portal.x * 50;
-            const py = portal.y * 50;
-            const pulse = 0.55 + 0.3 * Math.sin(portalPhase);
+            const W = spaceDims.width * 50;
+            const H = spaceDims.height * 50;
             ctx.save();
-            ctx.globalAlpha = pulse;
-            const grad = ctx.createLinearGradient(px, py, px + 50, py + 50);
-            grad.addColorStop(0, '#7c3aed');
-            grad.addColorStop(0.5, '#4f46e5');
-            grad.addColorStop(1, '#06b6d4');
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.roundRect(px + 4, py + 4, 42, 42, 8);
-            ctx.fill();
-            ctx.globalAlpha = 0.9;
+            ctx.globalAlpha = portalPulse;
+            ctx.fillStyle = '#7c3aed';
             ctx.strokeStyle = '#c4b5fd';
             ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 12px sans-serif';
+            ctx.font = 'bold 11px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(portal.label, px + 25, py + 28);
-            ctx.font = '18px sans-serif';
-            ctx.fillText('🌀', px + 25, py + 16);
+            ctx.textBaseline = 'middle';
+            const label = portal.label;
+            if (portal.fromEdge === 'NORTH') {
+                const cx = W / 2, cy = 18;
+                ctx.beginPath(); ctx.moveTo(cx, cy - 10); ctx.lineTo(cx - 10, cy + 6); ctx.lineTo(cx + 10, cy + 6); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = 1; ctx.fillStyle = '#5b21b6';
+                ctx.fillText(`↑ ${label}`, cx, cy + 18);
+            } else if (portal.fromEdge === 'SOUTH') {
+                const cx = W / 2, cy = H - 18;
+                ctx.beginPath(); ctx.moveTo(cx, cy + 10); ctx.lineTo(cx - 10, cy - 6); ctx.lineTo(cx + 10, cy - 6); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = 1; ctx.fillStyle = '#5b21b6';
+                ctx.fillText(`↓ ${label}`, cx, cy - 18);
+            } else if (portal.fromEdge === 'EAST') {
+                const cx = W - 18, cy = H / 2;
+                ctx.beginPath(); ctx.moveTo(cx + 10, cy); ctx.lineTo(cx - 6, cy - 10); ctx.lineTo(cx - 6, cy + 10); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = 1; ctx.fillStyle = '#5b21b6';
+                ctx.save(); ctx.translate(cx - 20, cy); ctx.rotate(-Math.PI / 2); ctx.fillText(`→ ${label}`, 0, 0); ctx.restore();
+            } else if (portal.fromEdge === 'WEST') {
+                const cx = 18, cy = H / 2;
+                ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 6, cy - 10); ctx.lineTo(cx + 6, cy + 10); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = 1; ctx.fillStyle = '#5b21b6';
+                ctx.save(); ctx.translate(cx + 20, cy); ctx.rotate(Math.PI / 2); ctx.fillText(`← ${label}`, 0, 0); ctx.restore();
+            }
             ctx.restore();
         });
 
@@ -2655,10 +2676,10 @@ const ArenaInner = () => {
                 )}
 
                 {/* ── Mode hint (top-left overlay) ── */}
-                {(portalPlacingMode || npcPickingPos || editMode) && (
+                {(npcPickingPos || editMode) && (
                     <div style={{ position: 'absolute', top: 8, left: 12, pointerEvents: 'none', zIndex: 10 }}>
-                        <p style={{ margin: 0, fontSize: 11, color: portalPlacingMode || npcPickingPos ? '#c4b5fd' : '#e2e8f0', background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: 8, backdropFilter: 'blur(4px)' }}>
-                            {portalPlacingMode ? '🌀 Click a tile to place a portal — [Esc] to cancel' : npcPickingPos ? '📍 Click a tile to position the NPC — [Esc] to cancel' : 'Esc deselect · Ctrl+Z undo · right-click portal to delete · click NPC to select/drag'}
+                        <p style={{ margin: 0, fontSize: 11, color: npcPickingPos ? '#c4b5fd' : '#e2e8f0', background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: 8, backdropFilter: 'blur(4px)' }}>
+                            {npcPickingPos ? '📍 Click a tile to position the NPC — [Esc] to cancel' : 'Esc deselect · Ctrl+Z undo · right-click to delete · click NPC to select/drag'}
                         </p>
                     </div>
                 )}
@@ -2926,65 +2947,22 @@ const ArenaInner = () => {
                 {/* ── Portal travel prompt ── */}
                 {portalTravel && (
                     <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #e7ddfb', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '24px 28px', width: 320, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)', textAlign: 'center' }}>
-                        <div style={{ fontSize: 32, marginBottom: 10 }}>🌀</div>
-                        <div style={{ fontSize: 17, fontWeight: 700, color: '#6d28d9', marginBottom: 8 }}>Portal — {portalTravel.label}</div>
-                        <p style={{ margin: '0 0 18px', fontSize: 14, color: '#6f6b82' }}>Travel to another space?</p>
+                        <div style={{ fontSize: 32, marginBottom: 10 }}>🚪</div>
+                        <div style={{ fontSize: 17, fontWeight: 700, color: '#6d28d9', marginBottom: 8 }}>Travel to {portalTravel.label}?</div>
+                        <p style={{ margin: '0 0 6px', fontSize: 13, color: '#6f6b82' }}>You've reached the {portalTravel.fromEdge.toLowerCase()} edge.</p>
+                        <p style={{ margin: '0 0 18px', fontSize: 12, color: '#a3a0b3' }}>Press <strong>Enter</strong> to confirm</p>
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                             <button
                                 onClick={() => { navigate(`/arena?spaceId=${portalTravel.toSpaceId}`); setPortalTravel(null); }}
                                 style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}
                             >
-                                Travel
+                                Travel [Enter]
                             </button>
                             <button onClick={() => setPortalTravel(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 14, cursor: 'pointer' }}>Cancel</button>
                         </div>
                     </div>
                 )}
                 {portalTravel && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.32)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setPortalTravel(null)} />}
-
-                {/* ── Portal creation modal ── */}
-                {showPortalModal && newPortalPos && (
-                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #e7ddfb', borderRadius: 14, padding: '24px 28px', width: 340, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)' }}>
-                        <div style={{ fontSize: 17, fontWeight: 700, color: '#6d28d9', marginBottom: 16 }}>🌀 Create Portal at ({newPortalPos.x}, {newPortalPos.y})</div>
-                        <label style={{ display: 'block', fontSize: 12, color: '#6f6b82', marginBottom: 4 }}>Destination Space ID</label>
-                        <input
-                            value={newPortalTarget}
-                            onChange={e => setNewPortalTarget(e.target.value)}
-                            placeholder="Paste space ID..."
-                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 10 }}
-                        />
-                        <label style={{ display: 'block', fontSize: 12, color: '#6f6b82', marginBottom: 4 }}>Label</label>
-                        <input
-                            value={newPortalLabel}
-                            onChange={e => setNewPortalLabel(e.target.value)}
-                            placeholder="Portal"
-                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }}
-                        />
-                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            <button
-                                onClick={async () => {
-                                    if (!newPortalTarget.trim()) return;
-                                    try {
-                                        await fetch(`${API}/api/v1/space/${spaceId}/portal`, {
-                                            method: 'POST',
-                                            headers: authHeaders,
-                                            body: JSON.stringify({ toSpaceId: newPortalTarget.trim(), x: newPortalPos.x, y: newPortalPos.y, label: newPortalLabel || 'Portal' }),
-                                        });
-                                        fetchSpace();
-                                    } catch {}
-                                    setShowPortalModal(false);
-                                    setNewPortalTarget('');
-                                    setNewPortalLabel('Portal');
-                                }}
-                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
-                            >
-                                Create
-                            </button>
-                            <button onClick={() => setShowPortalModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-                        </div>
-                    </div>
-                )}
-                {showPortalModal && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.28)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => setShowPortalModal(false)} />}
 
                 {/* ── Space resize modal ── */}
                 {showResizeModal && (
@@ -3156,13 +3134,6 @@ const ArenaInner = () => {
                             >
                                 🗑️ Clear All
                             </button>
-                            <button
-                                onClick={() => { setPortalPlacingMode(m => !m); setEraserMode(false); setSelectedItem(null); setSelectedElement(null); }}
-                                style={{ padding: '5px 10px', borderRadius: 5, border: `2px solid ${portalPlacingMode ? '#7c3aed' : '#d1d5db'}`, background: portalPlacingMode ? '#f5f3ff' : '#fff', color: '#7c3aed', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
-                                title="Click canvas to place a portal"
-                            >
-                                🌀 Portal
-                            </button>
                             {selectedPlaced && (
                                 <button
                                     onClick={() => {
@@ -3249,6 +3220,12 @@ const ArenaInner = () => {
                             >
                                 NPCs
                             </button>
+                            <button
+                                onClick={() => { setEditorTab('portals'); setSelectedItem(null); setSelectedElement(null); fetchPublicSpaces(); }}
+                                style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === 'portals' ? '#7c3aed' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 12, color: editorTab === 'portals' ? '#7c3aed' : '#888', cursor: 'pointer', transition: 'all 0.15s' }}
+                            >
+                                Portals
+                            </button>
                         </div>
                         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
                             {editorTab === 'elements' && (
@@ -3320,6 +3297,89 @@ const ArenaInner = () => {
                                         </div>
                                     )}
                                 </>
+                            )}
+                            {editorTab === 'portals' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    <p style={{ margin: 0, fontSize: 11, color: '#6f6b82', lineHeight: 1.5 }}>Connect this space to another via an edge. Players walking to the edge will be prompted to travel.</p>
+                                    {/* Existing portals */}
+                                    {portals.length === 0 && <p style={{ fontSize: 12, color: '#999', textAlign: 'center', margin: '4px 0' }}>No portals yet.</p>}
+                                    {portals.map(p => (
+                                        <div key={p.id} style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid #e7ddfb', background: '#faf9ff', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <span style={{ fontSize: 18 }}>
+                                                {p.fromEdge === 'NORTH' ? '↑' : p.fromEdge === 'SOUTH' ? '↓' : p.fromEdge === 'EAST' ? '→' : '←'}
+                                            </span>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#5b21b6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.label}</p>
+                                                <p style={{ margin: '1px 0 0', fontSize: 10, color: '#9ca3af' }}>{p.fromEdge} → {p.toEdge}</p>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    fetch(`${API}/api/v1/space/portal/${p.id}`, { method: 'DELETE', headers: authHeaders })
+                                                        .then(() => fetchSpace())
+                                                        .catch(() => {});
+                                                }}
+                                                style={{ padding: '3px 8px', borderRadius: 4, border: 'none', background: '#ef4444', color: '#fff', fontSize: 10, cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}
+                                            >Del</button>
+                                        </div>
+                                    ))}
+                                    {/* Add portal form */}
+                                    <div style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#374151' }}>Add Portal</p>
+                                        <div style={{ display: 'flex', gap: 6 }}>
+                                            <div style={{ flex: 1 }}>
+                                                <label style={{ display: 'block', fontSize: 10, color: '#6f6b82', marginBottom: 2 }}>This edge</label>
+                                                <select value={newPortalFromEdge} onChange={e => setNewPortalFromEdge(e.target.value as SpaceEdge)} style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11 }}>
+                                                    <option value="NORTH">↑ North</option>
+                                                    <option value="SOUTH">↓ South</option>
+                                                    <option value="EAST">→ East</option>
+                                                    <option value="WEST">← West</option>
+                                                </select>
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <label style={{ display: 'block', fontSize: 10, color: '#6f6b82', marginBottom: 2 }}>Enters at</label>
+                                                <select value={newPortalToEdge} onChange={e => setNewPortalToEdge(e.target.value as SpaceEdge)} style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11 }}>
+                                                    <option value="NORTH">↑ North</option>
+                                                    <option value="SOUTH">↓ South</option>
+                                                    <option value="EAST">→ East</option>
+                                                    <option value="WEST">← West</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: 10, color: '#6f6b82', marginBottom: 2 }}>Destination space</label>
+                                            <select value={newPortalToSpaceId} onChange={e => setNewPortalToSpaceId(e.target.value)} style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11 }}>
+                                                <option value="">Select a space…</option>
+                                                {allSpaces.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: 10, color: '#6f6b82', marginBottom: 2 }}>Label</label>
+                                            <input value={newPortalLabel} onChange={e => setNewPortalLabel(e.target.value)} placeholder="Portal" style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, outline: 'none', boxSizing: 'border-box' }} />
+                                        </div>
+                                        <button
+                                            disabled={!newPortalToSpaceId || savingPortal}
+                                            onClick={async () => {
+                                                if (!newPortalToSpaceId) return;
+                                                setSavingPortal(true);
+                                                try {
+                                                    const res = await fetch(`${API}/api/v1/space/${spaceId}/portal`, {
+                                                        method: 'POST',
+                                                        headers: authHeaders,
+                                                        body: JSON.stringify({ toSpaceId: newPortalToSpaceId, fromEdge: newPortalFromEdge, toEdge: newPortalToEdge, label: newPortalLabel || 'Portal' }),
+                                                    });
+                                                    if (res.ok) {
+                                                        fetchSpace();
+                                                        setNewPortalToSpaceId('');
+                                                        setNewPortalLabel('Portal');
+                                                    }
+                                                } catch {} finally { setSavingPortal(false); }
+                                            }}
+                                            style={{ padding: '7px', borderRadius: 6, border: 'none', background: newPortalToSpaceId ? '#6d28d9' : '#d1d5db', color: '#fff', fontSize: 12, cursor: newPortalToSpaceId ? 'pointer' : 'not-allowed', fontWeight: 600, opacity: savingPortal ? 0.7 : 1 }}
+                                        >
+                                            {savingPortal ? 'Adding…' : '+ Add Portal'}
+                                        </button>
+                                    </div>
+                                </div>
                             )}
                             {editorTab === 'npcs' && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
