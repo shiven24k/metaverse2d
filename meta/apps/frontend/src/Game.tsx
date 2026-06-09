@@ -3598,6 +3598,7 @@ const ArenaInner = () => {
                         authHeaders={authHeaders}
                         onClose={() => setShowSpaceSettings(false)}
                         onNameChange={(n) => { setSpaceName(n); }}
+                        onPrivacyChange={(v) => { setSpaceIsPrivate(v); }}
                     />
                 )}
 

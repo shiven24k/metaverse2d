@@ -21,9 +21,10 @@ interface Props {
     authHeaders: Record<string, string>;
     onClose: () => void;
     onNameChange: (name: string) => void;
+    onPrivacyChange?: (isPrivate: boolean) => void;
 }
 
-export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, authHeaders, onClose, onNameChange }: Props) {
+export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, authHeaders, onClose, onNameChange, onPrivacyChange }: Props) {
     const [name, setName] = useState(spaceName);
     const [privacy, setPrivacy] = useState(isPrivate);
     const [saving, setSaving] = useState(false);
@@ -58,6 +59,7 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
             if (r.ok) {
                 const d = await r.json();
                 onNameChange(d.name);
+                onPrivacyChange?.(d.isPrivate);
                 setSaveMsg("Saved!");
                 setTimeout(() => setSaveMsg(""), 2000);
             } else {

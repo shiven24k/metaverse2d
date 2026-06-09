@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
-import { Compass, Home, ShoppingBag, Package, Trophy, Plus, Settings, Coins, Gift, Bell, Search, User, MessageSquare, LogIn } from "lucide-react";
+import { Compass, Home, ShoppingBag, Package, Trophy, Plus, LogOut, Coins, Gift, Bell, Search, User, MessageSquare, LogIn } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const ASSETS_URL = import.meta.env.VITE_ASSETS_URL || "";
@@ -545,7 +545,7 @@ export default function SpacePage() {
                                 )}
                             </div>
                             <button onClick={handleSignOut} title="Sign out" style={{ width: 28, height: 28, borderRadius: 8, border: "1px solid #ecebf3", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#a3a0b3" }}>
-                                <Settings size={15} />
+                                <LogOut size={15} />
                             </button>
                         </div>
                     </div>
