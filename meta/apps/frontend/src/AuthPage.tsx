@@ -74,8 +74,8 @@ export default function AuthPage() {
         <div style={s.page}>
             <div style={s.card}>
                 <div style={s.logoRow}>
-                    <span style={s.logoPx}>M2D</span>
-                    <span style={s.logoText}>Metaverse 2D</span>
+                    <img src="/logo.svg" alt="OfficeVerse 2D" style={{ width: 40, height: 40, borderRadius: 10 }} />
+                    <span style={s.logoText}>OfficeVerse <span style={{ color: "#8b5cf6" }}>2D</span></span>
                 </div>
                 <p style={s.tagline}>Explore. Build. Connect.</p>
 

@@ -481,9 +481,7 @@ export default function SpacePage() {
             <aside style={{ width: 248, flexShrink: 0, background: "#fff", borderRight: "1px solid #ecebf3", display: "flex", flexDirection: "column", height: "100%" }}>
                 {/* Logo */}
                 <div style={{ padding: "20px 20px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(140deg,#6366f1,#8b5cf6 52%,#d946ef)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 3px 8px rgba(124,58,237,.34), inset 0 1.5px 0 rgba(255,255,255,.4)" }}>
-                        <img src={`${ASSETS_URL}/items/computer.png`} alt="" style={{ width: 18, imageRendering: "pixelated", filter: "drop-shadow(0 1px 1px rgba(0,0,0,.4))" }} />
-                    </div>
+                    <img src="/logo.svg" alt="OfficeVerse 2D" style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, boxShadow: "0 3px 8px rgba(124,58,237,.34)" }} />
                     <span style={{ fontSize: 16, fontWeight: 700, color: "#191427", letterSpacing: "-0.02em" }}>
                         OfficeVerse <span style={{ color: "#6f6b82", fontWeight: 600 }}>2D</span>
                     </span>

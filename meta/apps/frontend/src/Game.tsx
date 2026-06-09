@@ -2568,11 +2568,12 @@ const ArenaInner = () => {
         <div style={{ fontFamily: 'system-ui', background: '#9aa3b5', position: 'fixed', inset: 0, width: '100vw', height: '100vh', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
             {/* ── Header (light glass bar) ── */}
             <header style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 56, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', gap: 12, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderBottom: '1px solid #ecebf3', boxShadow: '0 1px 0 rgba(22,15,52,0.03)' }}>
-                {/* Left: back + space name + theme chip */}
+                {/* Left: back + logo + space name + theme chip */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                     <button onClick={() => navigate('/lobby')} title="Back to lobby" style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid #e3e1ee', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: '#4d495f' }}>
                         <ArrowLeft size={16} />
                     </button>
+                    <img src="/logo.svg" alt="" style={{ width: 28, height: 28, borderRadius: 7, flexShrink: 0 }} />
                     <div style={{ width: 1, height: 24, background: '#ecebf3', flexShrink: 0 }} />
                     <h1 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#191427', letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{spaceName || 'Arena'}</h1>
                     {spaceName && (

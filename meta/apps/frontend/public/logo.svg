@@ -1,0 +1,37 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="52%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#d946ef"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#312e81"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- Inset shadow -->
+  <rect width="64" height="64" rx="14" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+  <!-- Monitor body -->
+  <rect x="10" y="12" width="44" height="30" rx="4" fill="rgba(255,255,255,0.22)"/>
+  <!-- Screen -->
+  <rect x="13" y="15" width="38" height="24" rx="2" fill="url(#screen)"/>
+  <!-- Screen content — pixel grid lines -->
+  <line x1="13" y1="21" x2="51" y2="21" stroke="rgba(99,102,241,0.3)" stroke-width="1"/>
+  <line x1="13" y1="27" x2="51" y2="27" stroke="rgba(99,102,241,0.3)" stroke-width="1"/>
+  <line x1="13" y1="33" x2="51" y2="33" stroke="rgba(99,102,241,0.3)" stroke-width="1"/>
+  <!-- Pixel avatar — body -->
+  <rect x="27" y="17" width="10" height="6" rx="1" fill="#f1c27d"/>
+  <rect x="24" y="22" width="16" height="8" rx="1" fill="#6366f1"/>
+  <rect x="25" y="29" width="5" height="8" fill="#1f2937"/>
+  <rect x="34" y="29" width="5" height="8" fill="#1f2937"/>
+  <!-- Online dot -->
+  <circle cx="47" cy="16" r="3" fill="#4ade80"/>
+  <circle cx="47" cy="16" r="1.5" fill="#86efac"/>
+  <!-- Stand neck -->
+  <rect x="29" y="42" width="6" height="4" rx="1" fill="rgba(255,255,255,0.75)"/>
+  <!-- Stand base -->
+  <rect x="22" y="46" width="20" height="4" rx="2" fill="rgba(255,255,255,0.75)"/>
+</svg>
