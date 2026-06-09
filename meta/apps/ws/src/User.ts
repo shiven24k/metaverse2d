@@ -105,6 +105,20 @@ export class User {
                         return;
                     }
 
+                    if (space.isPrivate) {
+                        if (this.isGuest || !this.userId) {
+                            this.ws.close();
+                            return;
+                        }
+                        const member = await client.spaceMember.findUnique({
+                            where: { spaceId_userId: { spaceId, userId: this.userId } },
+                        });
+                        if (!member) {
+                            this.ws.close();
+                            return;
+                        }
+                    }
+
                     this.spaceId = spaceId;
                     getRoomManager().addUser(spaceId, this);
                     this.x = Math.floor(Math.random() * space.width);

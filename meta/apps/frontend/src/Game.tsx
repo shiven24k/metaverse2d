@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
-import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Smile, MessageCircle } from 'lucide-react';
+import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Smile, MessageCircle, Settings } from 'lucide-react';
 import { KanbanPanel } from './KanbanPanel';
+import { SpaceSettingsModal } from './SpaceSettingsModal';
 
 // ── PixelAvatar — CSS pixel art character, ported from design system ──────────
 const PIXEL_PALETTES: Record<string, { skin: string; hair: string; shirt: string }> = {
@@ -289,6 +290,8 @@ const ArenaInner = () => {
     const [showAvatarPicker, setShowAvatarPicker] = useState(false);
     const [avatars, setAvatars] = useState<{ id: string; imageUrl: string; name: string }[]>([]);
     const [savingAvatar, setSavingAvatar] = useState(false);
+    const [showSpaceSettings, setShowSpaceSettings] = useState(false);
+    const [spaceIsPrivate, setSpaceIsPrivate] = useState(false);
 
     // ── Interactable objects ──────────────────────────────────────────────────
     const [interactionPopup, setInteractionPopup] = useState<{
@@ -1070,6 +1073,7 @@ const ArenaInner = () => {
             setPortals(data.portals || []);
             if (data.name) setSpaceName(data.name);
             if (data.creatorId) setSpaceOwnerId(data.creatorId);
+            if (typeof data.isPrivate === 'boolean') setSpaceIsPrivate(data.isPrivate);
             if (data.dimensions) {
                 const parts = data.dimensions.split('x');
                 setSpaceDims({ width: parseInt(parts[0]), height: parseInt(parts[1]) });
@@ -2628,6 +2632,11 @@ const ArenaInner = () => {
                                 <Pencil size={16} />
                             </button>
                         )}
+                        {!isGuest && (
+                            <button title="Space Settings" onClick={() => setShowSpaceSettings(true)} style={{ width: 32, height: 32, borderRadius: 7, border: showSpaceSettings ? '1px solid #e7ddfb' : '1px solid transparent', background: showSpaceSettings ? '#f4f0fe' : 'transparent', color: showSpaceSettings ? '#5b21b6' : '#4d495f', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                <Settings size={16} />
+                            </button>
+                        )}
                     </div>
                     {!isGuest && (
                         <button onClick={() => { fetch(`${API}/api/v1/user/avatars`).then(r => r.json()).then(d => setAvatars(d.avatars || [])).catch(() => setAvatars([])); setShowAvatarPicker(true); }} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #e3e1ee', background: '#fff', color: '#4d495f', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>
@@ -3578,6 +3587,18 @@ const ArenaInner = () => {
                             </div>
                         </div>
                     </div>
+                )}
+
+                {showSpaceSettings && (
+                    <SpaceSettingsModal
+                        spaceId={spaceId}
+                        spaceName={spaceName}
+                        isPrivate={spaceIsPrivate}
+                        isOwner={!!currentUser && currentUser.userId === spaceOwnerId}
+                        authHeaders={authHeaders}
+                        onClose={() => setShowSpaceSettings(false)}
+                        onNameChange={(n) => { setSpaceName(n); }}
+                    />
                 )}
 
                 {showAvatarPicker && (

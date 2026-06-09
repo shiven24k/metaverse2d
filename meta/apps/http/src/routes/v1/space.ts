@@ -7,9 +7,10 @@ export const spaceRouter = Router();
 
 // ─── Static routes first (must come before /:spaceId) ────────────────────────
 
-// GET /space/public — all spaces, no auth required (anyone can browse & join)
+// GET /space/public — public spaces only (private spaces are hidden)
 spaceRouter.get("/public", async (req, res) => {
     const spaces = await client.space.findMany({
+        where: { isPrivate: false },
         include: {
             creator: {
                 select: { username: true, name: true },
@@ -29,7 +30,7 @@ spaceRouter.get("/public", async (req, res) => {
     });
 });
 
-// GET /space/all — only spaces owned by the current user
+// GET /space/all — spaces owned by the current user
 spaceRouter.get("/all", userMiddleware, async (req, res) => {
     const spaces = await client.space.findMany({
         where: { creatorId: req.userId! },
@@ -41,6 +42,30 @@ spaceRouter.get("/all", userMiddleware, async (req, res) => {
             name: s.name,
             thumbnail: s.thumbnail,
             dimensions: `${s.width}x${s.height}`,
+            isPrivate: s.isPrivate,
+        })),
+    });
+});
+
+// GET /space/joined — spaces the user is a member of (but did not create)
+spaceRouter.get("/joined", userMiddleware, async (req, res) => {
+    const members = await client.spaceMember.findMany({
+        where: { userId: req.userId!, role: "MEMBER" },
+        include: {
+            space: {
+                include: { creator: { select: { username: true, name: true } } },
+            },
+        },
+    });
+
+    res.json({
+        spaces: members.map((m) => ({
+            id: m.space.id,
+            name: m.space.name,
+            thumbnail: m.space.thumbnail,
+            dimensions: `${m.space.width}x${m.space.height}`,
+            isPrivate: m.space.isPrivate,
+            createdBy: m.space.creator.username ?? m.space.creator.name,
         })),
     });
 });
@@ -208,10 +233,14 @@ spaceRouter.post("/", userMiddleware, async (req, res) => {
     if (!parsedData.data.mapId) {
         const w = parseInt(parsedData.data.dimensions.split("x")[0]);
         const h = parseInt(parsedData.data.dimensions.split("x")[1]);
-        const space = await client.space.create({
-            data: { name: parsedData.data.name, width: w, height: h, creatorId: req.userId! },
+        const space = await client.$transaction(async (tx) => {
+            const s = await tx.space.create({
+                data: { name: parsedData.data.name, width: w, height: h, creatorId: req.userId! },
+            });
+            await tx.nPC.createMany({ data: makeDefaultNpcs(s.id, w, h) });
+            await tx.spaceMember.create({ data: { spaceId: s.id, userId: req.userId!, role: "OWNER" } });
+            return s;
         });
-        await client.nPC.createMany({ data: makeDefaultNpcs(space.id, w, h) });
         res.json({ spaceId: space.id });
         return;
     }
@@ -244,6 +273,7 @@ spaceRouter.post("/", userMiddleware, async (req, res) => {
             })),
         });
         await tx.nPC.createMany({ data: makeDefaultNpcs(space.id, map.width, map.height) });
+        await tx.spaceMember.create({ data: { spaceId: space.id, userId: req.userId!, role: "OWNER" } });
         return space;
     });
 
@@ -834,6 +864,78 @@ spaceRouter.put("/:spaceId/resize", userMiddleware, async (req, res) => {
     res.json({ message: "Space resized", width, height });
 });
 
+// ─── Privacy, invite, and member routes ───────────────────────────────────────
+
+// PUT /space/:id — update space name and/or isPrivate (owner only)
+spaceRouter.put("/:id", userMiddleware, async (req, res) => {
+    const space = await client.space.findUnique({
+        where: { id: req.params.id },
+        select: { creatorId: true },
+    });
+    if (!space) { res.status(404).json({ message: "Space not found" }); return; }
+    if (space.creatorId !== req.userId) { res.status(403).json({ message: "Unauthorized" }); return; }
+
+    const { name, isPrivate } = req.body;
+    const data: { name?: string; isPrivate?: boolean } = {};
+    if (typeof name === "string" && name.trim()) data.name = name.trim();
+    if (typeof isPrivate === "boolean") data.isPrivate = isPrivate;
+
+    const updated = await client.space.update({ where: { id: req.params.id }, data });
+    res.json({ id: updated.id, name: updated.name, isPrivate: updated.isPrivate });
+});
+
+// POST /space/:spaceId/invite — generate invite token (owner only)
+spaceRouter.post("/:spaceId/invite", userMiddleware, async (req, res) => {
+    const space = await client.space.findUnique({ where: { id: req.params.spaceId }, select: { creatorId: true } });
+    if (!space || space.creatorId !== req.userId) { res.status(403).json({ message: "Unauthorized" }); return; }
+
+    const { expiresInDays, maxUses } = req.body;
+    const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 86400_000) : null;
+
+    const invite = await client.spaceInvite.create({
+        data: {
+            spaceId: req.params.spaceId,
+            createdBy: req.userId!,
+            expiresAt: expiresAt ?? undefined,
+            maxUses: typeof maxUses === "number" ? maxUses : null,
+        },
+    });
+    res.json({ token: invite.token, expiresAt: invite.expiresAt });
+});
+
+// GET /space/:spaceId/members — list members (owner only)
+spaceRouter.get("/:spaceId/members", userMiddleware, async (req, res) => {
+    const space = await client.space.findUnique({ where: { id: req.params.spaceId }, select: { creatorId: true } });
+    if (!space || space.creatorId !== req.userId) { res.status(403).json({ message: "Unauthorized" }); return; }
+
+    const members = await client.spaceMember.findMany({
+        where: { spaceId: req.params.spaceId },
+        include: { user: { select: { id: true, name: true, username: true, avatarId: true } } },
+        orderBy: { joinedAt: "asc" },
+    });
+
+    res.json({
+        members: members.map((m) => ({
+            id: m.id,
+            userId: m.userId,
+            name: m.user.username ?? m.user.name,
+            avatarId: m.user.avatarId,
+            role: m.role,
+            joinedAt: m.joinedAt,
+        })),
+    });
+});
+
+// DELETE /space/:spaceId/member/:userId — remove member (owner only)
+spaceRouter.delete("/:spaceId/member/:userId", userMiddleware, async (req, res) => {
+    const space = await client.space.findUnique({ where: { id: req.params.spaceId }, select: { creatorId: true } });
+    if (!space || space.creatorId !== req.userId) { res.status(403).json({ message: "Unauthorized" }); return; }
+    if (req.params.userId === req.userId) { res.status(400).json({ message: "Cannot remove yourself as owner" }); return; }
+
+    await client.spaceMember.deleteMany({ where: { spaceId: req.params.spaceId, userId: req.params.userId } });
+    res.json({ message: "Member removed" });
+});
+
 // ─── Dynamic routes last ──────────────────────────────────────────────────────
 
 // DELETE /space/:spaceId/clear — wipe all tiles/items but keep the space itself
@@ -998,6 +1100,7 @@ spaceRouter.get("/:spaceId", async (req, res) => {
     res.json({
         name: space.name,
         creatorId: space.creatorId,
+        isPrivate: space.isPrivate,
         dimensions: `${space.width}x${space.height}`,
         elements: space.elements.map((e) => ({
             id: e.id,

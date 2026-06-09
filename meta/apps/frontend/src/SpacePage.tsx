@@ -12,6 +12,7 @@ interface Space {
     dimensions: string;
     thumbnail?: string;
     createdBy?: string;
+    isPrivate?: boolean;
 }
 
 interface ShopItem {
@@ -97,6 +98,7 @@ export default function SpacePage() {
     const [tab, setTab] = useState<Tab>("all");
     const [allSpaces, setAllSpaces] = useState<Space[]>([]);
     const [mySpaces, setMySpaces] = useState<Space[]>([]);
+    const [joinedSpaces, setJoinedSpaces] = useState<Space[]>([]);
     const [loadingAll, setLoadingAll] = useState(true);
     const [loadingMine, setLoadingMine] = useState(true);
     const [creating, setCreating] = useState(false);
@@ -238,9 +240,17 @@ export default function SpacePage() {
         } catch {} finally { setLoadingMine(false); }
     };
 
+    const fetchJoinedSpaces = async () => {
+        try {
+            const res = await fetch(`${API}/api/v1/space/joined`, { headers: authHeaders });
+            if (res.ok) { const d = await res.json(); setJoinedSpaces(d.spaces ?? []); }
+        } catch {}
+    };
+
     useEffect(() => {
         fetchAllSpaces();
         fetchMySpaces();
+        fetchJoinedSpaces();
         fetchWallet();
         fetchGiftStatus();
         fetchShop();
@@ -419,7 +429,10 @@ export default function SpacePage() {
                 {/* Card body */}
                 <div style={{ padding: "13px 15px 15px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 11 }}>
-                        <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#211c3b", letterSpacing: "-0.01em", flex: 1 }}>{space.name}</p>
+                        <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#211c3b", letterSpacing: "-0.01em", flex: 1 }}>
+                            {space.isPrivate && <span title="Private space" style={{ marginRight: 4 }}>🔒</span>}
+                            {space.name}
+                        </p>
                         {/* Theme chip — matches design system */}
                         <span style={{ fontSize: 10, fontWeight: 700, color: dot, background: `${dot}18`, borderRadius: 6, padding: "3px 8px" }}>{theme}</span>
                     </div>
@@ -643,6 +656,15 @@ export default function SpacePage() {
                                 {loadingMine ? <p style={{ color: "#6f6b82" }}>Loading…</p>
                                 : mySpaces.length === 0 ? <EmptyState icon="🏠" title="No spaces yet" sub="Create your first space to start building your world." />
                                 : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 18 }}>{mySpaces.map(s => <SpaceCard key={s.id} space={s} onDelete={() => setDeleteTarget(s)} />)}</div>}
+
+                                {joinedSpaces.length > 0 && (
+                                    <>
+                                        <h2 style={{ margin: "32px 0 16px", fontSize: 18, fontWeight: 700, color: "#191427", letterSpacing: "-0.02em" }}>Joined Spaces</h2>
+                                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 18 }}>
+                                            {joinedSpaces.map(s => <SpaceCard key={s.id} space={s} />)}
+                                        </div>
+                                    </>
+                                )}
                             </>
                         )}
 

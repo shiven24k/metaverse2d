@@ -27,6 +27,7 @@ model User {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   spaces          Space[]
+  spaceMembers    SpaceMember[]
   avatar          Avatar?          @relation(fields: [avatarId], references: [id])
   sessions        Session[]
   accounts        Account[]
@@ -87,6 +88,7 @@ model Space {
   width       Int
   height      Int
   thumbnail   String?
+  isPrivate   Boolean          @default(false)
   creatorId   String
   creator     User             @relation(fields: [creatorId], references: [id])
   elements    spaceElements[]
@@ -96,6 +98,8 @@ model Space {
   fromPortals SpacePortal[]    @relation("FromPortals")
   toPortals   SpacePortal[]    @relation("ToPortals")
   kanbanBoard KanbanBoard?
+  members     SpaceMember[]
+  invites     SpaceInvite[]
 }
 
 model spaceElements {
@@ -349,6 +353,35 @@ enum Layer {
 enum Role {
   Admin
   User
+}
+
+enum SpaceMemberRole {
+  OWNER
+  MEMBER
+}
+
+model SpaceMember {
+  id       String          @id @default(cuid())
+  spaceId  String
+  userId   String
+  role     SpaceMemberRole @default(MEMBER)
+  joinedAt DateTime        @default(now())
+  space    Space           @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, userId])
+}
+
+model SpaceInvite {
+  id        String    @id @default(cuid())
+  spaceId   String
+  token     String    @unique @default(cuid())
+  createdBy String
+  expiresAt DateTime?
+  maxUses   Int?
+  useCount  Int       @default(0)
+  createdAt DateTime  @default(now())
+  space     Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
 }
 
 enum KanbanPriority {
