@@ -2794,7 +2794,7 @@ const ArenaInner = () => {
 
                 {/* ── Interaction popup ── */}
                 {interactionPopup && (
-                    <div style={{ position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)', background: '#fff', border: `1px solid ${interactionPopup.type === 'chest' ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.12)'}`, backdropFilter: 'blur(10px)', borderRadius: 14, padding: '20px 24px', minWidth: 240, maxWidth: 320, zIndex: 200, textAlign: 'center', boxShadow: interactionPopup.type === 'chest' ? '0 8px 32px rgba(251,191,36,0.2)' : '0 8px 32px rgba(0,0,0,0.4)' }}>
+                    <div style={{ position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)', background: '#fff', border: `1px solid ${interactionPopup.type === 'chest' ? 'rgba(251,191,36,0.35)' : '#ecebf3'}`, borderRadius: 14, padding: '20px 24px', minWidth: 240, maxWidth: 320, zIndex: 200, textAlign: 'center', boxShadow: '0 24px 60px rgba(22,15,52,0.22)' }}>
                         {interactionPopup.type === 'chest' && (
                             <div style={{ width: 68, height: 68, margin: '0 auto 12px', borderRadius: 14, background: 'radial-gradient(circle at 50% 36%, #fff6e0, #fde7a8 62%, #f6c64e)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(246,198,78,0.4)', position: 'relative' }}>
                                 <img src={`${ASSETS_URL}/tiles/chest.png`} alt="chest" style={{ width: 40, imageRendering: 'pixelated', filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.3))' }} />
@@ -2804,10 +2804,10 @@ const ArenaInner = () => {
                                 })}
                             </div>
                         )}
-                        <div style={{ fontSize: 15, fontWeight: 700, color: interactionPopup.type === 'chest' ? '#fbbf24' : '#f1f5f9', marginBottom: 6 }}>{interactionPopup.title}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: interactionPopup.type === 'chest' ? '#b25e09' : '#191427', marginBottom: 6 }}>{interactionPopup.title}</div>
                         <div style={{ fontSize: 13, color: '#6f6b82', lineHeight: 1.5 }}>{interactionPopup.text}</div>
                         {interactionPopup.type === 'chest' && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 11, color: '#a3a0b3', marginTop: 8 }}>🕐 Next chest in 1 hour</div>}
-                        <button onClick={() => setInteractionPopup(null)} style={{ marginTop: 12, padding: '6px 18px', borderRadius: 8, border: interactionPopup.type === 'chest' ? 'none' : '1px solid rgba(255,255,255,0.12)', background: interactionPopup.type === 'chest' ? 'linear-gradient(135deg,#4f46e5,#6d28d9)' : 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                        <button onClick={() => setInteractionPopup(null)} style={{ marginTop: 12, padding: '6px 18px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 600, boxShadow: '0 4px 12px rgba(124,58,237,.2)' }}>
                             {interactionPopup.type === 'chest' ? 'Collect' : 'Dismiss'}
                         </button>
                     </div>
@@ -2821,19 +2821,19 @@ const ArenaInner = () => {
                     const isLast = idx >= lines.length - 1;
                     const motionLabels: Record<string, string> = { STATIC: '🧍 Static', PATROL: '🚶 Patrol', WANDER: '🌀 Wander' };
                     return (
-                        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid rgba(255,200,0,0.2)', backdropFilter: 'blur(12px)', borderRadius: 16, width: 360, zIndex: 1200, boxShadow: '0 12px 48px rgba(0,0,0,0.55)', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
+                        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #ecebf3', borderRadius: 16, width: 360, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
                             {/* Header */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px 14px', borderBottom: '1px solid rgba(255,200,0,0.12)' }}>
-                                <div style={{ width: 46, height: 46, borderRadius: 10, background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.3)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, fontSize: 28 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px 14px', borderBottom: '1px solid #ecebf3' }}>
+                                <div style={{ width: 46, height: 46, borderRadius: 10, background: '#f4f0fe', border: '1px solid #e7ddfb', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, fontSize: 28 }}>
                                     💬
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 16, fontWeight: 700, color: '#FFD700', letterSpacing: '-0.01em' }}>{npcDialogue.npc.name}</div>
-                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 4, fontSize: 11, fontWeight: 600, color: '#6f6b82', background: 'rgba(255,255,255,0.07)', borderRadius: 6, padding: '2px 8px' }}>
+                                    <div style={{ fontSize: 16, fontWeight: 700, color: '#6d28d9', letterSpacing: '-0.01em' }}>{npcDialogue.npc.name}</div>
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 4, fontSize: 11, fontWeight: 600, color: '#6f6b82', background: '#f4f3f9', borderRadius: 6, padding: '2px 8px' }}>
                                         {motionLabels[npcDialogue.npc.motionType] ?? '🤖 NPC'} · NPC
                                     </div>
                                 </div>
-                                <button onClick={() => setNpcDialogue(null)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #ecebf3', background: 'rgba(255,255,255,0.06)', color: '#6f6b82', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+                                <button onClick={() => setNpcDialogue(null)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #ecebf3', background: '#f4f3f9', color: '#6f6b82', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
                             </div>
                             {/* Body */}
                             <div style={{ padding: '18px 20px 18px' }}>
@@ -2842,12 +2842,12 @@ const ArenaInner = () => {
                                 </p>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                     {lines.length > 1 && lines.map((_: string, i: number) => (
-                                        <span key={i} style={{ width: i === idx ? 18 : 6, height: 6, borderRadius: 3, background: i === idx ? '#FFD700' : 'rgba(255,255,255,0.15)', transition: 'all 0.2s' }} />
+                                        <span key={i} style={{ width: i === idx ? 18 : 6, height: 6, borderRadius: 3, background: i === idx ? '#6d28d9' : '#e3e1ee', transition: 'all 0.2s' }} />
                                     ))}
                                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                                         {!isLast
-                                            ? <button onClick={() => setNpcDialogue(prev => prev ? { ...prev, idx: prev.idx + 1 } : null)} style={{ padding: '7px 16px', borderRadius: 8, border: '1px solid rgba(255,200,0,0.35)', background: 'rgba(255,200,0,0.1)', color: '#FFD700', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>Next →</button>
-                                            : <button onClick={() => setNpcDialogue(null)} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Done</button>
+                                            ? <button onClick={() => setNpcDialogue(prev => prev ? { ...prev, idx: prev.idx + 1 } : null)} style={{ padding: '7px 16px', borderRadius: 8, border: '1px solid #e7ddfb', background: '#f4f0fe', color: '#6d28d9', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>Next →</button>
+                                            : <button onClick={() => setNpcDialogue(null)} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Done</button>
                                         }
                                     </div>
                                 </div>
@@ -3077,16 +3077,16 @@ const ArenaInner = () => {
                                     <button
                                         key={dir}
                                         onClick={() => handleExpand(dir)}
-                                        style={{ padding: '10px', borderRadius: 8, border: '1px solid #d1d5db', background: '#f9fafb', color: '#059669', fontSize: 13, cursor: 'pointer', fontWeight: 700, transition: 'all 0.15s' }}
+                                        style={{ padding: '10px', borderRadius: 8, border: '1px solid #ecebf3', background: '#f9f8fd', color: '#059669', fontSize: 13, cursor: 'pointer', fontWeight: 700, transition: 'all 0.15s' }}
                                         onMouseEnter={e => { e.currentTarget.style.background = '#d1fae5'; e.currentTarget.style.borderColor = '#059669'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = '#d1d5db'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = '#f9f8fd'; e.currentTarget.style.borderColor = '#ecebf3'; }}
                                     >
                                         {icons[dir]}
                                     </button>
                                 );
                             })}
                         </div>
-                        <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9ca3af' }}>Current size: {spaceDims.width}×{spaceDims.height} · Max 200×200</p>
+                        <p style={{ margin: '0 0 14px', fontSize: 11, color: '#a3a0b3' }}>Current size: {spaceDims.width}×{spaceDims.height} · Max 200×200</p>
                         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                             <button onClick={() => setShowExpandModal(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                         </div>
@@ -3120,12 +3120,12 @@ const ArenaInner = () => {
                 {showClearAllConfirm && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.28)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => !clearingAll && setShowClearAllConfirm(false)} />}
 
                 {playerPopup && (
-                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.15)', zIndex: 1100, textAlign: 'center' }}>
-                        <p style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', margin: '0 0 16px' }}>{playerPopup.username}</p>
-                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                            <button onClick={() => navigate(`/profile/${playerPopup.userId}`)} style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>View Profile</button>
-                            <button onClick={() => { setGiftTarget({ userId: playerPopup.userId, username: playerPopup.username }); setShowGiftModal(true); setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#333', fontSize: 13, cursor: 'pointer' }}>Send Gift</button>
-                            <button onClick={() => { setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#333', fontSize: 13, cursor: 'pointer' }}>Close</button>
+                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', border: '1px solid #ecebf3', borderRadius: 14, padding: '22px 28px', boxShadow: '0 24px 60px rgba(22,15,52,0.22)', zIndex: 1100, textAlign: 'center' }}>
+                        <p style={{ fontSize: 16, fontWeight: 700, color: '#191427', margin: '0 0 16px' }}>{playerPopup.username}</p>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                            <button onClick={() => navigate(`/profile/${playerPopup.userId}`)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>View Profile</button>
+                            <button onClick={() => { setGiftTarget({ userId: playerPopup.userId, username: playerPopup.username }); setShowGiftModal(true); setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e7ddfb', background: '#f4f0fe', color: '#6d28d9', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>Send Gift</button>
+                            <button onClick={() => { setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}>Close</button>
                         </div>
                     </div>
                 )}
@@ -3133,16 +3133,16 @@ const ArenaInner = () => {
 
                 {/* ── Editor sidebar (overlays canvas) ── */}
                 {editMode && (
-                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 280, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', zIndex: 50 }}>
+                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 280, background: '#fff', borderLeft: '1px solid #ecebf3', display: 'flex', flexDirection: 'column', zIndex: 50 }}>
                         {/* ── Header row 1: title + undo/redo ── */}
-                        <div style={{ padding: '10px 14px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15, color: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                        <div style={{ padding: '10px 14px', borderBottom: '1px solid #ecebf3', fontWeight: 700, fontSize: 15, color: '#191427', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                             <span>Editor</span>
                             <div style={{ display: 'flex', gap: 5 }}>
                                 <button
                                     onClick={handleUndo}
                                     disabled={!canUndo}
                                     title="Undo (Ctrl+Z)"
-                                    style={{ padding: '4px 9px', borderRadius: 4, border: '1px solid #d1d5db', background: canUndo ? '#fff' : '#f3f4f6', color: canUndo ? '#333' : '#bbb', fontSize: 11, cursor: canUndo ? 'pointer' : 'not-allowed', fontWeight: 600 }}
+                                    style={{ padding: '4px 9px', borderRadius: 6, border: `1px solid ${canUndo ? '#e3e1ee' : '#ecebf3'}`, background: canUndo ? '#fff' : '#f4f3f9', color: canUndo ? '#4d495f' : '#a3a0b3', fontSize: 11, cursor: canUndo ? 'pointer' : 'not-allowed', fontWeight: 600 }}
                                 >
                                     ↩ Undo
                                 </button>
@@ -3150,38 +3150,38 @@ const ArenaInner = () => {
                                     onClick={handleRedo}
                                     disabled={!canRedo}
                                     title="Redo (Ctrl+Shift+Z)"
-                                    style={{ padding: '4px 9px', borderRadius: 4, border: '1px solid #d1d5db', background: canRedo ? '#fff' : '#f3f4f6', color: canRedo ? '#333' : '#bbb', fontSize: 11, cursor: canRedo ? 'pointer' : 'not-allowed', fontWeight: 600 }}
+                                    style={{ padding: '4px 9px', borderRadius: 6, border: `1px solid ${canRedo ? '#e3e1ee' : '#ecebf3'}`, background: canRedo ? '#fff' : '#f4f3f9', color: canRedo ? '#4d495f' : '#a3a0b3', fontSize: 11, cursor: canRedo ? 'pointer' : 'not-allowed', fontWeight: 600 }}
                                 >
                                     ↪ Redo
                                 </button>
                             </div>
                         </div>
                         {/* ── Header row 2: tools toolbar ── */}
-                        <div style={{ padding: '8px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', flexWrap: 'wrap', gap: 5, flexShrink: 0 }}>
+                        <div style={{ padding: '8px 14px', borderBottom: '1px solid #ecebf3', display: 'flex', flexWrap: 'wrap', gap: 5, flexShrink: 0 }}>
                             <button
                                 onClick={() => setShowNewMap(true)}
-                                style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', color: '#6d28d9', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #e7ddfb', background: '#f4f0fe', color: '#6d28d9', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
                                 title="New Map"
                             >
                                 + New Map
                             </button>
                             <button
                                 onClick={() => { setResizeW(String(spaceDims.width)); setResizeH(String(spaceDims.height)); setShowResizeModal(true); }}
-                                style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', color: '#6366f1', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #e3e1ee', background: '#fff', color: '#6366f1', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
                                 title="Resize Space"
                             >
                                 ↔ Resize
                             </button>
                             <button
                                 onClick={() => setShowExpandModal(true)}
-                                style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', color: '#059669', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #e3e1ee', background: '#fff', color: '#059669', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
                                 title="Expand Space"
                             >
                                 ⊕ Expand
                             </button>
                             <button
                                 onClick={() => { setEraserMode(m => !m); setSelectedItem(null); setSelectedElement(null); setSelectedPlaced(null); }}
-                                style={{ padding: '5px 10px', borderRadius: 5, border: `2px solid ${eraserMode ? '#ef4444' : '#d1d5db'}`, background: eraserMode ? '#fef2f2' : '#fff', color: eraserMode ? '#ef4444' : '#666', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '5px 10px', borderRadius: 5, border: `2px solid ${eraserMode ? '#ef4444' : '#ecebf3'}`, background: eraserMode ? '#fef2f2' : '#fff', color: eraserMode ? '#ef4444' : '#6f6b82', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
                                 title="Eraser (E)"
                             >
                                 🧹 Eraser
@@ -3207,7 +3207,7 @@ const ArenaInner = () => {
                             )}
                         </div>
                         {selectedPlacedGroup.length > 1 && (
-                            <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#f5f3ff', fontSize: 12, color: '#7c3aed', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ padding: '10px 16px', borderBottom: '1px solid #ecebf3', background: '#f5f3ff', fontSize: 12, color: '#7c3aed', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span>☐</span>
                                 <span>{selectedPlacedGroup.length} items selected</span>
                                 <button
@@ -3224,20 +3224,20 @@ const ArenaInner = () => {
                                 </button>
                                 <button
                                     onClick={() => setSelectedPlacedGroup([])}
-                                    style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#666', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}
+                                    style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #e3e1ee', background: '#fff', color: '#6f6b82', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}
                                 >
                                     Clear
                                 </button>
                             </div>
                         )}
                         {eraserMode && (
-                            <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#fef2f2', fontSize: 12, color: '#ef4444', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ padding: '10px 16px', borderBottom: '1px solid #ecebf3', background: '#fef2f2', fontSize: 12, color: '#ef4444', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span>🧹</span>
                                 <span>Eraser — click/drag to remove elements and items</span>
                             </div>
                         )}
                         {(selectedElement || selectedItem) && (
-                            <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#eef2ff', fontSize: 12, color: '#6d28d9', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ padding: '10px 16px', borderBottom: '1px solid #ecebf3', background: '#f4f0fe', fontSize: 12, color: '#6d28d9', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                 <span>🔨</span>
                                 <span>
                                     Placing: {selectedElement ? `${selectedElement.width}×${selectedElement.height} element` : `${selectedItem!.name} (${selectedItem!.width}×${selectedItem!.height})`}
@@ -3246,13 +3246,13 @@ const ArenaInner = () => {
                                     <div style={{ display: 'flex', marginLeft: 'auto', gap: 4 }}>
                                         <button
                                             onClick={() => setPlacementLayer('FLOOR')}
-                                            style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: placementLayer === 'FLOOR' ? '#4f46e5' : '#e5e7eb', color: placementLayer === 'FLOOR' ? '#fff' : '#666', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                                            style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: placementLayer === 'FLOOR' ? '#6d28d9' : '#ecebf3', color: placementLayer === 'FLOOR' ? '#fff' : '#6f6b82', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
                                         >
                                             Floor
                                         </button>
                                         <button
                                             onClick={() => setPlacementLayer('WALL')}
-                                            style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: placementLayer === 'WALL' ? '#4f46e5' : '#e5e7eb', color: placementLayer === 'WALL' ? '#fff' : '#666', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                                            style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: placementLayer === 'WALL' ? '#6d28d9' : '#ecebf3', color: placementLayer === 'WALL' ? '#fff' : '#6f6b82', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
                                         >
                                             Wall
                                         </button>
@@ -3260,59 +3260,51 @@ const ArenaInner = () => {
                                 )}
                             </div>
                         )}
-                        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb' }}>
-                            <button
-                                onClick={() => { setEditorTab('elements'); setSelectedItem(null); setSelectedElement(null); fetchElementsCatalog(); }}
-                                style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === 'elements' ? '#4f46e5' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 12, color: editorTab === 'elements' ? '#4f46e5' : '#888', cursor: 'pointer', transition: 'all 0.15s' }}
-                            >
-                                Elements
-                            </button>
-                            <button
-                                onClick={() => { setEditorTab('items'); setSelectedItem(null); setSelectedElement(null); }}
-                                style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === 'items' ? '#4f46e5' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 12, color: editorTab === 'items' ? '#4f46e5' : '#888', cursor: 'pointer', transition: 'all 0.15s' }}
-                            >
-                                Items
-                            </button>
-                            <button
-                                onClick={() => { setEditorTab('npcs'); setSelectedItem(null); setSelectedElement(null); }}
-                                style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === 'npcs' ? '#4f46e5' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 12, color: editorTab === 'npcs' ? '#4f46e5' : '#888', cursor: 'pointer', transition: 'all 0.15s' }}
-                            >
-                                NPCs
-                            </button>
-                            <button
-                                onClick={() => { setEditorTab('portals'); setSelectedItem(null); setSelectedElement(null); fetchPublicSpaces(); }}
-                                style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === 'portals' ? '#7c3aed' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 12, color: editorTab === 'portals' ? '#7c3aed' : '#888', cursor: 'pointer', transition: 'all 0.15s' }}
-                            >
-                                Portals
-                            </button>
+                        <div style={{ display: 'flex', borderBottom: '1px solid #ecebf3' }}>
+                            {(['elements', 'items', 'npcs', 'portals'] as const).map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => {
+                                        setEditorTab(tab);
+                                        setSelectedItem(null);
+                                        setSelectedElement(null);
+                                        if (tab === 'elements') fetchElementsCatalog();
+                                        if (tab === 'portals') fetchPublicSpaces();
+                                    }}
+                                    style={{ flex: 1, padding: '10px 0', border: 'none', borderBottom: `2px solid ${editorTab === tab ? '#6d28d9' : 'transparent'}`, background: 'none', fontWeight: 600, fontSize: 12, color: editorTab === tab ? '#6d28d9' : '#a3a0b3', cursor: 'pointer', transition: 'all 0.15s', textTransform: 'capitalize' }}
+                                >
+                                    {tab === 'elements' ? 'Elements' : tab === 'items' ? 'Items' : tab === 'npcs' ? 'NPCs' : 'Portals'}
+                                </button>
+                            ))}
                         </div>
                         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
                             {editorTab === 'elements' && (
                                 <>
-                                    {elementsLoading && <p style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>Loading...</p>}
+                                    {elementsLoading && <p style={{ fontSize: 13, color: '#6f6b82', textAlign: 'center' }}>Loading...</p>}
                                     {!elementsLoading && elementTypes.length === 0 && (
-                                        <p style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>No elements available.</p>
+                                        <p style={{ fontSize: 13, color: '#6f6b82', textAlign: 'center' }}>No elements available.</p>
                                     )}
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                                         {elementTypes.map(el => {
                                             const imgUrl = el.imageUrl.startsWith('http') ? el.imageUrl : `${API}${el.imageUrl}`;
+                                            const isSelected = selectedElement?.id === el.id;
                                             return (
                                             <div
                                                 key={el.id}
                                                 draggable={true}
-                                                onClick={() => setSelectedElement(selectedElement?.id === el.id ? null : el)}
+                                                onClick={() => setSelectedElement(isSelected ? null : el)}
                                                 onDragStart={(e) => {
                                                     e.dataTransfer.setData('text/plain', 'element');
                                                     e.dataTransfer.effectAllowed = 'move';
                                                     draggedRef.current = { type: 'element', elementId: el.id, width: el.width, height: el.height, imageUrl: el.imageUrl };
                                                 }}
-                                                style={{ padding: 10, borderRadius: 8, border: `2px solid ${selectedElement?.id === el.id ? '#4f46e5' : '#e5e7eb'}`, background: '#fafafa', cursor: 'pointer', textAlign: 'center', transition: 'border-color 0.15s' }}
+                                                style={{ padding: 10, borderRadius: 9, border: `2px solid ${isSelected ? '#6d28d9' : '#ecebf3'}`, background: isSelected ? '#f4f0fe' : '#fafafa', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}
                                                 >
-                                                    <div style={{ height: 44, borderRadius: 4, background: '#f3f4f6', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
+                                                    <div style={{ height: 44, borderRadius: 6, background: '#f4f3f9', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                                         <img src={imgUrl} alt={el.id} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                                                     </div>
-                                                    <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#333' }}>{el.id.replace('el-', '').charAt(0).toUpperCase() + el.id.replace('el-', '').slice(1)}</p>
-                                                    <p style={{ margin: '2px 0 0', fontSize: 9, color: '#999' }}>{el.blocking ? 'block' : 'walk'}</p>
+                                                    <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#4d495f' }}>{el.id.replace('el-', '').charAt(0).toUpperCase() + el.id.replace('el-', '').slice(1)}</p>
+                                                    <p style={{ margin: '2px 0 0', fontSize: 9, color: '#a3a0b3' }}>{el.blocking ? 'block' : 'walk'}</p>
                                                 </div>
                                             );
                                         })}
@@ -3323,32 +3315,33 @@ const ArenaInner = () => {
                                 <>
                                     {inventory.filter(i => i.quantity > 0).length === 0 ? (
                                         <div style={{ textAlign: 'center' }}>
-                                            <p style={{ fontSize: 13, color: '#888' }}>No items in inventory.</p>
-                                            <p style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>Claim daily gifts or buy from the shop to get items.</p>
+                                            <p style={{ fontSize: 13, color: '#6f6b82' }}>No items in inventory.</p>
+                                            <p style={{ fontSize: 11, color: '#a3a0b3', marginTop: 4 }}>Claim daily gifts or buy from the shop to get items.</p>
                                         </div>
                                     ) : (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                             {inventory.filter(i => i.quantity > 0).map(item => {
                                                 const imgUrl = item.imageUrl.startsWith('http') ? item.imageUrl : `${API}${item.imageUrl}`;
+                                                const isSelected = selectedItem?.itemId === item.itemId;
                                                 return (
                                             <div
                                                 key={item.id}
                                                 draggable={true}
-                                                onClick={() => setSelectedItem(selectedItem?.itemId === item.itemId ? null : item)}
+                                                onClick={() => setSelectedItem(isSelected ? null : item)}
                                                 onDragStart={(e) => {
                                                     e.dataTransfer.setData('text/plain', 'inventory-item');
                                                     e.dataTransfer.effectAllowed = 'move';
                                                     draggedRef.current = { type: 'inventory-item', itemId: item.itemId, name: item.name, width: item.width, height: item.height, imageUrl: item.imageUrl };
                                                 }}
-                                                    style={{ padding: '10px 12px', borderRadius: 8, border: `2px solid ${selectedItem?.itemId === item.itemId ? '#4f46e5' : '#e5e7eb'}`, background: '#fafafa', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'border-color 0.15s' }}
+                                                    style={{ padding: '10px 12px', borderRadius: 9, border: `2px solid ${isSelected ? '#6d28d9' : '#ecebf3'}`, background: isSelected ? '#f4f0fe' : '#fafafa', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.15s' }}
                                                 >
-                                                    <div style={{ width: 40, height: 40, borderRadius: 4, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                                                    <div style={{ width: 40, height: 40, borderRadius: 6, background: '#f4f3f9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
                                                         <img src={imgUrl} alt={item.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                                                     </div>
                                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                                        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</p>
-                                                        <p style={{ margin: '2px 0 0', fontSize: 10, color: '#888' }}>x{item.quantity} · {item.rarity}</p>
-                                                        <p style={{ margin: '2px 0 0', fontSize: 9, color: '#999' }}>{item.blocking ? 'block' : 'walk'}</p>
+                                                        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#191427', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</p>
+                                                        <p style={{ margin: '2px 0 0', fontSize: 10, color: '#6f6b82' }}>x{item.quantity} · {item.rarity}</p>
+                                                        <p style={{ margin: '2px 0 0', fontSize: 9, color: '#a3a0b3' }}>{item.blocking ? 'block' : 'walk'}</p>
                                                     </div>
                                                 </div>
                                                 );
@@ -3361,15 +3354,15 @@ const ArenaInner = () => {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                     <p style={{ margin: 0, fontSize: 11, color: '#6f6b82', lineHeight: 1.5 }}>Connect this space to another via an edge. Players walking to the edge will be prompted to travel.</p>
                                     {/* Existing portals */}
-                                    {portals.length === 0 && <p style={{ fontSize: 12, color: '#999', textAlign: 'center', margin: '4px 0' }}>No portals yet.</p>}
+                                    {portals.length === 0 && <p style={{ fontSize: 12, color: '#a3a0b3', textAlign: 'center', margin: '4px 0' }}>No portals yet.</p>}
                                     {portals.map(p => (
-                                        <div key={p.id} style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid #e7ddfb', background: '#faf9ff', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <div key={p.id} style={{ padding: '9px 12px', borderRadius: 9, border: '1px solid #e7ddfb', background: '#faf9ff', display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <span style={{ fontSize: 18 }}>
                                                 {p.fromEdge === 'NORTH' ? '↑' : p.fromEdge === 'SOUTH' ? '↓' : p.fromEdge === 'EAST' ? '→' : '←'}
                                             </span>
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#5b21b6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.label}</p>
-                                                <p style={{ margin: '1px 0 0', fontSize: 10, color: '#9ca3af' }}>{p.fromEdge} → {p.toEdge}</p>
+                                                <p style={{ margin: '1px 0 0', fontSize: 10, color: '#a3a0b3' }}>{p.fromEdge} → {p.toEdge}</p>
                                             </div>
                                             <button
                                                 onClick={() => {
@@ -3382,12 +3375,12 @@ const ArenaInner = () => {
                                         </div>
                                     ))}
                                     {/* Add portal form */}
-                                    <div style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                        <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#374151' }}>Add Portal</p>
+                                    <div style={{ padding: '10px 12px', borderRadius: 9, border: '1px solid #ecebf3', background: '#f9f8fd', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#191427' }}>Add Portal</p>
                                         <div style={{ display: 'flex', gap: 6 }}>
                                             <div style={{ flex: 1 }}>
                                                 <label style={{ display: 'block', fontSize: 10, color: '#6f6b82', marginBottom: 2 }}>This edge</label>
-                                                <select value={newPortalFromEdge} onChange={e => setNewPortalFromEdge(e.target.value as SpaceEdge)} style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11 }}>
+                                                <select value={newPortalFromEdge} onChange={e => setNewPortalFromEdge(e.target.value as SpaceEdge)} style={{ width: '100%', padding: '5px 6px', borderRadius: 6, border: '1px solid #e3e1ee', background: '#fff', fontSize: 11, color: '#191427', outline: 'none' }}>
                                                     <option value="NORTH">↑ North</option>
                                                     <option value="SOUTH">↓ South</option>
                                                     <option value="EAST">→ East</option>
@@ -3396,7 +3389,7 @@ const ArenaInner = () => {
                                             </div>
                                             <div style={{ flex: 1 }}>
                                                 <label style={{ display: 'block', fontSize: 10, color: '#6f6b82', marginBottom: 2 }}>Enters at</label>
-                                                <select value={newPortalToEdge} onChange={e => setNewPortalToEdge(e.target.value as SpaceEdge)} style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11 }}>
+                                                <select value={newPortalToEdge} onChange={e => setNewPortalToEdge(e.target.value as SpaceEdge)} style={{ width: '100%', padding: '5px 6px', borderRadius: 6, border: '1px solid #e3e1ee', background: '#fff', fontSize: 11, color: '#191427', outline: 'none' }}>
                                                     <option value="NORTH">↑ North</option>
                                                     <option value="SOUTH">↓ South</option>
                                                     <option value="EAST">→ East</option>
@@ -3406,14 +3399,14 @@ const ArenaInner = () => {
                                         </div>
                                         <div>
                                             <label style={{ display: 'block', fontSize: 10, color: '#6f6b82', marginBottom: 2 }}>Destination space</label>
-                                            <select value={newPortalToSpaceId} onChange={e => setNewPortalToSpaceId(e.target.value)} style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11 }}>
+                                            <select value={newPortalToSpaceId} onChange={e => setNewPortalToSpaceId(e.target.value)} style={{ width: '100%', padding: '5px 6px', borderRadius: 6, border: '1px solid #e3e1ee', background: '#fff', fontSize: 11, color: '#191427', outline: 'none' }}>
                                                 <option value="">Select a space…</option>
                                                 {allSpaces.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                             </select>
                                         </div>
                                         <div>
                                             <label style={{ display: 'block', fontSize: 10, color: '#6f6b82', marginBottom: 2 }}>Label</label>
-                                            <input value={newPortalLabel} onChange={e => setNewPortalLabel(e.target.value)} placeholder="Portal" style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, outline: 'none', boxSizing: 'border-box' }} />
+                                            <input value={newPortalLabel} onChange={e => setNewPortalLabel(e.target.value)} placeholder="Portal" style={{ width: '100%', padding: '5px 6px', borderRadius: 6, border: '1px solid #e3e1ee', background: '#fff', fontSize: 11, color: '#191427', outline: 'none', boxSizing: 'border-box' }} />
                                         </div>
                                         <button
                                             disabled={!newPortalToSpaceId || savingPortal}
@@ -3433,7 +3426,7 @@ const ArenaInner = () => {
                                                     }
                                                 } catch {} finally { setSavingPortal(false); }
                                             }}
-                                            style={{ padding: '7px', borderRadius: 6, border: 'none', background: newPortalToSpaceId ? '#6d28d9' : '#d1d5db', color: '#fff', fontSize: 12, cursor: newPortalToSpaceId ? 'pointer' : 'not-allowed', fontWeight: 600, opacity: savingPortal ? 0.7 : 1 }}
+                                            style={{ padding: '7px', borderRadius: 7, border: 'none', background: newPortalToSpaceId ? 'linear-gradient(135deg,#7c3aed,#a78bfa)' : '#e3e1ee', color: newPortalToSpaceId ? '#fff' : '#a3a0b3', fontSize: 12, cursor: newPortalToSpaceId ? 'pointer' : 'not-allowed', fontWeight: 600, opacity: savingPortal ? 0.7 : 1 }}
                                         >
                                             {savingPortal ? 'Adding…' : '+ Add Portal'}
                                         </button>
@@ -3458,18 +3451,18 @@ const ArenaInner = () => {
                                         <div
                                             key={npc.id}
                                             onClick={() => setSelectedNpcId(selectedNpcId === npc.id ? null : npc.id)}
-                                            style={{ padding: '10px 12px', borderRadius: 8, border: `2px solid ${selectedNpcId === npc.id ? '#f59e0b' : '#e5e7eb'}`, background: selectedNpcId === npc.id ? '#fffbeb' : '#fafafa', cursor: 'pointer', transition: 'all 0.15s' }}
+                                            style={{ padding: '10px 12px', borderRadius: 9, border: `2px solid ${selectedNpcId === npc.id ? '#7c3aed' : '#ecebf3'}`, background: selectedNpcId === npc.id ? '#f4f0fe' : '#f9f8fd', cursor: 'pointer', transition: 'all 0.15s' }}
                                         >
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                                 <img
                                                     src={`${API}/uploads/defaults/${npc.sprite}.png`}
                                                     alt={npc.sprite}
-                                                    style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, background: '#e5e7eb', flexShrink: 0 }}
+                                                    style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, background: '#ecebf3', flexShrink: 0 }}
                                                     onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                                 />
                                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#333' }}>{npc.name}</p>
-                                                    <p style={{ margin: '2px 0 0', fontSize: 10, color: '#888' }}>({npc.x}, {npc.y}) · {npc.dialogues.length} line{npc.dialogues.length !== 1 ? 's' : ''} · <span style={{ color: npc.motionType === 'STATIC' ? '#60a5fa' : npc.motionType === 'WANDER' ? '#34d399' : '#a78bfa' }}>{(npc.motionType ?? 'PATROL').toLowerCase()}</span></p>
+                                                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#191427' }}>{npc.name}</p>
+                                                    <p style={{ margin: '2px 0 0', fontSize: 10, color: '#6f6b82' }}>({npc.x}, {npc.y}) · {npc.dialogues.length} line{npc.dialogues.length !== 1 ? 's' : ''} · <span style={{ color: npc.motionType === 'STATIC' ? '#60a5fa' : npc.motionType === 'WANDER' ? '#34d399' : '#a78bfa' }}>{(npc.motionType ?? 'PATROL').toLowerCase()}</span></p>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: 4 }}>
                                                     <button
@@ -3478,7 +3471,7 @@ const ArenaInner = () => {
                                                             setNpcForm({ id: npc.id, name: npc.name, sprite: npc.sprite, dialogues: [npc.dialogues[0] || '', npc.dialogues[1] || '', npc.dialogues[2] || ''], x: npc.x, y: npc.y, motionType: npc.motionType ?? 'PATROL', wanderRadius: npc.wanderRadius ?? 3 });
                                                             setShowNpcModal(true);
                                                         }}
-                                                        style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#6d28d9', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}
+                                                        style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e3e1ee', background: '#fff', color: '#6d28d9', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}
                                                     >Edit</button>
                                                     <button
                                                         onClick={e => {
@@ -3493,7 +3486,7 @@ const ArenaInner = () => {
                                                 </div>
                                             </div>
                                             {selectedNpcId === npc.id && (
-                                                <p style={{ margin: '6px 0 0', fontSize: 10, color: '#6b7280', fontStyle: 'italic' }}>
+                                                <p style={{ margin: '6px 0 0', fontSize: 10, color: '#6f6b82', fontStyle: 'italic' }}>
                                                     Drag on canvas to reposition
                                                 </p>
                                             )}
@@ -3502,11 +3495,11 @@ const ArenaInner = () => {
                                 </div>
                             )}
                         </div>
-                        <div style={{ padding: '10px 16px', borderTop: '1px solid #e5e7eb', fontSize: 11 }}>
+                        <div style={{ padding: '10px 16px', borderTop: '1px solid #ecebf3', fontSize: 11 }}>
                             {editorError ? (
                                 <span style={{ color: '#dc2626' }}>{editorError}</span>
                             ) : (
-                                <span style={{ color: '#888' }}>
+                                <span style={{ color: '#6f6b82' }}>
                                     {eraserMode ? '🧹 Click/drag to erase · Esc to cancel' : selectedPlacedGroup.length > 1 ? `☐ ${selectedPlacedGroup.length} items selected · Del to delete · Esc to deselect` : selectedPlaced ? 'Click/drag to move · Del to delete · Esc to deselect' : selectedElement || selectedItem ? 'Click/drag (paint brush) to place · Right-click to delete' : 'Click/drag to select items · Select an item from above'}
                                     {!eraserMode && <span style={{ marginLeft: 8 }}>· <span style={{ fontWeight: 600 }}>Ctrl+Z</span> Undo · <span style={{ fontWeight: 600 }}>Ctrl+Shift+Z</span> Redo</span>}
                                 </span>
@@ -3518,55 +3511,55 @@ const ArenaInner = () => {
                 )}
 
                 {!editMode && showGuestbook && (
-                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 320, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
-                        <div style={{ padding: 16, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 15 }}>Guestbook</div>
+                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 320, background: '#fff', borderLeft: '1px solid #ecebf3', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
+                        <div style={{ padding: 16, borderBottom: '1px solid #ecebf3', fontWeight: 600, fontSize: 15, color: '#191427' }}>Guestbook</div>
                         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
                             {gbLoading ? (
-                                <p style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>Loading...</p>
+                                <p style={{ fontSize: 13, color: '#6f6b82', textAlign: 'center' }}>Loading...</p>
                             ) : gbMessages.length === 0 ? (
-                                <p style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>No messages yet.</p>
+                                <p style={{ fontSize: 13, color: '#6f6b82', textAlign: 'center' }}>No messages yet.</p>
                             ) : (
                                 gbMessages.map(msg => (
-                                    <div key={msg.id} style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: '#f9fafb' }}>
+                                    <div key={msg.id} style={{ marginBottom: 12, padding: 10, borderRadius: 9, background: '#f9f8fd', border: '1px solid #ecebf3' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                                             <span style={{ fontSize: 12, fontWeight: 600, color: '#6d28d9', cursor: 'pointer' }} onClick={() => navigate(`/profile/${msg.userId}`)}>
                                                 {msg.username}
                                             </span>
-                                            <span style={{ fontSize: 10, color: '#aaa' }}>{new Date(msg.createdAt).toLocaleDateString()}</span>
+                                            <span style={{ fontSize: 10, color: '#a3a0b3' }}>{new Date(msg.createdAt).toLocaleDateString()}</span>
                                         </div>
-                                        <p style={{ margin: 0, fontSize: 13, color: '#333' }}>{msg.message}</p>
+                                        <p style={{ margin: 0, fontSize: 13, color: '#4d495f' }}>{msg.message}</p>
                                     </div>
                                 ))
                             )}
                         </div>
-                        <div style={{ padding: 12, borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8 }}>
-                            <input value={gbMessage} onChange={e => setGbMessage(e.target.value)} onKeyDown={e => e.key === 'Enter' && handlePostGuestbook()} placeholder="Leave a message..." maxLength={200} style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, outline: 'none' }} />
-                            <button onClick={handlePostGuestbook} style={{ padding: '8px 14px', borderRadius: 6, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer' }}>Send</button>
+                        <div style={{ padding: 12, borderTop: '1px solid #ecebf3', display: 'flex', gap: 8 }}>
+                            <input value={gbMessage} onChange={e => setGbMessage(e.target.value)} onKeyDown={e => e.key === 'Enter' && handlePostGuestbook()} placeholder="Leave a message..." maxLength={200} style={{ flex: 1, padding: '8px 12px', borderRadius: 7, border: '1px solid #e3e1ee', fontSize: 13, outline: 'none', color: '#191427' }} />
+                            <button onClick={handlePostGuestbook} style={{ padding: '8px 14px', borderRadius: 7, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Send</button>
                         </div>
                     </div>
                 )}
 
                 {!editMode && showQuests && (
-                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 320, background: '#fff', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
-                        <div style={{ padding: 16, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 15 }}>Quests</div>
+                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 320, background: '#fff', borderLeft: '1px solid #ecebf3', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
+                        <div style={{ padding: 16, borderBottom: '1px solid #ecebf3', fontWeight: 600, fontSize: 15, color: '#191427' }}>Quests</div>
                         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
                             {questsLoading ? (
-                                <p style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>Loading...</p>
+                                <p style={{ fontSize: 13, color: '#6f6b82', textAlign: 'center' }}>Loading...</p>
                             ) : quests.length === 0 ? (
-                                <p style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>No active quests right now.</p>
+                                <p style={{ fontSize: 13, color: '#6f6b82', textAlign: 'center' }}>No active quests right now.</p>
                             ) : (
                                 quests.map(q => (
-                                    <div key={q.id} style={{ marginBottom: 16, padding: 14, borderRadius: 10, background: q.completed ? '#f0fdf4' : '#f9fafb', border: `1px solid ${q.completed ? '#bbf7d0' : '#e5e7eb'}` }}>
+                                    <div key={q.id} style={{ marginBottom: 16, padding: 14, borderRadius: 10, background: q.completed ? '#f0fdf4' : '#f9f8fd', border: `1px solid ${q.completed ? '#bbf7d0' : '#ecebf3'}` }}>
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                            <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>{q.title}</span>
+                                            <span style={{ fontSize: 14, fontWeight: 600, color: '#191427' }}>{q.title}</span>
                                             {q.completed && <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>✅ Done</span>}
                                         </div>
-                                        <p style={{ margin: '0 0 8px', fontSize: 12, color: '#666' }}>{q.description}</p>
+                                        <p style={{ margin: '0 0 8px', fontSize: 12, color: '#6f6b82' }}>{q.description}</p>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                            <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#e5e7eb', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
-                                                <div style={{ height: '100%', width: `${Math.min(100, (q.progress / q.goalCount) * 100)}%`, borderRadius: 3, background: q.completed ? '#10b981' : '#4f46e5' }} />
+                                            <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#ecebf3', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
+                                                <div style={{ height: '100%', width: `${Math.min(100, (q.progress / q.goalCount) * 100)}%`, borderRadius: 3, background: q.completed ? '#10b981' : '#6d28d9' }} />
                                             </div>
-                                            <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{q.progress}/{q.goalCount}</span>
+                                            <span style={{ fontSize: 11, color: '#6f6b82', whiteSpace: 'nowrap' }}>{q.progress}/{q.goalCount}</span>
                                         </div>
                                         <span style={{ fontSize: 11, color: '#b45309', fontWeight: 600 }}>
                                             Reward: {q.rewardType === 'coins' ? `🪙 ${q.rewardValue} coins` : `📦 ${q.rewardValue}`}
@@ -3592,16 +3585,16 @@ const ArenaInner = () => {
 
                 {showNewMap && (
                     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setShowNewMap(false)}>
-                        <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 400, maxWidth: '90vw', boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
-                            <h2 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700, color: '#1a1a2e' }}>New Map</h2>
+                        <div style={{ background: '#fff', borderRadius: 14, padding: 28, width: 400, maxWidth: '90vw', boxShadow: '0 24px 60px rgba(22,15,52,0.18)', border: '1px solid #ecebf3' }} onClick={e => e.stopPropagation()}>
+                            <h2 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700, color: '#191427' }}>New Map</h2>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                                 <div>
-                                    <label style={{ fontSize: 12, fontWeight: 600, color: '#333', display: 'block', marginBottom: 4 }}>Name</label>
-                                    <input value={newMapName} onChange={e => setNewMapName(e.target.value)} placeholder="My New Map" style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+                                    <label style={{ fontSize: 12, fontWeight: 600, color: '#4d495f', display: 'block', marginBottom: 4 }}>Name</label>
+                                    <input value={newMapName} onChange={e => setNewMapName(e.target.value)} placeholder="My New Map" style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e3e1ee', fontSize: 14, outline: 'none', boxSizing: 'border-box', color: '#191427' }} />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: 12, fontWeight: 600, color: '#333', display: 'block', marginBottom: 4 }}>Dimensions</label>
-                                    <select value={newMapDims} onChange={e => setNewMapDims(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, outline: 'none', background: '#fff', boxSizing: 'border-box' }}>
+                                    <label style={{ fontSize: 12, fontWeight: 600, color: '#4d495f', display: 'block', marginBottom: 4 }}>Dimensions</label>
+                                    <select value={newMapDims} onChange={e => setNewMapDims(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e3e1ee', fontSize: 14, outline: 'none', background: '#fff', boxSizing: 'border-box', color: '#191427' }}>
                                         <option value="10x10">10 x 10</option>
                                         <option value="20x20">20 x 20</option>
                                         <option value="30x20">30 x 20</option>
@@ -3610,8 +3603,8 @@ const ArenaInner = () => {
                                     </select>
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: 12, fontWeight: 600, color: '#333', display: 'block', marginBottom: 4 }}>Template (optional)</label>
-                                    <select value={newMapTemplate} onChange={e => setNewMapTemplate(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, outline: 'none', background: '#fff', boxSizing: 'border-box' }}>
+                                    <label style={{ fontSize: 12, fontWeight: 600, color: '#4d495f', display: 'block', marginBottom: 4 }}>Template (optional)</label>
+                                    <select value={newMapTemplate} onChange={e => setNewMapTemplate(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e3e1ee', fontSize: 14, outline: 'none', background: '#fff', boxSizing: 'border-box', color: '#191427' }}>
                                         <option value="">Blank</option>
                                         {mapTemplates.map((t: any) => (
                                             <option key={t.id} value={t.id}>{t.name} ({t.dimensions})</option>
@@ -3619,8 +3612,8 @@ const ArenaInner = () => {
                                     </select>
                                 </div>
                                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
-                                    <button onClick={() => setShowNewMap(false)} style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#333', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-                                    <button onClick={handleCreateMap} disabled={creatingMap || !newMapName.trim()} style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: creatingMap ? '#a5b4fc' : '#4f46e5', color: '#fff', fontSize: 14, cursor: creatingMap ? 'wait' : 'pointer', fontWeight: 600 }}>{creatingMap ? 'Creating...' : 'Create'}</button>
+                                    <button onClick={() => setShowNewMap(false)} style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #e3e1ee', background: '#fff', color: '#4d495f', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                                    <button onClick={handleCreateMap} disabled={creatingMap || !newMapName.trim()} style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: creatingMap ? '#c4b5fd' : 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 14, cursor: creatingMap ? 'wait' : 'pointer', fontWeight: 600 }}>{creatingMap ? 'Creating...' : 'Create'}</button>
                                 </div>
                             </div>
                         </div>
@@ -3680,32 +3673,32 @@ const ArenaInner = () => {
                 )}
 
                 {showGiftModal && giftTarget && (
-                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }} onClick={() => { setShowGiftModal(false); setGiftMsg(""); }}>
-                        <div style={{ background: '#fff', borderRadius: 16, padding: 24, maxWidth: 380, width: '90%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
-                            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Send Gift to {giftTarget.username}</h3>
-                            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#888' }}>Choose an item from your inventory</p>
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }} onClick={() => { setShowGiftModal(false); setGiftMsg(""); }}>
+                        <div style={{ background: '#fff', borderRadius: 16, padding: 24, maxWidth: 380, width: '90%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(22,15,52,0.22)', border: '1px solid #ecebf3' }} onClick={e => e.stopPropagation()}>
+                            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#191427' }}>Send Gift to {giftTarget.username}</h3>
+                            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6f6b82' }}>Choose an item from your inventory</p>
                             {giftMsg && (
                                 <p style={{ margin: '0 0 12px', padding: '8px 12px', borderRadius: 6, background: giftMsg.includes('Sent') ? '#f0fdf4' : '#fef2f2', color: giftMsg.includes('Sent') ? '#059669' : '#ef4444', fontSize: 13 }}>{giftMsg}</p>
                             )}
                             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {inventory.filter(i => i.quantity > 0).length === 0 ? (
-                                    <p style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>No items to gift.</p>
+                                    <p style={{ fontSize: 13, color: '#6f6b82', textAlign: 'center' }}>No items to gift.</p>
                                 ) : (
                                     inventory.filter(i => i.quantity > 0).map(item => (
-                                        <button key={item.itemId} onClick={() => handleSendGift(item.itemId)} disabled={giftSending} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fafafa', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', opacity: giftSending ? 0.5 : 1 }}>
-                                            <div style={{ width: 36, height: 36, borderRadius: 4, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                                        <button key={item.itemId} onClick={() => handleSendGift(item.itemId)} disabled={giftSending} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 9, border: '1px solid #ecebf3', background: '#f9f8fd', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', opacity: giftSending ? 0.5 : 1 }}>
+                                            <div style={{ width: 36, height: 36, borderRadius: 6, background: '#f4f3f9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
                                                 <img src={item.imageUrl.startsWith('http') ? item.imageUrl : `${API}${item.imageUrl}`} alt={item.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                                             </div>
                                             <div style={{ flex: 1 }}>
-                                                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#333' }}>{item.name}</p>
-                                                <p style={{ margin: '2px 0 0', fontSize: 11, color: '#888' }}>x{item.quantity} · {item.rarity}</p>
+                                                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#191427' }}>{item.name}</p>
+                                                <p style={{ margin: '2px 0 0', fontSize: 11, color: '#6f6b82' }}>x{item.quantity} · {item.rarity}</p>
                                             </div>
                                             <span style={{ fontSize: 12, color: '#6d28d9', fontWeight: 600 }}>Gift →</span>
                                         </button>
                                     ))
                                 )}
                             </div>
-                            <button onClick={() => { setShowGiftModal(false); setGiftMsg(""); }} style={{ marginTop: 12, padding: '10px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#333', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                            <button onClick={() => { setShowGiftModal(false); setGiftMsg(""); }} style={{ marginTop: 12, padding: '10px', borderRadius: 8, border: '1px solid #e3e1ee', background: '#fff', color: '#4d495f', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
                         </div>
                     </div>
                 )}
