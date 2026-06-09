@@ -116,8 +116,8 @@ async function main() {
   // ── New water variants ──────────────────────────────────────────────────────
   await client.element.upsert({
     where: { id: "el-shallow-water" },
-    update: { imageUrl: "/uploads/defaults/shallow-water.png", width: 1, height: 1, static: true, blocking: false },
-    create: { id: "el-shallow-water", width: 1, height: 1, static: true, blocking: false, imageUrl: "/uploads/defaults/shallow-water.png" },
+    update: { imageUrl: "/uploads/defaults/shallow-water.png", width: 1, height: 1, static: true, blocking: true },
+    create: { id: "el-shallow-water", width: 1, height: 1, static: true, blocking: true, imageUrl: "/uploads/defaults/shallow-water.png" },
   });
   await client.element.upsert({
     where: { id: "el-waterfall" },

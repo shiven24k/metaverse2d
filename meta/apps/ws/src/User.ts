@@ -3,6 +3,7 @@ import { getRoomManager } from "./getRoomManager";
 import { IncomingMessage, OutgoingMessage } from "./types";
 import client from "@repo/db/client";
 import { auth } from "./lib/auth";
+import { getBlockingCells, invalidateBlockingCache } from "./blockingCache";
 
 function getRandomString(length: number) {
     const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -219,6 +220,7 @@ export class User {
                 case "item-deleted":
                 case "element-moved":
                 case "item-moved": {
+                    if (this.spaceId) invalidateBlockingCache(this.spaceId);
                     getRoomManager().broadcast(
                         {
                             type: parsedData.type,
@@ -274,6 +276,13 @@ export class User {
                         (xDisplacement === 1 && yDisplacement === 0) ||
                         (xDisplacement === 0 && yDisplacement === 1)
                     ) {
+                        if (this.spaceId) {
+                            const blocked = await getBlockingCells(this.spaceId);
+                            if (blocked.has(`${moveX},${moveY}`)) {
+                                this.send({ type: "movement-rejected", payload: { x: this.x, y: this.y } });
+                                break;
+                            }
+                        }
                         this.x = moveX;
                         this.y = moveY;
                         getRoomManager().broadcast(

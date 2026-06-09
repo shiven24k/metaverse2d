@@ -428,6 +428,8 @@ const ArenaInner = () => {
     const [editorTab, setEditorTab] = useState<'elements' | 'items' | 'npcs' | 'portals'>('elements');
     const isPainting = useRef(false);
     const paintSnapshotSaved = useRef(false);
+    const batchInFlightRef = useRef(false);
+    const isReconcilingRef = useRef(false);
     const lastPlacedCell = useRef<{ x: number; y: number } | null>(null);
     const paintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isMoving = useRef(false);
@@ -574,8 +576,11 @@ const ArenaInner = () => {
     }
 
     async function reconcileState(target: { elements: SpaceElement[]; items: PlacedItem[] }) {
-        const curElements = spaceElementsRef.current;
-        const curItems = placedItemsRef.current;
+        if (isReconcilingRef.current) return;
+        isReconcilingRef.current = true;
+        // Exclude optimistic tiles — they have no server IDs and can't be diffed
+        const curElements = spaceElementsRef.current.filter(e => !e.id.startsWith('_opt_'));
+        const curItems = placedItemsRef.current.filter(p => !p.id.startsWith('_opt_'));
         const ops: Promise<Response>[] = [];
 
         for (const el of curElements) {
@@ -617,11 +622,35 @@ const ArenaInner = () => {
         } catch (err) {
             console.error('Undo/redo reconcile error:', err);
             setEditorError('Failed to undo/redo');
+        } finally {
+            isReconcilingRef.current = false;
         }
+    }
+
+    function abortPendingBatch() {
+        // Cancel pending timers
+        if (batchFlushTimer.current) { clearTimeout(batchFlushTimer.current); batchFlushTimer.current = null; }
+        if (deleteFlushTimer.current) { clearTimeout(deleteFlushTimer.current); deleteFlushTimer.current = null; }
+        // Discard unsaved optimistic tiles (they have _opt_ IDs)
+        const cleanEls = spaceElementsRef.current.filter(e => !e.id.startsWith('_opt_'));
+        const cleanItems = placedItemsRef.current.filter(p => !p.id.startsWith('_opt_'));
+        spaceElementsRef.current = cleanEls;
+        placedItemsRef.current = cleanItems;
+        setSpaceElements(cleanEls);
+        setPlacedItems(cleanItems);
+        // Clear unsent buffers
+        batchBuffer.current = [];
+        deleteBuffer.current = { elementIds: [], itemIds: [] };
     }
 
     function handleUndo() {
         if (undoStackRef.current.length === 0) return;
+        if (isReconcilingRef.current) return;
+        if (batchInFlightRef.current) {
+            addToast('Still saving — please wait a moment', 'warning');
+            return;
+        }
+        abortPendingBatch();
         const prev = undoStackRef.current.pop()!;
         redoStackRef.current.push({ elements: spaceElementsRef.current.map(e => ({ ...e, element: { ...e.element } })), items: placedItemsRef.current.map(p => ({ ...p, item: { ...p.item } })) });
         setCanRedo(true);
@@ -631,6 +660,12 @@ const ArenaInner = () => {
 
     function handleRedo() {
         if (redoStackRef.current.length === 0) return;
+        if (isReconcilingRef.current) return;
+        if (batchInFlightRef.current) {
+            addToast('Still saving — please wait a moment', 'warning');
+            return;
+        }
+        abortPendingBatch();
         const next = redoStackRef.current.pop()!;
         undoStackRef.current.push({ elements: spaceElementsRef.current.map(e => ({ ...e, element: { ...e.element } })), items: placedItemsRef.current.map(p => ({ ...p, item: { ...p.item } })) });
         setCanUndo(true);
@@ -665,6 +700,7 @@ const ArenaInner = () => {
 
         if (saveStatusTimerRef.current) { clearTimeout(saveStatusTimerRef.current); saveStatusTimerRef.current = null; }
         setSaveStatus('saving');
+        batchInFlightRef.current = true;
         let requestFailed = false;
 
         try {
@@ -780,6 +816,7 @@ const ArenaInner = () => {
                 saveStatusTimerRef.current = null;
             }, 2000);
         }
+        batchInFlightRef.current = false;
     }, [spaceId, authHeaders, placementLayer, handleAuthFailure]);
 
     const canvasToGrid = (clientX: number, clientY: number): { x: number; y: number } | null => {

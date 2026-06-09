@@ -2,6 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'http';
 import { User } from '../../ws/src/User';
 import { getRoomManager } from '../../ws/src/getRoomManager';
+import { getBlockingCells } from '../../ws/src/blockingCache';
 import client from '@repo/db/client';
 
 interface NpcState {
@@ -56,6 +57,29 @@ function stepToward(cx: number, cy: number, tx: number, ty: number): { x: number
     }
 }
 
+function tryStep(
+    cx: number, cy: number,
+    tx: number, ty: number,
+    blocked: Set<string>,
+    spaceW: number, spaceH: number,
+): { x: number; y: number; facing: string } | null {
+    const candidates: { x: number; y: number; facing: string }[] = [];
+    // Primary direction toward target
+    const primary = stepToward(cx, cy, tx, ty);
+    candidates.push(primary);
+    // Perpendicular alternatives
+    for (const [dx, dy, facing] of [[0,-1,'up'],[0,1,'down'],[-1,0,'left'],[1,0,'right']] as [number,number,string][]) {
+        if (cx + dx === primary.x && cy + dy === primary.y) continue;
+        candidates.push({ x: cx + dx, y: cy + dy, facing });
+    }
+    for (const c of candidates) {
+        if (c.x < 0 || c.x >= spaceW || c.y < 0 || c.y >= spaceH) continue;
+        if (blocked.has(`${c.x},${c.y}`)) continue;
+        return c;
+    }
+    return null;
+}
+
 async function npcTick() {
     const rooms = getRoomManager().rooms;
     if (rooms.size === 0) return;
@@ -69,6 +93,7 @@ async function npcTick() {
         });
         if (!space) continue;
 
+        const blocked = await getBlockingCells(spaceId);
         const npcs = await client.nPC.findMany({ where: { spaceId } });
 
         for (const npc of npcs) {
@@ -96,12 +121,12 @@ async function npcTick() {
 
                 if (!state.wanderTarget || state.wanderCooldown <= 0) {
                     let target: { x: number; y: number } | null = null;
-                    for (let attempt = 0; attempt < 12; attempt++) {
+                    for (let attempt = 0; attempt < 20; attempt++) {
                         const dx = Math.floor(Math.random() * (radius * 2 + 1)) - radius;
                         const dy = Math.floor(Math.random() * (radius * 2 + 1)) - radius;
                         const nx = Math.max(0, Math.min(space.width  - 1, npc.x + dx));
                         const ny = Math.max(0, Math.min(space.height - 1, npc.y + dy));
-                        if (nx !== state.x || ny !== state.y) { target = { x: nx, y: ny }; break; }
+                        if ((nx !== state.x || ny !== state.y) && !blocked.has(`${nx},${ny}`)) { target = { x: nx, y: ny }; break; }
                     }
                     state.wanderTarget   = target ?? { x: npc.x, y: npc.y };
                     state.wanderCooldown = 8 + Math.floor(Math.random() * 4);
@@ -124,7 +149,13 @@ async function npcTick() {
                     continue;
                 }
 
-                const step = stepToward(state.x, state.y, tgt.x, tgt.y);
+                const step = tryStep(state.x, state.y, tgt.x, tgt.y, blocked, space.width, space.height);
+                if (!step) {
+                    state.wanderTarget = null;
+                    state.idleCountdown = 2;
+                    npcState.set(npc.id, state);
+                    continue;
+                }
                 state.x = step.x;
                 state.y = step.y;
                 npcState.set(npc.id, state);
@@ -160,7 +191,14 @@ async function npcTick() {
                 continue;
             }
 
-            const step = stepToward(state.x, state.y, target.x, target.y);
+            const step = tryStep(state.x, state.y, target.x, target.y, blocked, space.width, space.height);
+            if (!step) {
+                // Blocked on all sides — advance patrol point and idle briefly
+                state.patrolIndex = (state.patrolIndex + 1) % patrol.length;
+                state.idleCountdown = 2;
+                npcState.set(npc.id, state);
+                continue;
+            }
             state.x = step.x;
             state.y = step.y;
             npcState.set(npc.id, state);
