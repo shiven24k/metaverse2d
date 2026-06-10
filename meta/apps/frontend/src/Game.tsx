@@ -7,13 +7,19 @@ import { SpaceSettingsModal } from './SpaceSettingsModal';
 
 // ── PixelAvatar — CSS pixel art character, ported from design system ──────────
 const PIXEL_PALETTES: Record<string, { skin: string; hair: string; shirt: string }> = {
-    'avatar-default': { skin: '#f1c27d', hair: '#6b4226', shirt: '#3b82f6' },
-    'avatar-ninja':   { skin: '#f1c27d', hair: '#1a1a1a', shirt: '#111827' },
-    'avatar-wizard':  { skin: '#f1c27d', hair: '#e5e7eb', shirt: '#7c3aed' },
-    default:          { skin: '#f1c27d', hair: '#6b4226', shirt: '#3b82f6' },
-    coral:            { skin: '#f1c27d', hair: '#9a3412', shirt: '#f97316' },
-    teal:             { skin: '#f1c27d', hair: '#134e4a', shirt: '#14b8a6' },
-    rose:             { skin: '#f1c27d', hair: '#831843', shirt: '#ec4899' },
+    'avatar-default':   { skin: '#f1c27d', hair: '#6b4226', shirt: '#3b82f6' },
+    'avatar-ninja':     { skin: '#f1c27d', hair: '#1a1a1a', shirt: '#111827' },
+    'avatar-wizard':    { skin: '#f1c27d', hair: '#e5e7eb', shirt: '#7c3aed' },
+    'avatar-ceo':       { skin: '#f1c27d', hair: '#4a4a4a', shirt: '#1e3a5f' },
+    'avatar-dev':       { skin: '#f1c27d', hair: '#8b4513', shirt: '#374151' },
+    'avatar-designer':  { skin: '#f1c27d', hair: '#c8a400', shirt: '#7e22ce' },
+    'avatar-hr':        { skin: '#f1c27d', hair: '#2d1810', shirt: '#9f1239' },
+    'avatar-marketing': { skin: '#f1c27d', hair: '#b91c1c', shirt: '#f97316' },
+    'avatar-intern':    { skin: '#f1c27d', hair: '#92400e', shirt: '#0ea5e9' },
+    default:            { skin: '#f1c27d', hair: '#6b4226', shirt: '#3b82f6' },
+    coral:              { skin: '#f1c27d', hair: '#9a3412', shirt: '#f97316' },
+    teal:               { skin: '#f1c27d', hair: '#134e4a', shirt: '#14b8a6' },
+    rose:               { skin: '#f1c27d', hair: '#831843', shirt: '#ec4899' },
 };
 
 function PixelAvatar({ avatarId, size = 28, ring }: { avatarId?: string; size?: number; ring?: string }) {
@@ -3645,7 +3651,7 @@ const ArenaInner = () => {
                         <div style={{ background: '#fff', borderRadius: 18, padding: '28px 32px', maxWidth: 460, width: '90%', boxShadow: '0 24px 60px rgba(22,15,52,0.22)', border: '1px solid #ecebf3' }} onClick={e => e.stopPropagation()}>
                             <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: '#191427', letterSpacing: '-0.02em' }}>Choose Your Character</h3>
                             <p style={{ margin: '0 0 22px', fontSize: 13, color: '#6f6b82' }}>Pick the avatar that represents you in the world.</p>
-                            <div style={{ display: 'flex', gap: 14, justifyContent: 'center' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                                 {avatars.map(a => {
                                     const selected = currentUser?.avatarId === a.id;
                                     return (
@@ -3663,13 +3669,12 @@ const ArenaInner = () => {
                                                 }
                                             } finally { setSavingAvatar(false); }
                                         }} disabled={savingAvatar || selected}
-                                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '18px 14px 14px', borderRadius: 14, border: selected ? '2px solid #6d28d9' : '2px solid #ecebf3', background: selected ? '#f4f0fe' : '#fbfaff', cursor: selected ? 'default' : 'pointer', transition: 'all 0.15s', opacity: savingAvatar ? 0.6 : 1, minWidth: 100 }}>
-                                            {/* Pixel avatar preview (large) */}
-                                            <div style={{ width: 56, height: 56, background: selected ? '#ede9fe' : '#f4f3f9', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', border: selected ? '1px solid #d4b8fc' : '1px solid #e3e1ee' }}>
+                                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '14px 10px 12px', borderRadius: 14, border: selected ? '2px solid #6d28d9' : '2px solid #ecebf3', background: selected ? '#f4f0fe' : '#fbfaff', cursor: selected ? 'default' : 'pointer', transition: 'all 0.15s', opacity: savingAvatar ? 0.6 : 1 }}>
+                                            <div style={{ width: 52, height: 52, background: selected ? '#ede9fe' : '#f4f3f9', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', border: selected ? '1px solid #d4b8fc' : '1px solid #e3e1ee' }}>
                                                 <PixelAvatar avatarId={a.id} size={40} />
                                             </div>
                                             <img src={`${API}${a.imageUrl}`} alt={a.name} style={{ width: 0, height: 0, opacity: 0, position: 'absolute' }} onLoad={() => {}} />
-                                            <span style={{ fontSize: 13, fontWeight: 700, color: selected ? '#5b21b6' : '#4d495f' }}>{a.name.replace('Avatar ', '')}</span>
+                                            <span style={{ fontSize: 12, fontWeight: 700, color: selected ? '#5b21b6' : '#4d495f', textAlign: 'center', lineHeight: 1.2 }}>{a.name}</span>
                                             {selected && <span style={{ fontSize: 10, fontWeight: 700, color: '#6d28d9', background: '#ede9fe', borderRadius: 999, padding: '2px 8px' }}>Current</span>}
                                         </button>
                                     );

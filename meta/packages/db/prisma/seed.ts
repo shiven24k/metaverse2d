@@ -497,6 +497,42 @@ async function main() {
     create: { id: "avatar-wizard", name: "Wizard", imageUrl: "/uploads/defaults/avatar-wizard.png" },
   });
 
+  await client.avatar.upsert({
+    where: { id: "avatar-ceo" },
+    update: { name: "CEO", imageUrl: "/uploads/defaults/avatar-ceo.png" },
+    create: { id: "avatar-ceo", name: "CEO", imageUrl: "/uploads/defaults/avatar-ceo.png" },
+  });
+
+  await client.avatar.upsert({
+    where: { id: "avatar-dev" },
+    update: { name: "Developer", imageUrl: "/uploads/defaults/avatar-dev.png" },
+    create: { id: "avatar-dev", name: "Developer", imageUrl: "/uploads/defaults/avatar-dev.png" },
+  });
+
+  await client.avatar.upsert({
+    where: { id: "avatar-designer" },
+    update: { name: "Designer", imageUrl: "/uploads/defaults/avatar-designer.png" },
+    create: { id: "avatar-designer", name: "Designer", imageUrl: "/uploads/defaults/avatar-designer.png" },
+  });
+
+  await client.avatar.upsert({
+    where: { id: "avatar-hr" },
+    update: { name: "HR Manager", imageUrl: "/uploads/defaults/avatar-hr.png" },
+    create: { id: "avatar-hr", name: "HR Manager", imageUrl: "/uploads/defaults/avatar-hr.png" },
+  });
+
+  await client.avatar.upsert({
+    where: { id: "avatar-marketing" },
+    update: { name: "Marketing", imageUrl: "/uploads/defaults/avatar-marketing.png" },
+    create: { id: "avatar-marketing", name: "Marketing", imageUrl: "/uploads/defaults/avatar-marketing.png" },
+  });
+
+  await client.avatar.upsert({
+    where: { id: "avatar-intern" },
+    update: { name: "Intern", imageUrl: "/uploads/defaults/avatar-intern.png" },
+    create: { id: "avatar-intern", name: "Intern", imageUrl: "/uploads/defaults/avatar-intern.png" },
+  });
+
   console.log("Avatars created");
 
   // ─── NPCs: seed 3 office NPCs into every space that has none ─────────────────
