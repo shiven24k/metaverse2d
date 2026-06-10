@@ -60,7 +60,7 @@ export class User {
                         this.isGuest = true;
                         this.userId = `guest-${this.id}`;
                         this.username = `Guest-${getRandomString(4)}`;
-                        this.avatarId = 'avatar-default';
+                        this.avatarId = 'avatar-intern';
                     } else {
                         let userId: string | undefined;
                         try {

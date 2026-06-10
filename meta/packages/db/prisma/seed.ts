@@ -480,57 +480,39 @@ async function main() {
 
   // ─── Avatars ────────────────────────────────────────────────────────────────
   await client.avatar.upsert({
-    where: { id: "avatar-default" },
-    update: { name: "Default", imageUrl: "/uploads/defaults/avatar-default.png" },
-    create: { id: "avatar-default", name: "Default", imageUrl: "/uploads/defaults/avatar-default.png" },
-  });
-
-  await client.avatar.upsert({
-    where: { id: "avatar-ninja" },
-    update: { name: "Ninja", imageUrl: "/uploads/defaults/avatar-ninja.png" },
-    create: { id: "avatar-ninja", name: "Ninja", imageUrl: "/uploads/defaults/avatar-ninja.png" },
-  });
-
-  await client.avatar.upsert({
-    where: { id: "avatar-wizard" },
-    update: { name: "Wizard", imageUrl: "/uploads/defaults/avatar-wizard.png" },
-    create: { id: "avatar-wizard", name: "Wizard", imageUrl: "/uploads/defaults/avatar-wizard.png" },
-  });
-
-  await client.avatar.upsert({
     where: { id: "avatar-ceo" },
-    update: { name: "CEO", imageUrl: "/uploads/defaults/avatar-ceo.png" },
-    create: { id: "avatar-ceo", name: "CEO", imageUrl: "/uploads/defaults/avatar-ceo.png" },
+    update: { name: "CEO", imageUrl: "/avatars/avatar-ceo.png" },
+    create: { id: "avatar-ceo", name: "CEO", imageUrl: "/avatars/avatar-ceo.png" },
   });
 
   await client.avatar.upsert({
     where: { id: "avatar-dev" },
-    update: { name: "Developer", imageUrl: "/uploads/defaults/avatar-dev.png" },
-    create: { id: "avatar-dev", name: "Developer", imageUrl: "/uploads/defaults/avatar-dev.png" },
+    update: { name: "Developer", imageUrl: "/avatars/avatar-dev.png" },
+    create: { id: "avatar-dev", name: "Developer", imageUrl: "/avatars/avatar-dev.png" },
   });
 
   await client.avatar.upsert({
     where: { id: "avatar-designer" },
-    update: { name: "Designer", imageUrl: "/uploads/defaults/avatar-designer.png" },
-    create: { id: "avatar-designer", name: "Designer", imageUrl: "/uploads/defaults/avatar-designer.png" },
+    update: { name: "Designer", imageUrl: "/avatars/avatar-designer.png" },
+    create: { id: "avatar-designer", name: "Designer", imageUrl: "/avatars/avatar-designer.png" },
   });
 
   await client.avatar.upsert({
     where: { id: "avatar-hr" },
-    update: { name: "HR Manager", imageUrl: "/uploads/defaults/avatar-hr.png" },
-    create: { id: "avatar-hr", name: "HR Manager", imageUrl: "/uploads/defaults/avatar-hr.png" },
+    update: { name: "HR Manager", imageUrl: "/avatars/avatar-hr.png" },
+    create: { id: "avatar-hr", name: "HR Manager", imageUrl: "/avatars/avatar-hr.png" },
   });
 
   await client.avatar.upsert({
     where: { id: "avatar-marketing" },
-    update: { name: "Marketing", imageUrl: "/uploads/defaults/avatar-marketing.png" },
-    create: { id: "avatar-marketing", name: "Marketing", imageUrl: "/uploads/defaults/avatar-marketing.png" },
+    update: { name: "Marketing", imageUrl: "/avatars/avatar-marketing.png" },
+    create: { id: "avatar-marketing", name: "Marketing", imageUrl: "/avatars/avatar-marketing.png" },
   });
 
   await client.avatar.upsert({
     where: { id: "avatar-intern" },
-    update: { name: "Intern", imageUrl: "/uploads/defaults/avatar-intern.png" },
-    create: { id: "avatar-intern", name: "Intern", imageUrl: "/uploads/defaults/avatar-intern.png" },
+    update: { name: "Intern", imageUrl: "/avatars/avatar-intern.png" },
+    create: { id: "avatar-intern", name: "Intern", imageUrl: "/avatars/avatar-intern.png" },
   });
 
   console.log("Avatars created");
@@ -551,7 +533,7 @@ async function main() {
         {
           spaceId: space.id,
           name: "Manager Mike",
-          sprite: "avatar-default",
+          sprite: "avatar-ceo",
           dialogues: [
             "Good morning! The Q3 report is due by EOD.",
             "Have you checked your emails today? We have a 10am standup.",
@@ -569,7 +551,7 @@ async function main() {
         {
           spaceId: space.id,
           name: "Dev Dana",
-          sprite: "avatar-ninja",
+          sprite: "avatar-dev",
           dialogues: [
             "I'm in the zone — just pushed a fix for the auth bug!",
             "Has anyone reviewed my PR? It's been sitting for two days...",
@@ -587,7 +569,7 @@ async function main() {
         {
           spaceId: space.id,
           name: "HR Helen",
-          sprite: "avatar-wizard",
+          sprite: "avatar-hr",
           dialogues: [
             "Don't forget to log your hours in the time tracker!",
             "PTO requests must be submitted two weeks in advance.",
@@ -600,6 +582,60 @@ async function main() {
             { x: Math.min(w - 2, cx + 2), y: Math.min(h - 2, cy + 4) },
             { x: Math.min(w - 2, cx + 2), y: Math.min(h - 2, cy + 6) },
             { x: Math.max(1, cx - 1), y: Math.min(h - 2, cy + 6) },
+          ],
+        },
+        {
+          spaceId: space.id,
+          name: "Explorer Erik",
+          sprite: "avatar-designer",
+          dialogues: [
+            "Have you seen the new office layout? I designed it myself!",
+            "Good design is invisible — bad design is everywhere.",
+            "Let me know if you need a mockup for that feature!",
+          ],
+          x: Math.min(w - 2, cx + 1),
+          y: Math.max(1, cy - 4),
+          patrolPath: [
+            { x: Math.min(w - 2, cx + 1), y: Math.max(1, cy - 4) },
+            { x: Math.min(w - 2, cx + 4), y: Math.max(1, cy - 4) },
+            { x: Math.min(w - 2, cx + 4), y: Math.max(1, cy - 2) },
+            { x: Math.min(w - 2, cx + 1), y: Math.max(1, cy - 2) },
+          ],
+        },
+        {
+          spaceId: space.id,
+          name: "Guide Bob",
+          sprite: "avatar-intern",
+          dialogues: [
+            "Hey! I'm new here — still learning the ropes.",
+            "Can someone show me where the coffee machine is?",
+            "I finished that task! What should I work on next?",
+          ],
+          x: Math.max(1, cx - 4),
+          y: Math.min(h - 2, cy + 2),
+          patrolPath: [
+            { x: Math.max(1, cx - 4), y: Math.min(h - 2, cy + 2) },
+            { x: Math.max(1, cx - 2), y: Math.min(h - 2, cy + 2) },
+            { x: Math.max(1, cx - 2), y: Math.min(h - 2, cy + 5) },
+            { x: Math.max(1, cx - 4), y: Math.min(h - 2, cy + 5) },
+          ],
+        },
+        {
+          spaceId: space.id,
+          name: "Merchant Maya",
+          sprite: "avatar-marketing",
+          dialogues: [
+            "Have you seen our Q4 campaign? Engagement is through the roof!",
+            "Brand awareness starts with showing up — every single day.",
+            "Drop by the launch party Thursday — I'll save you a spot!",
+          ],
+          x: Math.min(w - 2, cx + 2),
+          y: Math.min(h - 2, cy + 3),
+          patrolPath: [
+            { x: Math.min(w - 2, cx + 2), y: Math.min(h - 2, cy + 3) },
+            { x: Math.min(w - 2, cx + 5), y: Math.min(h - 2, cy + 3) },
+            { x: Math.min(w - 2, cx + 5), y: Math.min(h - 2, cy + 6) },
+            { x: Math.min(w - 2, cx + 2), y: Math.min(h - 2, cy + 6) },
           ],
         },
       ],

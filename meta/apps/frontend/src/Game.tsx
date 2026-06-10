@@ -7,19 +7,13 @@ import { SpaceSettingsModal } from './SpaceSettingsModal';
 
 // ── PixelAvatar — CSS pixel art character, ported from design system ──────────
 const PIXEL_PALETTES: Record<string, { skin: string; hair: string; shirt: string }> = {
-    'avatar-default':   { skin: '#f1c27d', hair: '#6b4226', shirt: '#3b82f6' },
-    'avatar-ninja':     { skin: '#f1c27d', hair: '#1a1a1a', shirt: '#111827' },
-    'avatar-wizard':    { skin: '#f1c27d', hair: '#e5e7eb', shirt: '#7c3aed' },
     'avatar-ceo':       { skin: '#f1c27d', hair: '#4a4a4a', shirt: '#1e3a5f' },
     'avatar-dev':       { skin: '#f1c27d', hair: '#8b4513', shirt: '#374151' },
     'avatar-designer':  { skin: '#f1c27d', hair: '#c8a400', shirt: '#7e22ce' },
     'avatar-hr':        { skin: '#f1c27d', hair: '#2d1810', shirt: '#9f1239' },
     'avatar-marketing': { skin: '#f1c27d', hair: '#b91c1c', shirt: '#f97316' },
     'avatar-intern':    { skin: '#f1c27d', hair: '#92400e', shirt: '#0ea5e9' },
-    default:            { skin: '#f1c27d', hair: '#6b4226', shirt: '#3b82f6' },
-    coral:              { skin: '#f1c27d', hair: '#9a3412', shirt: '#f97316' },
-    teal:               { skin: '#f1c27d', hair: '#134e4a', shirt: '#14b8a6' },
-    rose:               { skin: '#f1c27d', hair: '#831843', shirt: '#ec4899' },
+    default:            { skin: '#f1c27d', hair: '#92400e', shirt: '#0ea5e9' },
 };
 
 function PixelAvatar({ avatarId, size = 28, ring }: { avatarId?: string; size?: number; ring?: string }) {
@@ -321,7 +315,7 @@ const ArenaInner = () => {
     // ── NPC editor ───────────────────────────────────────────────────────────
     const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
     const [showNpcModal, setShowNpcModal] = useState(false);
-    const [npcForm, setNpcForm] = useState<{ id?: string; name: string; sprite: string; dialogues: [string, string, string]; x: number; y: number; motionType: 'STATIC' | 'PATROL' | 'WANDER'; wanderRadius: number }>({ name: '', sprite: 'avatar-default', dialogues: ['', '', ''], x: 0, y: 0, motionType: 'PATROL', wanderRadius: 3 });
+    const [npcForm, setNpcForm] = useState<{ id?: string; name: string; sprite: string; dialogues: [string, string, string]; x: number; y: number; motionType: 'STATIC' | 'PATROL' | 'WANDER'; wanderRadius: number }>({ name: '', sprite: 'avatar-intern', dialogues: ['', '', ''], x: 0, y: 0, motionType: 'PATROL', wanderRadius: 3 });
     const [savingNpc, setSavingNpc] = useState(false);
     const [npcPickingPos, setNpcPickingPos] = useState(false);
     const npcDragRef = useRef<{ id: string } | null>(null);
@@ -378,10 +372,9 @@ const ArenaInner = () => {
 
     const preloadAvatarImage = useCallback((avatarId: string | undefined) => {
         if (!avatarId) return;
-        const url = `${API}/uploads/defaults/${avatarId}.png`;
+        const url = `/avatars/${avatarId}.png`;
         if (!imageCache.current.has(url) && !imageLoadFailed.current.has(url)) {
             const img = new Image();
-            img.crossOrigin = 'anonymous';
             img.onload = () => {
                 imageCache.current.set(url, img);
                 rerender();
@@ -2367,9 +2360,9 @@ const ArenaInner = () => {
                 if (adjComputer) effectiveActivity = 'working';
             }
 
-            const effectiveAvatarId = currentUser.avatarId ?? 'avatar-default';
+            const effectiveAvatarId = currentUser.avatarId ?? 'avatar-intern';
             preloadAvatarImage(effectiveAvatarId);
-            const avatarUrl = `${API}/uploads/defaults/${effectiveAvatarId}.png`;
+            const avatarUrl = `/avatars/${effectiveAvatarId}.png`;
             const img = imageCache.current.get(avatarUrl);
             const bump = bumpAnimRef.current;
             const bumpOff = bump ? Math.sin((performance.now() - bump.startTime) / bump.duration * Math.PI * 4) * 4 * Math.max(0, 1 - (performance.now() - bump.startTime) / bump.duration) : 0;
@@ -2397,9 +2390,9 @@ const ArenaInner = () => {
         }
 
         users.forEach(user => {
-            const effectiveAvatarId = user.avatarId ?? 'avatar-default';
+            const effectiveAvatarId = user.avatarId ?? 'avatar-intern';
             preloadAvatarImage(effectiveAvatarId);
-            const avatarUrl = `${API}/uploads/defaults/${effectiveAvatarId}.png`;
+            const avatarUrl = `/avatars/${effectiveAvatarId}.png`;
             const img = imageCache.current.get(avatarUrl);
             if (img) {
                 ctx.drawImage(img, 0, 0, 32, 48, user.x * 50 - 16, user.y * 50 - 24, 32, 48);
@@ -2433,7 +2426,7 @@ const ArenaInner = () => {
         // NPCs — smooth interpolated movement
         npcs.forEach(npc => {
             preloadAvatarImage(npc.sprite);
-            const avatarUrl = `${API}/uploads/defaults/${npc.sprite}.png`;
+            const avatarUrl = `/avatars/${npc.sprite}.png`;
             const img = imageCache.current.get(avatarUrl);
 
             const motionType = npc.motionType ?? 'PATROL';
@@ -2938,12 +2931,12 @@ const ArenaInner = () => {
 
                         {/* Sprite */}
                         <label style={{ display: 'block', fontSize: 11, color: '#6f6b82', marginBottom: 6 }}>Sprite</label>
-                        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                            {(['avatar-default', 'avatar-ninja', 'avatar-wizard'] as const).map(av => (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
+                            {(['avatar-ceo', 'avatar-dev', 'avatar-designer', 'avatar-hr', 'avatar-marketing', 'avatar-intern'] as const).map(av => (
                                 <div key={av} onClick={() => setNpcForm(f => ({ ...f, sprite: av }))}
-                                    style={{ flex: 1, padding: '10px 4px 8px', borderRadius: 10, border: `2px solid ${npcForm.sprite === av ? '#6d28d9' : '#e3e1ee'}`, background: npcForm.sprite === av ? '#f4f0fe' : '#fff', cursor: 'pointer', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
-                                    <PixelAvatar avatarId={av} size={32} />
-                                    <span style={{ fontSize: 9, fontWeight: 600, color: npcForm.sprite === av ? '#6d28d9' : '#6f6b82' }}>{av.replace('avatar-', '')}</span>
+                                    style={{ padding: '8px 4px 6px', borderRadius: 10, border: `2px solid ${npcForm.sprite === av ? '#6d28d9' : '#e3e1ee'}`, background: npcForm.sprite === av ? '#f4f0fe' : '#fff', cursor: 'pointer', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                    <PixelAvatar avatarId={av} size={28} />
+                                    <span style={{ fontSize: 8, fontWeight: 600, color: npcForm.sprite === av ? '#6d28d9' : '#6f6b82' }}>{av.replace('avatar-', '')}</span>
                                 </div>
                             ))}
                         </div>
@@ -3452,7 +3445,7 @@ const ArenaInner = () => {
                                         onClick={() => {
                                             const cx = Math.floor(spaceDims.width / 2);
                                             const cy = Math.floor(spaceDims.height / 2);
-                                            setNpcForm({ name: '', sprite: 'avatar-default', dialogues: ['', '', ''], x: cx, y: cy, motionType: 'PATROL', wanderRadius: 3 });
+                                            setNpcForm({ name: '', sprite: 'avatar-intern', dialogues: ['', '', ''], x: cx, y: cy, motionType: 'PATROL', wanderRadius: 3 });
                                             setShowNpcModal(true);
                                         }}
                                         style={{ padding: '8px', borderRadius: 6, border: 'none', background: '#6d28d9', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600, marginBottom: 4 }}
@@ -3673,7 +3666,7 @@ const ArenaInner = () => {
                                             <div style={{ width: 52, height: 52, background: selected ? '#ede9fe' : '#f4f3f9', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', border: selected ? '1px solid #d4b8fc' : '1px solid #e3e1ee' }}>
                                                 <PixelAvatar avatarId={a.id} size={40} />
                                             </div>
-                                            <img src={`${API}${a.imageUrl}`} alt={a.name} style={{ width: 0, height: 0, opacity: 0, position: 'absolute' }} onLoad={() => {}} />
+                                            <img src={a.imageUrl} alt={a.name} style={{ width: 0, height: 0, opacity: 0, position: 'absolute' }} onLoad={() => {}} />
                                             <span style={{ fontSize: 12, fontWeight: 700, color: selected ? '#5b21b6' : '#4d495f', textAlign: 'center', lineHeight: 1.2 }}>{a.name}</span>
                                             {selected && <span style={{ fontSize: 10, fontWeight: 700, color: '#6d28d9', background: '#ede9fe', borderRadius: 999, padding: '2px 8px' }}>Current</span>}
                                         </button>
