@@ -64,10 +64,13 @@ interface Props {
 
 function PixelMini({ avatarId, size = 22 }: { avatarId?: string | null; size?: number }) {
     const PALETTES: Record<string, { skin: string; hair: string; shirt: string }> = {
-        'avatar-default': { skin: '#f1c27d', hair: '#6b4226', shirt: '#3b82f6' },
-        'avatar-ninja':   { skin: '#f1c27d', hair: '#1a1a1a', shirt: '#111827' },
-        'avatar-wizard':  { skin: '#f1c27d', hair: '#e5e7eb', shirt: '#7c3aed' },
-        default:          { skin: '#f1c27d', hair: '#6b4226', shirt: '#3b82f6' },
+        'avatar-ceo':       { skin: '#f1c27d', hair: '#4a4a4a', shirt: '#1e3a5f' },
+        'avatar-dev':       { skin: '#f1c27d', hair: '#8b4513', shirt: '#374151' },
+        'avatar-designer':  { skin: '#f1c27d', hair: '#c8a400', shirt: '#7e22ce' },
+        'avatar-hr':        { skin: '#f1c27d', hair: '#2d1810', shirt: '#9f1239' },
+        'avatar-marketing': { skin: '#f1c27d', hair: '#b91c1c', shirt: '#f97316' },
+        'avatar-intern':    { skin: '#f1c27d', hair: '#92400e', shirt: '#0ea5e9' },
+        default:            { skin: '#f1c27d', hair: '#92400e', shirt: '#0ea5e9' },
     };
     const P = PALETTES[avatarId ?? 'default'] ?? PALETTES.default;
     const u = size / 8;
