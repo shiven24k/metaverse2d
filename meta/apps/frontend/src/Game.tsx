@@ -348,6 +348,7 @@ const ArenaInner = () => {
     useEffect(() => { myActivityRef.current = myActivity; }, [myActivity]);
 
     const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
+    const imageLoadFailed = useRef<Set<string>>(new Set());
     const rerender = useCallback(() => setRenderTick(t => t + 1), []);
     useEffect(() => { npcsRef.current = npcs; }, [npcs]);
 
@@ -372,11 +373,15 @@ const ArenaInner = () => {
     const preloadAvatarImage = useCallback((avatarId: string | undefined) => {
         if (!avatarId) return;
         const url = `${API}/uploads/defaults/${avatarId}.png`;
-        if (!imageCache.current.has(url)) {
+        if (!imageCache.current.has(url) && !imageLoadFailed.current.has(url)) {
             const img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = () => {
                 imageCache.current.set(url, img);
+                rerender();
+            };
+            img.onerror = () => {
+                imageLoadFailed.current.add(url);
                 rerender();
             };
             img.src = url;
@@ -2356,9 +2361,10 @@ const ArenaInner = () => {
                 if (adjComputer) effectiveActivity = 'working';
             }
 
-            preloadAvatarImage(currentUser.avatarId);
-            const avatarUrl = currentUser.avatarId ? `${API}/uploads/defaults/${currentUser.avatarId}.png` : '';
-            const img = avatarUrl ? imageCache.current.get(avatarUrl) : null;
+            const effectiveAvatarId = currentUser.avatarId ?? 'avatar-default';
+            preloadAvatarImage(effectiveAvatarId);
+            const avatarUrl = `${API}/uploads/defaults/${effectiveAvatarId}.png`;
+            const img = imageCache.current.get(avatarUrl);
             const bump = bumpAnimRef.current;
             const bumpOff = bump ? Math.sin((performance.now() - bump.startTime) / bump.duration * Math.PI * 4) * 4 * Math.max(0, 1 - (performance.now() - bump.startTime) / bump.duration) : 0;
             const cx = animPosRef.current.x * 50 + bumpOff;
@@ -2368,7 +2374,7 @@ const ArenaInner = () => {
                 const sx = dirCol * 32;
                 const sy = walkFrameRef.current * 48;
                 ctx.drawImage(img, sx, sy, 32, 48, cx - 16, cy - 24, 32, 48);
-            } else {
+            } else if (imageLoadFailed.current.has(avatarUrl)) {
                 ctx.beginPath();
                 ctx.fillStyle = '#FF6B6B';
                 ctx.arc(cx, cy, 20, 0, Math.PI * 2);
@@ -2385,12 +2391,13 @@ const ArenaInner = () => {
         }
 
         users.forEach(user => {
-            preloadAvatarImage(user.avatarId);
-            const avatarUrl = user.avatarId ? `${API}/uploads/defaults/${user.avatarId}.png` : '';
-            const img = avatarUrl ? imageCache.current.get(avatarUrl) : null;
+            const effectiveAvatarId = user.avatarId ?? 'avatar-default';
+            preloadAvatarImage(effectiveAvatarId);
+            const avatarUrl = `${API}/uploads/defaults/${effectiveAvatarId}.png`;
+            const img = imageCache.current.get(avatarUrl);
             if (img) {
                 ctx.drawImage(img, 0, 0, 32, 48, user.x * 50 - 16, user.y * 50 - 24, 32, 48);
-            } else {
+            } else if (imageLoadFailed.current.has(avatarUrl)) {
                 ctx.beginPath();
                 ctx.fillStyle = '#4ECDC4';
                 ctx.arc(user.x * 50, user.y * 50, 20, 0, Math.PI * 2);
