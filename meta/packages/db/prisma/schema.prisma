@@ -301,7 +301,7 @@ model NPC {
   id           String     @id @default(cuid())
   spaceId      String
   name         String
-  sprite       String     @default("avatar-default")
+  sprite       String     @default("avatar-intern")
   dialogues    String[]
   x            Int
   y            Int

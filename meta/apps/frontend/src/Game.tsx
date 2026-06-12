@@ -363,6 +363,7 @@ const ArenaInner = () => {
 
     const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
     const imageLoadFailed = useRef<Set<string>>(new Set());
+    const imageLoadPending = useRef<Set<string>>(new Set());
     const rerender = useCallback(() => setRenderTick(t => t + 1), []);
     useEffect(() => { npcsRef.current = npcs; }, [npcs]);
 
@@ -387,18 +388,20 @@ const ArenaInner = () => {
     const preloadAvatarImage = useCallback((avatarId: string | undefined) => {
         if (!avatarId) return;
         const url = `/avatars/${avatarId}.png`;
-        if (!imageCache.current.has(url) && !imageLoadFailed.current.has(url)) {
-            const img = new Image();
-            img.onload = () => {
-                imageCache.current.set(url, img);
-                rerender();
-            };
-            img.onerror = () => {
-                imageLoadFailed.current.add(url);
-                rerender();
-            };
-            img.src = url;
-        }
+        if (imageCache.current.has(url) || imageLoadFailed.current.has(url) || imageLoadPending.current.has(url)) return;
+        imageLoadPending.current.add(url);
+        const img = new Image();
+        img.onload = () => {
+            imageCache.current.set(url, img);
+            imageLoadPending.current.delete(url);
+            rerender();
+        };
+        img.onerror = () => {
+            imageLoadPending.current.delete(url);
+            imageLoadFailed.current.add(url);
+            rerender();
+        };
+        img.src = url;
     }, [rerender]);
 
     // Preload all tile and item sprites once on mount
@@ -2468,7 +2471,7 @@ const ArenaInner = () => {
 
             if (img) {
                 ctx.drawImage(img, dirCol * 32, walkFrame * 48, 32, 48, px - 16, py - 24 - bob, 32, 48);
-            } else {
+            } else if (imageLoadFailed.current.has(avatarUrl)) {
                 ctx.beginPath();
                 ctx.fillStyle = '#FFD700';
                 ctx.arc(px, py, 20, 0, Math.PI * 2);
