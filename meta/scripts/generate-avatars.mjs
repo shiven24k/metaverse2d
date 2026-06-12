@@ -10,83 +10,232 @@ mkdirSync(OUT, { recursive: true });
 
 const CW = 32, CH = 48, COLS = 4, ROWS = 2;
 
-function head(ctx, x, y, skin, hair) {
+// ── Directional head helpers ─────────────────────────────────────────────────
+
+// Front-facing head (down view) — both eyes visible
+function headFront(ctx, x, y, skin, hair) {
   ctx.fillStyle = hair;
-  ctx.fillRect(x + 9, y + 0, 14, 3);
+  ctx.fillRect(x + 9, y, 14, 3);
   ctx.fillRect(x + 7, y + 1, 18, 3);
   ctx.fillStyle = skin;
   ctx.beginPath();
   ctx.arc(x + 16, y + 10, 10, Math.PI, 0);
   ctx.fill();
-  ctx.fillRect(x + 6, y + 10, 20, 6);
+  ctx.fillRect(x + 6, y + 10, 20, 5);
   ctx.fillStyle = '#222';
   ctx.fillRect(x + 11, y + 8, 2, 2);
   ctx.fillRect(x + 19, y + 8, 2, 2);
-  ctx.fillRect(x + 14, y + 13, 4, 1);
+  ctx.fillRect(x + 14, y + 12, 4, 1);
   ctx.fillStyle = hair;
   ctx.fillRect(x + 5, y + 3, 2, 5);
   ctx.fillRect(x + 25, y + 3, 2, 5);
 }
 
-function body(ctx, x, y, color) {
-  ctx.fillStyle = color;
-  ctx.fillRect(x + 8, y, 16, 16);
-  ctx.fillStyle = '#ddd';
-  ctx.fillRect(x + 10, y, 12, 2);
-}
-
-function legs(ctx, x, y, pants, shoes, leftOff, rightOff) {
-  ctx.fillStyle = pants;
-  ctx.fillRect(x + 8, y + leftOff, 6, 10);
-  ctx.fillRect(x + 18, y + rightOff, 6, 10);
-  ctx.fillStyle = shoes;
-  ctx.fillRect(x + 8, y + 8 + leftOff, 6, 3);
-  ctx.fillRect(x + 18, y + 8 + rightOff, 6, 3);
-}
-
-function arms(ctx, x, y, skin, shirt, leftSwing, rightSwing) {
-  ctx.fillStyle = shirt;
-  ctx.fillRect(x + 4, y + 2, 4, 10 + leftSwing);
-  ctx.fillRect(x + 24, y + 2, 4, 10 + rightSwing);
+// Back-facing head (up view) — hair covers, no eyes
+function headBack(ctx, x, y, skin, hair) {
+  ctx.fillStyle = hair;
+  ctx.fillRect(x + 9, y, 14, 3);
+  ctx.fillRect(x + 7, y + 1, 18, 3);
+  ctx.fillRect(x + 7, y + 3, 18, 8);
   ctx.fillStyle = skin;
-  ctx.fillRect(x + 4, y + 11 + leftSwing, 4, 3);
-  ctx.fillRect(x + 24, y + 11 + rightSwing, 4, 3);
+  ctx.beginPath();
+  ctx.arc(x + 16, y + 10, 10, Math.PI, 0);
+  ctx.fill();
+  ctx.fillRect(x + 6, y + 10, 20, 5);
+  ctx.fillStyle = hair;
+  ctx.fillRect(x + 8, y + 3, 16, 8);
+  ctx.fillRect(x + 5, y + 3, 2, 5);
+  ctx.fillRect(x + 25, y + 3, 2, 5);
 }
+
+// Left-profile head — character faces LEFT, single eye on left side of face
+function headLeft(ctx, x, y, skin, hair) {
+  ctx.fillStyle = hair;
+  ctx.fillRect(x + 6, y, 16, 3);
+  ctx.fillRect(x + 5, y + 1, 17, 3);
+  ctx.fillRect(x + 4, y + 2, 3, 7);   // side hair lock
+  ctx.fillStyle = skin;
+  ctx.beginPath();
+  ctx.arc(x + 14, y + 10, 10, Math.PI, 0);
+  ctx.fill();
+  ctx.fillRect(x + 4, y + 10, 20, 5);
+  ctx.fillStyle = '#222';
+  ctx.fillRect(x + 9, y + 7, 2, 2);   // single eye on left (face points left)
+  ctx.fillRect(x + 6, y + 12, 3, 1);  // mouth on left
+  ctx.fillStyle = hair;
+  ctx.fillRect(x + 23, y + 3, 2, 6);  // right-side hair
+}
+
+// Right-profile head — character faces RIGHT, single eye on right side of face
+function headRight(ctx, x, y, skin, hair) {
+  ctx.fillStyle = hair;
+  ctx.fillRect(x + 10, y, 16, 3);
+  ctx.fillRect(x + 10, y + 1, 17, 3);
+  ctx.fillRect(x + 25, y + 2, 3, 7);  // side hair lock
+  ctx.fillStyle = skin;
+  ctx.beginPath();
+  ctx.arc(x + 18, y + 10, 10, Math.PI, 0);
+  ctx.fill();
+  ctx.fillRect(x + 8, y + 10, 20, 5);
+  ctx.fillStyle = '#222';
+  ctx.fillRect(x + 21, y + 7, 2, 2);  // single eye on right (face points right)
+  ctx.fillRect(x + 23, y + 12, 3, 1); // mouth on right
+  ctx.fillStyle = hair;
+  ctx.fillRect(x + 7, y + 3, 2, 6);   // left-side hair
+}
+
+// ── Full character drawing ────────────────────────────────────────────────────
+// Sprite sheet layout (256×96px):
+//   col 0 (x=0)  : down   (front view)    game: facingRef='down'
+//   col 1 (x=32) : left   (left profile)  game: facingRef='left'
+//   col 2 (x=64) : right  (right profile) game: facingRef='right'
+//   col 3 (x=96) : up     (back view)     game: facingRef='up'
+//   row 0 (y=0)  : idle frame
+//   row 1 (y=48) : walk frame
 
 function drawCharacter(ctx, ox, oy, dir, frame, { skin, hair, shirt, pants, shoes }) {
-  const swing = frame === 1 ? (dir === 0 || dir === 3 ? 2 : 0) : 0;
-  const legOff = frame === 1 ? (dir === 0 || dir === 3 ? 2 : 0) : 0;
   if (dir === 0) {
-    head(ctx, ox, oy, skin, hair);
-    body(ctx, ox, oy + 12, shirt);
-    arms(ctx, ox, oy + 12, skin, shirt, -swing, swing);
-    legs(ctx, ox, oy + 28, pants, shoes, -legOff, legOff);
+    // ── DOWN (front view) ────────────────────────────────────────────────────
+    headFront(ctx, ox, oy, skin, hair);
+    ctx.fillStyle = shirt;
+    ctx.fillRect(ox + 8, oy + 14, 16, 15);
+    if (frame === 1) {
+      // Walk: left arm swings forward (longer), right arm pulls back (shorter)
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 4, oy + 15, 4, 14);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 4, oy + 28, 4, 3);
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 24, oy + 15, 4, 9);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 24, oy + 23, 4, 3);
+      // Legs: one forward (raised + shifted left), one back (lower + shifted right)
+      ctx.fillStyle = pants;
+      ctx.fillRect(ox + 7, oy + 27, 6, 12);
+      ctx.fillRect(ox + 19, oy + 31, 6, 8);
+      ctx.fillStyle = shoes;
+      ctx.fillRect(ox + 7, oy + 37, 7, 3);
+      ctx.fillRect(ox + 19, oy + 37, 6, 3);
+    } else {
+      // Idle: symmetric
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 4, oy + 15, 4, 11);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 4, oy + 25, 4, 3);
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 24, oy + 15, 4, 11);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 24, oy + 25, 4, 3);
+      ctx.fillStyle = pants;
+      ctx.fillRect(ox + 8, oy + 29, 6, 11);
+      ctx.fillRect(ox + 18, oy + 29, 6, 11);
+      ctx.fillStyle = shoes;
+      ctx.fillRect(ox + 8, oy + 38, 6, 3);
+      ctx.fillRect(ox + 18, oy + 38, 6, 3);
+    }
+
   } else if (dir === 1) {
-    head(ctx, ox, oy, skin, hair);
+    // ── LEFT profile ─────────────────────────────────────────────────────────
+    headLeft(ctx, ox, oy, skin, hair);
+    // Body slightly left-shifted so forward arm does not overlap
     ctx.fillStyle = shirt;
-    ctx.fillRect(ox + 4, oy + 12, 16, 16);
-    ctx.fillStyle = skin;
-    ctx.fillRect(ox + 2, oy + 14, 4, 6);
-    ctx.fillStyle = pants;
-    ctx.fillRect(ox + 6, oy + 28, 8, 10);
-    ctx.fillStyle = shoes;
-    ctx.fillRect(ox + 6, oy + 36, 8, 3);
+    ctx.fillRect(ox + 6, oy + 14, 16, 15);
+    if (frame === 1) {
+      // Walk: arm extends forward (left), legs stride (front-left, back-right)
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 2, oy + 15, 4, 14);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 2, oy + 28, 4, 3);
+      ctx.fillStyle = pants;
+      ctx.fillRect(ox + 5, oy + 29, 6, 11);   // front leg (extended left)
+      ctx.fillRect(ox + 14, oy + 29, 6, 11);  // back leg (right)
+      ctx.fillStyle = shoes;
+      ctx.fillRect(ox + 4, oy + 38, 7, 3);    // front foot (more left)
+      ctx.fillRect(ox + 14, oy + 38, 6, 3);   // back foot
+    } else {
+      // Idle: arm at rest, legs close together
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 3, oy + 15, 4, 11);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 3, oy + 25, 4, 3);
+      ctx.fillStyle = pants;
+      ctx.fillRect(ox + 8, oy + 29, 6, 11);
+      ctx.fillRect(ox + 15, oy + 29, 6, 11);
+      ctx.fillStyle = shoes;
+      ctx.fillRect(ox + 8, oy + 38, 6, 3);
+      ctx.fillRect(ox + 15, oy + 38, 6, 3);
+    }
+
   } else if (dir === 2) {
-    head(ctx, ox, oy, skin, hair);
+    // ── RIGHT profile (exact mirror of left) ─────────────────────────────────
+    headRight(ctx, ox, oy, skin, hair);
+    // Body slightly right-shifted
     ctx.fillStyle = shirt;
-    ctx.fillRect(ox + 12, oy + 12, 16, 16);
-    ctx.fillStyle = skin;
-    ctx.fillRect(ox + 26, oy + 14, 4, 6);
-    ctx.fillStyle = pants;
-    ctx.fillRect(ox + 18, oy + 28, 8, 10);
-    ctx.fillStyle = shoes;
-    ctx.fillRect(ox + 18, oy + 36, 8, 3);
+    ctx.fillRect(ox + 10, oy + 14, 16, 15);
+    if (frame === 1) {
+      // Walk: arm extends forward (right), legs stride (front-right, back-left)
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 26, oy + 15, 4, 14);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 26, oy + 28, 4, 3);
+      ctx.fillStyle = pants;
+      ctx.fillRect(ox + 21, oy + 29, 6, 11);  // front leg (extended right)
+      ctx.fillRect(ox + 12, oy + 29, 6, 11);  // back leg (left)
+      ctx.fillStyle = shoes;
+      ctx.fillRect(ox + 21, oy + 38, 7, 3);   // front foot (more right)
+      ctx.fillRect(ox + 12, oy + 38, 6, 3);   // back foot
+    } else {
+      // Idle: arm at rest, legs close together
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 25, oy + 15, 4, 11);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 25, oy + 25, 4, 3);
+      ctx.fillStyle = pants;
+      ctx.fillRect(ox + 11, oy + 29, 6, 11);
+      ctx.fillRect(ox + 18, oy + 29, 6, 11);
+      ctx.fillStyle = shoes;
+      ctx.fillRect(ox + 11, oy + 38, 6, 3);
+      ctx.fillRect(ox + 18, oy + 38, 6, 3);
+    }
+
   } else {
-    head(ctx, ox, oy, skin, hair);
-    body(ctx, ox, oy + 12, shirt);
-    ctx.fillStyle = hair;
-    ctx.fillRect(ox + 12, oy + 4, 8, 8);
-    legs(ctx, ox, oy + 28, pants, shoes, -legOff, legOff);
+    // ── UP (back view) ───────────────────────────────────────────────────────
+    headBack(ctx, ox, oy, skin, hair);
+    ctx.fillStyle = shirt;
+    ctx.fillRect(ox + 8, oy + 14, 16, 15);
+    if (frame === 1) {
+      // Walk: right arm swings forward (opposite to DOWN), legs stride
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 24, oy + 15, 4, 14);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 24, oy + 28, 4, 3);
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 4, oy + 15, 4, 9);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 4, oy + 23, 4, 3);
+      ctx.fillStyle = pants;
+      ctx.fillRect(ox + 7, oy + 27, 6, 12);
+      ctx.fillRect(ox + 19, oy + 31, 6, 8);
+      ctx.fillStyle = shoes;
+      ctx.fillRect(ox + 7, oy + 37, 7, 3);
+      ctx.fillRect(ox + 19, oy + 37, 6, 3);
+    } else {
+      // Idle: symmetric back view
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 4, oy + 15, 4, 11);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 4, oy + 25, 4, 3);
+      ctx.fillStyle = shirt;
+      ctx.fillRect(ox + 24, oy + 15, 4, 11);
+      ctx.fillStyle = skin;
+      ctx.fillRect(ox + 24, oy + 25, 4, 3);
+      ctx.fillStyle = pants;
+      ctx.fillRect(ox + 8, oy + 29, 6, 11);
+      ctx.fillRect(ox + 18, oy + 29, 6, 11);
+      ctx.fillStyle = shoes;
+      ctx.fillRect(ox + 8, oy + 38, 6, 3);
+      ctx.fillRect(ox + 18, oy + 38, 6, 3);
+    }
   }
 }
 

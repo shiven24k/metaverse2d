@@ -168,7 +168,7 @@ function makeDefaultNpcs(spaceId: string, w: number, h: number) {
         {
             spaceId,
             name: "Manager Mike",
-            sprite: "avatar-default",
+            sprite: "avatar-ceo",
             dialogues: [
                 "Good morning! The Q3 report is due by EOD.",
                 "Have you checked your emails today? We have a 10am standup.",
@@ -186,7 +186,7 @@ function makeDefaultNpcs(spaceId: string, w: number, h: number) {
         {
             spaceId,
             name: "Dev Dana",
-            sprite: "avatar-ninja",
+            sprite: "avatar-dev",
             dialogues: [
                 "I'm in the zone — just pushed a fix for the auth bug!",
                 "Has anyone reviewed my PR? It's been sitting for two days...",
@@ -204,7 +204,7 @@ function makeDefaultNpcs(spaceId: string, w: number, h: number) {
         {
             spaceId,
             name: "HR Helen",
-            sprite: "avatar-wizard",
+            sprite: "avatar-hr",
             dialogues: [
                 "Don't forget to log your hours in the time tracker!",
                 "PTO requests must be submitted two weeks in advance.",
@@ -220,6 +220,28 @@ function makeDefaultNpcs(spaceId: string, w: number, h: number) {
             ],
         },
     ];
+}
+
+async function isPositionBlocked(spaceId: string, x: number, y: number): Promise<boolean> {
+    const [elements, items] = await Promise.all([
+        client.spaceElements.findMany({
+            where: { spaceId },
+            select: { x: true, y: true, element: { select: { blocking: true, width: true, height: true } } },
+        }),
+        client.placedItem.findMany({
+            where: { spaceId },
+            select: { x: true, y: true, item: { select: { blocking: true, width: true, height: true } } },
+        }),
+    ]);
+    for (const e of elements) {
+        if (!e.element.blocking) continue;
+        if (x >= e.x && x < e.x + e.element.width && y >= e.y && y < e.y + e.element.height) return true;
+    }
+    for (const p of items) {
+        if (!p.item.blocking) continue;
+        if (x >= p.x && x < p.x + p.item.width && y >= p.y && y < p.y + p.item.height) return true;
+    }
+    return false;
 }
 
 // POST /space — create a new space, auth required
@@ -718,14 +740,19 @@ spaceRouter.post("/:spaceId/npc", userMiddleware, async (req, res) => {
         where: { id: req.params.spaceId, creatorId: req.userId! },
     });
     if (!space) { res.status(403).json({ message: "Unauthorized" }); return; }
+    const effectiveX = typeof x === "number" ? x : Math.floor(space.width  / 2);
+    const effectiveY = typeof y === "number" ? y : Math.floor(space.height / 2);
+    if (await isPositionBlocked(req.params.spaceId, effectiveX, effectiveY)) {
+        res.status(400).json({ message: "Cannot place NPC on a non-walkable tile" }); return;
+    }
     const npc = await client.nPC.create({
         data: {
             spaceId:      req.params.spaceId,
             name:         name        || "New NPC",
-            sprite:       sprite      || "avatar-default",
+            sprite:       sprite      || "avatar-intern",
             dialogues:    Array.isArray(dialogues) ? dialogues.filter(Boolean) : [],
-            x:            typeof x === "number" ? x : Math.floor(space.width  / 2),
-            y:            typeof y === "number" ? y : Math.floor(space.height / 2),
+            x:            effectiveX,
+            y:            effectiveY,
             patrolPath:   Array.isArray(patrolPath) ? patrolPath : [],
             motionType:   VALID_MOTION_TYPES.has(motionType) ? motionType : "PATROL",
             wanderRadius: typeof wanderRadius === "number" ? Math.max(1, Math.min(10, wanderRadius)) : 3,
@@ -744,6 +771,11 @@ spaceRouter.put("/npc/:id", userMiddleware, async (req, res) => {
         res.status(403).json({ message: "Unauthorized" }); return;
     }
     const { name, sprite, dialogues, x, y, patrolPath, motionType, wanderRadius } = req.body;
+    if (x !== undefined && y !== undefined) {
+        if (await isPositionBlocked(npc.spaceId, Number(x), Number(y))) {
+            res.status(400).json({ message: "Cannot place NPC on a non-walkable tile" }); return;
+        }
+    }
     const updated = await client.nPC.update({
         where: { id: req.params.id },
         data: {

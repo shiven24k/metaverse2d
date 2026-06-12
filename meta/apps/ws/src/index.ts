@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws';
 import { User } from './User';
 import { getRoomManager } from './getRoomManager';
 import client from '@repo/db/client';
+import { getBlockingCells } from './blockingCache';
 
 const WS_PORT = parseInt(process.env.PORT || '3001', 10);
 const wss = new WebSocketServer({ port: WS_PORT });
@@ -53,6 +54,26 @@ function defaultPatrol(
         { x: clampX(cx + radius), y: clampY(cy + radius) },
         { x: clampX(cx - radius), y: clampY(cy + radius) },
     ];
+}
+
+function spiralFindWalkable(
+    cx: number, cy: number,
+    blocked: Set<string>,
+    spaceW: number, spaceH: number,
+    maxRadius = 5,
+): { x: number; y: number } | null {
+    for (let r = 1; r <= maxRadius; r++) {
+        for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+                if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+                const nx = cx + dx;
+                const ny = cy + dy;
+                if (nx < 0 || ny < 0 || nx >= spaceW || ny >= spaceH) continue;
+                if (!blocked.has(`${nx},${ny}`)) return { x: nx, y: ny };
+            }
+        }
+    }
+    return null;
 }
 
 function stepToward(cx: number, cy: number, tx: number, ty: number): { x: number; y: number; facing: string } {
@@ -112,6 +133,25 @@ async function npcTick() {
             // ── WANDER ──────────────────────────────────────────────────────
             if (motionType === 'WANDER') {
                 const radius = typeof npc.wanderRadius === 'number' ? npc.wanderRadius : 3;
+
+                // Recovery: if current position is on a non-walkable tile, teleport to nearest walkable
+                const blockedCells = await getBlockingCells(spaceId);
+                if (blockedCells.has(`${state.x},${state.y}`)) {
+                    const recovered = spiralFindWalkable(state.x, state.y, blockedCells, space.width, space.height, 5);
+                    if (recovered) {
+                        console.warn(`[NPC] ${npc.id} recovered from non-walkable spawn position`);
+                        state.x = recovered.x;
+                        state.y = recovered.y;
+                        client.nPC.update({ where: { id: npc.id }, data: { x: recovered.x, y: recovered.y } })
+                            .catch(e => console.warn('[NPC] DB update failed:', (e as Error).message));
+                        getRoomManager().broadcastToRoom(
+                            { type: 'npc-moved', payload: { npcId: npc.id, x: recovered.x, y: recovered.y, facing: 'down' } },
+                            spaceId
+                        );
+                    }
+                    npcState.set(npc.id, state);
+                    continue;
+                }
 
                 if (!state.wanderTarget || state.wanderCooldown <= 0) {
                     let target: { x: number; y: number } | null = null;

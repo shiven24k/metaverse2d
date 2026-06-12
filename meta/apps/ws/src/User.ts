@@ -5,6 +5,27 @@ import client from "@repo/db/client";
 import { auth } from "./lib/auth";
 import { getBlockingCells, invalidateBlockingCache } from "./blockingCache";
 
+async function findNearestWalkable(
+    x: number, y: number,
+    spaceId: string,
+    spaceW: number, spaceH: number,
+): Promise<{ x: number; y: number }> {
+    const blocked = await getBlockingCells(spaceId);
+    if (!blocked.has(`${x},${y}`)) return { x, y };
+    for (let r = 1; r <= 10; r++) {
+        for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+                if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx < 0 || ny < 0 || nx >= spaceW || ny >= spaceH) continue;
+                if (!blocked.has(`${nx},${ny}`)) return { x: nx, y: ny };
+            }
+        }
+    }
+    return { x, y };
+}
+
 function getRandomString(length: number) {
     const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     let result = "";
@@ -125,6 +146,10 @@ export class User {
                     getRoomManager().addUser(spaceId, this);
                     this.x = Math.floor(Math.random() * space.width);
                     this.y = Math.floor(Math.random() * space.height);
+
+                    const safePos = await findNearestWalkable(this.x, this.y, spaceId, space.width, space.height);
+                    this.x = safePos.x;
+                    this.y = safePos.y;
 
                     const allUsers =
                         getRoomManager()

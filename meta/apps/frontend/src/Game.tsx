@@ -320,6 +320,20 @@ const ArenaInner = () => {
     const [npcPickingPos, setNpcPickingPos] = useState(false);
     const npcDragRef = useRef<{ id: string } | null>(null);
 
+    const npcPosBlocked = useMemo(() => {
+        for (const e of spaceElements) {
+            if (!e.element.blocking) continue;
+            if (npcForm.x >= e.x && npcForm.x < e.x + e.element.width &&
+                npcForm.y >= e.y && npcForm.y < e.y + e.element.height) return true;
+        }
+        for (const p of placedItems) {
+            if (!p.item.blocking) continue;
+            if (npcForm.x >= p.x && npcForm.x < p.x + p.item.width &&
+                npcForm.y >= p.y && npcForm.y < p.y + p.item.height) return true;
+        }
+        return false;
+    }, [spaceElements, placedItems, npcForm.x, npcForm.y]);
+
     // ── Portals ──────────────────────────────────────────────────────────────
     const [portals, setPortals] = useState<SpacePortal[]>([]);
     const portalsRef = useRef<SpacePortal[]>([]);
@@ -2945,16 +2959,21 @@ const ArenaInner = () => {
                         <label style={{ display: 'block', fontSize: 11, color: '#6f6b82', marginBottom: 4 }}>
                             {npcForm.motionType === 'WANDER' ? 'Home Position (wanders from here)' : npcForm.motionType === 'STATIC' ? 'Position' : 'Spawn Position'}
                         </label>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: npcPosBlocked ? 4 : 12 }}>
                             <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-                                <input value={npcForm.x} onChange={e => setNpcForm(f => ({ ...f, x: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.width - 1} placeholder="X" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 12, outline: 'none' }} />
-                                <input value={npcForm.y} onChange={e => setNpcForm(f => ({ ...f, y: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.height - 1} placeholder="Y" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 12, outline: 'none' }} />
+                                <input value={npcForm.x} onChange={e => setNpcForm(f => ({ ...f, x: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.width - 1} placeholder="X" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: `1px solid ${npcPosBlocked ? '#fca5a5' : '#ecebf3'}`, background: '#fff', color: '#191427', fontSize: 12, outline: 'none' }} />
+                                <input value={npcForm.y} onChange={e => setNpcForm(f => ({ ...f, y: parseInt(e.target.value) || 0 }))} type="number" min={0} max={spaceDims.height - 1} placeholder="Y" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: `1px solid ${npcPosBlocked ? '#fca5a5' : '#ecebf3'}`, background: '#fff', color: '#191427', fontSize: 12, outline: 'none' }} />
                             </div>
                             <button
                                 onClick={() => { setNpcPickingPos(true); setShowNpcModal(false); }}
                                 style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #e7ddfb', background: '#f4f0fe', color: '#6d28d9', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}
                             >📍 Pick</button>
                         </div>
+                        {npcPosBlocked && (
+                            <p style={{ margin: '0 0 12px', fontSize: 10, color: '#dc2626', fontWeight: 600 }}>
+                                This tile is blocked. Choose a walkable position.
+                            </p>
+                        )}
 
                         {/* Dialogues */}
                         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7c6f9c', marginBottom: 7, letterSpacing: '.02em' }}>Dialogues (up to 3)</label>
@@ -2968,9 +2987,9 @@ const ArenaInner = () => {
                         {/* Buttons */}
                         <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
                             <button
-                                disabled={savingNpc || !npcForm.name.trim()}
+                                disabled={savingNpc || !npcForm.name.trim() || npcPosBlocked}
                                 onClick={async () => {
-                                    if (!npcForm.name.trim()) return;
+                                    if (!npcForm.name.trim() || npcPosBlocked) return;
                                     setSavingNpc(true);
                                     const body = {
                                         name:         npcForm.name.trim(),
@@ -2992,7 +3011,7 @@ const ArenaInner = () => {
                                     } catch {}
                                     setSavingNpc(false);
                                 }}
-                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: savingNpc || !npcForm.name.trim() ? '#e3e1ee' : 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 13, cursor: savingNpc || !npcForm.name.trim() ? 'not-allowed' : 'pointer', fontWeight: 600 }}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: savingNpc || !npcForm.name.trim() || npcPosBlocked ? '#e3e1ee' : 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 13, cursor: savingNpc || !npcForm.name.trim() || npcPosBlocked ? 'not-allowed' : 'pointer', fontWeight: 600 }}
                             >
                                 {savingNpc ? 'Saving…' : npcForm.id ? 'Save Changes' : 'Add NPC'}
                             </button>
@@ -3461,7 +3480,7 @@ const ArenaInner = () => {
                                         >
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                                 <img
-                                                    src={`${API}/uploads/defaults/${npc.sprite}.png`}
+                                                    src={`/avatars/${npc.sprite}.png`}
                                                     alt={npc.sprite}
                                                     style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, background: '#ecebf3', flexShrink: 0 }}
                                                     onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
