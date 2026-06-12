@@ -472,6 +472,7 @@ const ArenaInner = () => {
     const walkBobRef = useRef(0);
     const walkFrameRef = useRef(0);
     const bumpAnimRef = useRef<{ startTime: number; duration: number } | null>(null);
+    const lastMoveAttemptRef = useRef<number>(0);
     const currentUserRef = useRef(currentUser);
     useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
 
@@ -489,15 +490,17 @@ const ArenaInner = () => {
 
     const doMove = useCallback((newX: number, newY: number) => {
         const user = currentUserRef.current;
-        if (!user || !wsRef.current) return false;
+        if (!user || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
         const dx = newX - user.x;
         const dy = newY - user.y;
         if (Math.abs(dx) + Math.abs(dy) !== 1) return false;
+        // Only update facing from local moves, never from server broadcasts
         if (dx < 0) facingRef.current = 'left';
         else if (dx > 0) facingRef.current = 'right';
         else if (dy < 0) facingRef.current = 'up';
         else if (dy > 0) facingRef.current = 'down';
         moveAnimRef.current = { fromX: user.x, fromY: user.y, toX: newX, toY: newY, startTime: performance.now(), duration: 150 };
+        lastMoveAttemptRef.current = performance.now();
         wsRef.current.send(JSON.stringify({ type: 'move', payload: { x: newX, y: newY } }));
         return true;
     }, []);
@@ -551,6 +554,15 @@ const ArenaInner = () => {
                     processWalkQueue();
                 }
                 rerender();
+            }
+            // Ensure walk state is cleared whenever no animation is active
+            if (!moveAnimRef.current) {
+                walkBobRef.current = 0;
+                walkFrameRef.current = 0;
+                // Safety: if the queue has been stale for >500ms with no active animation, clear it
+                if (moveQueueRef.current.length > 0 && performance.now() - lastMoveAttemptRef.current > 500) {
+                    moveQueueRef.current = [];
+                }
             }
             const bump = bumpAnimRef.current;
             if (bump) {
@@ -1056,7 +1068,10 @@ const ArenaInner = () => {
             return;
         }
 
-        const { x, y } = currentUser;
+        // Use ref for position so key presses compute correct targets even if React state is stale
+        const liveUser = currentUserRef.current;
+        if (!liveUser) return;
+        const { x, y } = liveUser;
 
         if (e.key === 'f' || e.key === 'F') {
             // Sit/stand on adjacent or current office chair
@@ -1453,17 +1468,25 @@ const ArenaInner = () => {
                 });
                 break;
 
-            case 'movement-rejected':
-                moveAnimRef.current = null;
-                moveQueueRef.current = [];
+            case 'movement-rejected': {
                 const rx = message.payload.x;
                 const ry = message.payload.y;
-                animPosRef.current = { x: rx, y: ry };
+                const prevX = currentUserRef.current?.x ?? rx;
+                const prevY = currentUserRef.current?.y ?? ry;
+                moveAnimRef.current = null;
+                moveQueueRef.current = [];
                 walkBobRef.current = 0;
+                walkFrameRef.current = 0;
                 currentUserRef.current = { ...currentUserRef.current!, x: rx, y: ry };
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 setCurrentUser((prev: any) => ({ ...prev, x: rx, y: ry }));
+                // Hard-snap visual position only for large corrections (teleport/anti-cheat).
+                // For normal 1-tile rejections the visual is already close enough to avoid jitter.
+                if (Math.abs(rx - prevX) > 1 || Math.abs(ry - prevY) > 1) {
+                    animPosRef.current = { x: rx, y: ry };
+                }
                 break;
+            }
 
             case 'user-left': {
                 const leftUser = users.get(message.payload.userId);
@@ -1642,7 +1665,11 @@ const ArenaInner = () => {
             bumpAnimRef.current = { startTime: performance.now(), duration: 200 };
             return;
         }
+        // Always cancel any click-based pathfinding queue on a direct key move
         moveQueueRef.current = [];
+        // If an animation is already in progress, don't restart it — that causes visible jitter.
+        // The next key-repeat event fires after ~33ms and will start the next step naturally.
+        if (moveAnimRef.current) return;
         doMove(newX, newY);
         // Clear sitting when moving
         if (myActivityRef.current !== null) {
