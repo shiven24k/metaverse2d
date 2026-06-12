@@ -365,7 +365,9 @@ const ArenaInner = () => {
     const imageLoadFailed = useRef<Set<string>>(new Set());
     const imageLoadPending = useRef<Set<string>>(new Set());
     const rerender = useCallback(() => setRenderTick(t => t + 1), []);
-    useEffect(() => { npcsRef.current = npcs; }, [npcs]);
+    // npcsRef.current is the single source of truth for NPC positions; it is updated directly
+    // on npc-moved so canvas redraws are driven by the rAF tick (rerender) rather than React
+    // state changes. setNpcs / npcs state is kept only for editor-panel JSX.
 
     const preloadImages = useCallback((urls: string[]) => {
         urls.forEach(url => {
@@ -476,6 +478,8 @@ const ArenaInner = () => {
     const currentUserRef = useRef(currentUser);
     useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
 
+    // Only tiles (spaceElements) and furniture (placedItems) with blocking=true block movement.
+    // Other players, NPCs, and temporary objects are intentionally excluded.
     function isCellBlocked(x: number, y: number): boolean {
         for (const e of spaceElements) {
             if (!e.element.blocking) continue;
@@ -1270,6 +1274,8 @@ const ArenaInner = () => {
             const res = await fetch(`${API}/api/v1/space/${spaceId}/npcs`);
             if (res.ok) {
                 const data = await res.json();
+                // Update the ref first so the canvas draw loop sees current data immediately
+                npcsRef.current = data.npcs || [];
                 setNpcs(data.npcs || []);
             }
         } catch {}
@@ -1576,15 +1582,10 @@ const ArenaInner = () => {
 
             case 'npc-moved': {
                 const { npcId, x: npcX, y: npcY, facing } = message.payload;
-                console.log(`[NPC] npc-moved received: id=${npcId} → (${npcX}, ${npcY}) facing=${facing}`);
 
-                // Update facing ref immediately (safe to do outside state updater)
                 const facingCol: Record<string, number> = { down: 0, left: 1, right: 2, up: 3 };
-                if (facing) {
-                    npcFacing.current.set(npcId, facingCol[facing] ?? 0);
-                }
+                if (facing) npcFacing.current.set(npcId, facingCol[facing] ?? 0);
 
-                // Snapshot current position for tween BEFORE the state update
                 const currentNpc = npcsRef.current.find(n => n.id === npcId);
                 if (currentNpc) {
                     npcAnims.current.set(npcId, {
@@ -1593,13 +1594,13 @@ const ArenaInner = () => {
                         startTime: performance.now(),
                         duration: 450,
                     });
-                } else {
-                    console.warn(`[NPC] npc-moved for unknown NPC id=${npcId} (npcs in state: ${npcsRef.current.length})`);
+                    // Update position in the ref directly — no React state update means no
+                    // extra re-render mid player-animation. The rAF tick drives the canvas.
+                    const idx = npcsRef.current.indexOf(currentNpc);
+                    const updated = npcsRef.current.slice();
+                    updated[idx] = { ...currentNpc, x: npcX, y: npcY };
+                    npcsRef.current = updated;
                 }
-
-                setNpcs(prev => prev.map(n =>
-                    n.id === npcId ? { ...n, x: npcX, y: npcY } : n
-                ));
                 break;
             }
 
@@ -2483,8 +2484,8 @@ const ArenaInner = () => {
             }
         });
 
-        // NPCs — smooth interpolated movement
-        npcs.forEach(npc => {
+        // NPCs — smooth interpolated movement (read from ref so NPC moves don't re-render)
+        npcsRef.current.forEach(npc => {
             preloadAvatarImage(npc.sprite);
             const avatarUrl = `/avatars/${npc.sprite}.png`;
             const img = imageCache.current.get(avatarUrl);
@@ -2533,7 +2534,7 @@ const ArenaInner = () => {
 
         // NPC selection highlight in edit mode
         if (editMode && selectedNpcId) {
-            const selNpc = npcs.find(n => n.id === selectedNpcId);
+            const selNpc = npcsRef.current.find(n => n.id === selectedNpcId);
             if (selNpc) {
                 const anim = npcAnims.current.get(selNpc.id);
                 let sx = selNpc.x, sy = selNpc.y;
@@ -2665,7 +2666,10 @@ const ArenaInner = () => {
             ctx.fillRect(0, 0, vpW, vpH);
             ctx.globalAlpha = 1;
         }
-    }, [currentUser, users, npcs, portals, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, showChatInput, myActivity, othersActivity, selectedNpcId]);
+    // npcs intentionally omitted — canvas reads npcsRef.current (always current) so NPC
+    // position broadcasts don't trigger extra re-renders that could interrupt player animation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUser, users, portals, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, showChatInput, myActivity, othersActivity, selectedNpcId]);
 
     return (
         <div style={{ fontFamily: 'system-ui', background: '#9aa3b5', position: 'fixed', inset: 0, width: '100vw', height: '100vh', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
