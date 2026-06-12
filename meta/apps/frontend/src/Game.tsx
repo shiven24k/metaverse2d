@@ -494,6 +494,18 @@ const ArenaInner = () => {
         const dx = newX - user.x;
         const dy = newY - user.y;
         if (Math.abs(dx) + Math.abs(dy) !== 1) return false;
+        // Client-side collision prediction — reject before animation starts so the server
+        // never needs to send movement-rejected for a blocked tile (eliminates snap-back jitter).
+        // Uses refs so this is always current even when doMove is called from processWalkQueue
+        // where the path was computed before a blocking element was placed.
+        for (const e of spaceElementsRef.current) {
+            if (!e.element.blocking) continue;
+            if (newX >= e.x && newX < e.x + e.element.width && newY >= e.y && newY < e.y + e.element.height) return false;
+        }
+        for (const p of placedItemsRef.current) {
+            if (!p.item.blocking) continue;
+            if (newX >= p.x && newX < p.x + p.item.width && newY >= p.y && newY < p.y + p.item.height) return false;
+        }
         // Only update facing from local moves, never from server broadcasts
         if (dx < 0) facingRef.current = 'left';
         else if (dx > 0) facingRef.current = 'right';
@@ -1473,6 +1485,7 @@ const ArenaInner = () => {
                 const ry = message.payload.y;
                 const prevX = currentUserRef.current?.x ?? rx;
                 const prevY = currentUserRef.current?.y ?? ry;
+                console.log('[movement-rejected] server pos:', rx, ry, '| client pos:', prevX, prevY, '| delta:', rx - prevX, ry - prevY);
                 moveAnimRef.current = null;
                 moveQueueRef.current = [];
                 walkBobRef.current = 0;
@@ -2264,8 +2277,11 @@ const ArenaInner = () => {
         const offsetY = Math.max(0, Math.floor((vpH - worldH) / 2));
         const playerCX = (currentUser ? animPosRef.current.x : 0) * 50 * zoom + 25 * zoom;
         const playerCY = (currentUser ? animPosRef.current.y : 0) * 50 * zoom + 25 * zoom;
-        const baseCamX = worldW < vpW ? 0 : Math.round(Math.max(0, Math.min(worldW - vpW, playerCX - vpW / 2)));
-        const baseCamY = worldH < vpH ? 0 : Math.round(Math.max(0, Math.min(worldH - vpH, playerCY - vpH / 2)));
+        // No Math.round here — rounding the camera position while animPos moves continuously
+        // creates a ±0.5px oscillation every frame (the camera snaps +5 or +6px per frame
+        // while the player moves +5.5px, alternating each frame → visible directional jitter).
+        const baseCamX = worldW < vpW ? 0 : Math.max(0, Math.min(worldW - vpW, playerCX - vpW / 2));
+        const baseCamY = worldH < vpH ? 0 : Math.max(0, Math.min(worldH - vpH, playerCY - vpH / 2));
         const camX = baseCamX + panOffsetRef.current.x;
         const camY = baseCamY + panOffsetRef.current.y;
         camRef.current = { x: camX, y: camY, offsetX, offsetY };
