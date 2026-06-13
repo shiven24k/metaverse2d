@@ -1071,7 +1071,7 @@ const ArenaInner = () => {
             return;
         }
 
-        if (!currentUser) return;
+        if (!currentUserRef.current) return;
 
         if (e.key === 'Enter' && !editMode) {
             setShowChatInput(m => !m);
@@ -1636,33 +1636,35 @@ const ArenaInner = () => {
     }, [interactionPopup]);
 
     const sendEmote = (emoteIndex: number) => {
-        if (!currentUser || !wsRef.current) return;
+        const liveUser = currentUserRef.current;
+        if (!liveUser || !wsRef.current) return;
         const emoji = EMOTES[emoteIndex - 1] || EMOTES[0];
         wsRef.current.send(JSON.stringify({
             type: 'emote',
-            payload: { emoji, x: currentUser.x, y: currentUser.y },
+            payload: { emoji, x: liveUser.x, y: liveUser.y },
         }));
         setEmotes(prev => [...prev, {
-            userId: currentUser.userId,
+            userId: liveUser.userId,
             emoji,
-            x: currentUser.x,
-            y: currentUser.y,
+            x: liveUser.x,
+            y: liveUser.y,
             createdAt: Date.now(),
         }]);
     };
 
     const sendChat = () => {
-        if (!currentUser || !wsRef.current || !chatInput.trim()) return;
+        const liveUser = currentUserRef.current;
+        if (!liveUser || !wsRef.current || !chatInput.trim()) return;
         wsRef.current.send(JSON.stringify({
             type: 'chat',
-            payload: { message: chatInput.trim(), x: currentUser.x, y: currentUser.y },
+            payload: { message: chatInput.trim(), x: liveUser.x, y: liveUser.y },
         }));
         setChatBubbles(prev => [...prev, {
             id: Math.random().toString(36).slice(2),
-            username: currentUser.username,
+            username: liveUser.username,
             message: chatInput.trim(),
-            x: currentUser.x,
-            y: currentUser.y,
+            x: liveUser.x,
+            y: liveUser.y,
             createdAt: Date.now(),
         }]);
         setChatInput('');
@@ -1670,7 +1672,7 @@ const ArenaInner = () => {
     };
 
     const handleMove = (newX: number, newY: number) => {
-        if (!currentUser || !wsRef.current) return;
+        if (!currentUserRef.current || !wsRef.current) return;
         if (newX < 0 || newY < 0 || newX > spaceDims.width - 1 || newY > spaceDims.height - 1) {
             bumpAnimRef.current = { startTime: performance.now(), duration: 200 };
             return;
@@ -2131,7 +2133,7 @@ const ArenaInner = () => {
         if (e.button !== 0) return;
         const pos = canvasToGrid(e.clientX, e.clientY);
         if (!pos) return;
-        if (currentUser && wsRef.current) {
+        if (currentUserRef.current && wsRef.current) {
             // NPC click check
             const hitNpc = npcsRef.current.find(n => n.x === pos.x && n.y === pos.y);
             if (hitNpc) {
@@ -2190,8 +2192,9 @@ const ArenaInner = () => {
                 setPlayerPopup({ userId: targetUser.userId, username: targetUser.username, x: targetUser.x, y: targetUser.y });
                 return;
             }
-            if (pos.x !== currentUser.x || pos.y !== currentUser.y) {
-                const path = findPath(currentUser.x, currentUser.y, pos.x, pos.y);
+            const liveUser = currentUserRef.current;
+            if (liveUser && (pos.x !== liveUser.x || pos.y !== liveUser.y)) {
+                const path = findPath(liveUser.x, liveUser.y, pos.x, pos.y);
                 if (path.length > 0) {
                     moveQueueRef.current = path;
                     processWalkQueue();
