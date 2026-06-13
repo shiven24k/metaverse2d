@@ -45,6 +45,7 @@ export class User {
     public x: number;
     public y: number;
     private ws: WebSocket;
+    private lastMove: Promise<void> = Promise.resolve();
 
     constructor(ws: WebSocket) {
         this.id = getRandomString(10);
@@ -295,41 +296,46 @@ export class User {
                 case "move": {
                     const moveX = parsedData.payload.x;
                     const moveY = parsedData.payload.y;
-                    const xDisplacement = Math.abs(this.x - moveX);
-                    const yDisplacement = Math.abs(this.y - moveY);
-
-                    if (
-                        (xDisplacement === 1 && yDisplacement === 0) ||
-                        (xDisplacement === 0 && yDisplacement === 1)
-                    ) {
-                        if (this.spaceId) {
-                            const blocked = await getBlockingCells(this.spaceId);
-                            if (blocked.has(`${moveX},${moveY}`)) {
-                                this.send({ type: "movement-rejected", payload: { x: this.x, y: this.y } });
-                                break;
-                            }
-                        }
-                        this.x = moveX;
-                        this.y = moveY;
-                        getRoomManager().broadcast(
-                            {
-                                type: "movement",
-                                payload: { userId: this.userId, x: this.x, y: this.y },
-                            },
-                            this,
-                            this.spaceId!
-                        );
-                        return;
-                    }
-
-                    this.send({
-                        type: "movement-rejected",
-                        payload: { x: this.x, y: this.y },
-                    });
+                    // Chain moves serially so concurrent WS messages can't race against
+                    // an in-flight async getBlockingCells / DB call and read stale this.x/y.
+                    this.lastMove = this.lastMove
+                        .then(() => this.processMove(moveX, moveY))
+                        .catch(() => {});
                     break;
                 }
             }
         });
+    }
+
+    private async processMove(moveX: number, moveY: number): Promise<void> {
+        const xDisplacement = Math.abs(this.x - moveX);
+        const yDisplacement = Math.abs(this.y - moveY);
+
+        if (
+            (xDisplacement === 1 && yDisplacement === 0) ||
+            (xDisplacement === 0 && yDisplacement === 1)
+        ) {
+            if (this.spaceId) {
+                const blocked = await getBlockingCells(this.spaceId);
+                if (blocked.has(`${moveX},${moveY}`)) {
+                    this.send({ type: "movement-rejected", payload: { x: this.x, y: this.y } });
+                    return;
+                }
+            }
+            this.x = moveX;
+            this.y = moveY;
+            getRoomManager().broadcast(
+                {
+                    type: "movement",
+                    payload: { userId: this.userId, x: this.x, y: this.y },
+                },
+                this,
+                this.spaceId!
+            );
+            return;
+        }
+
+        this.send({ type: "movement-rejected", payload: { x: this.x, y: this.y } });
     }
 
     destroy() {

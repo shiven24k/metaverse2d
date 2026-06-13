@@ -475,6 +475,7 @@ const ArenaInner = () => {
     const walkFrameRef = useRef(0);
     const bumpAnimRef = useRef<{ startTime: number; duration: number } | null>(null);
     const lastMoveAttemptRef = useRef<number>(0);
+    const pendingMoveRef = useRef<boolean>(false);
     const currentUserRef = useRef(currentUser);
     useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
 
@@ -516,6 +517,7 @@ const ArenaInner = () => {
         else if (dy < 0) facingRef.current = 'up';
         else if (dy > 0) facingRef.current = 'down';
         moveAnimRef.current = { fromX: user.x, fromY: user.y, toX: newX, toY: newY, startTime: performance.now(), duration: 150 };
+        pendingMoveRef.current = true;
         lastMoveAttemptRef.current = performance.now();
         wsRef.current.send(JSON.stringify({ type: 'move', payload: { x: newX, y: newY } }));
         return true;
@@ -545,7 +547,7 @@ const ArenaInner = () => {
     }
 
     function processWalkQueue() {
-        if (moveAnimRef.current || moveQueueRef.current.length === 0) return;
+        if (moveAnimRef.current || pendingMoveRef.current || moveQueueRef.current.length === 0) return;
         const next = moveQueueRef.current.shift()!;
         doMove(next.x, next.y);
     }
@@ -567,6 +569,7 @@ const ArenaInner = () => {
                     walkFrameRef.current = 0;
                     currentUserRef.current = { ...currentUserRef.current!, x: anim.toX, y: anim.toY };
                     setCurrentUser(prev => prev ? { ...prev, x: anim.toX, y: anim.toY } : prev);
+                    pendingMoveRef.current = false;
                     processWalkQueue();
                 }
                 rerender();
@@ -1444,6 +1447,7 @@ const ArenaInner = () => {
                 facingRef.current = 'down';
                 moveAnimRef.current = null;
                 moveQueueRef.current = [];
+                pendingMoveRef.current = false;
                 const userMap = new Map<string, { x: number; y: number; userId: string; username: string; avatarId?: string }>();
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 message.payload.users.forEach((u: any) => {
@@ -1494,6 +1498,7 @@ const ArenaInner = () => {
                 console.log('[movement-rejected] server pos:', rx, ry, '| client pos:', prevX, prevY, '| delta:', rx - prevX, ry - prevY);
                 moveAnimRef.current = null;
                 moveQueueRef.current = [];
+                pendingMoveRef.current = false;
                 walkBobRef.current = 0;
                 walkFrameRef.current = 0;
                 currentUserRef.current = { ...currentUserRef.current!, x: rx, y: ry };
@@ -1683,9 +1688,9 @@ const ArenaInner = () => {
         }
         // Always cancel any click-based pathfinding queue on a direct key move
         moveQueueRef.current = [];
-        // If an animation is already in progress, don't restart it — that causes visible jitter.
-        // The next key-repeat event fires after ~33ms and will start the next step naturally.
-        if (moveAnimRef.current) return;
+        // If an animation is already in progress or a move is awaiting server processing,
+        // don't start the next move — that causes position desync.
+        if (moveAnimRef.current || pendingMoveRef.current) return;
         doMove(newX, newY);
         // Clear sitting when moving
         if (myActivityRef.current !== null) {
