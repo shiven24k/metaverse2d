@@ -6,15 +6,7 @@ import { KanbanPanel } from './KanbanPanel';
 import { SpaceSettingsModal } from './SpaceSettingsModal';
 
 // ── PixelAvatar — CSS pixel art character, ported from design system ──────────
-const PIXEL_PALETTES: Record<string, { skin: string; hair: string; shirt: string }> = {
-    'avatar-ceo':       { skin: '#f1c27d', hair: '#4a4a4a', shirt: '#1e3a5f' },
-    'avatar-dev':       { skin: '#f1c27d', hair: '#8b4513', shirt: '#374151' },
-    'avatar-designer':  { skin: '#f1c27d', hair: '#c8a400', shirt: '#7e22ce' },
-    'avatar-hr':        { skin: '#f1c27d', hair: '#2d1810', shirt: '#9f1239' },
-    'avatar-marketing': { skin: '#f1c27d', hair: '#b91c1c', shirt: '#f97316' },
-    'avatar-intern':    { skin: '#f1c27d', hair: '#92400e', shirt: '#0ea5e9' },
-    default:            { skin: '#f1c27d', hair: '#92400e', shirt: '#0ea5e9' },
-};
+
 
 function PixelAvatar({ avatarId, size = 28, ring }: { avatarId?: string; size?: number; ring?: string }) {
     // Sprite sheet: 128x96, each frame 32x48. Front-face = col 0, row 0 (x=0, y=0)
