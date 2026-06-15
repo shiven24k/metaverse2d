@@ -17,15 +17,30 @@ const PIXEL_PALETTES: Record<string, { skin: string; hair: string; shirt: string
 };
 
 function PixelAvatar({ avatarId, size = 28, ring }: { avatarId?: string; size?: number; ring?: string }) {
-    const P = PIXEL_PALETTES[avatarId ?? 'default'] ?? PIXEL_PALETTES.default;
-    const u = size / 8;
+    // Sprite sheet: 128x96, each frame 32x48. Front-face = col 0, row 0 (x=0, y=0)
+    const id = avatarId ?? 'avatar-intern';
+    const frameW = 32, frameH = 48;
+    const scale = size / frameH;
+    const displayW = frameW * scale;
+    const displayH = frameH * scale;
     return (
-        <div style={{ width: size, height: size, position: 'relative', flexShrink: 0, filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.32))', outline: ring ? `2px solid ${ring}` : undefined, borderRadius: ring ? 4 : 0 }}>
-            <div style={{ position: 'absolute', left: u*2, top: 0,     width: u*4, height: u*2,   background: P.hair }} />
-            <div style={{ position: 'absolute', left: u*2, top: u*1.4, width: u*4, height: u*3,   background: P.skin }} />
-            <div style={{ position: 'absolute', left: u*1.5, top: u*4, width: u*5, height: u*3,   background: P.shirt, borderRadius: 1 }} />
-            <div style={{ position: 'absolute', left: u*2,   top: u*6.8, width: u*1.6, height: u*1.3, background: '#1f2937' }} />
-            <div style={{ position: 'absolute', left: u*4.4, top: u*6.8, width: u*1.6, height: u*1.3, background: '#1f2937' }} />
+        <div style={{ width: size, height: size, position: 'relative', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: ring ? `2px solid ${ring}` : undefined, borderRadius: ring ? 4 : 0, overflow: 'hidden' }}>
+            <img
+                src={`/avatars/${id}.png`}
+                alt={id}
+                style={{
+                    width: displayW * 4,
+                    height: displayH * 2,
+                    imageRendering: 'pixelated',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    transform: `scale(${scale}) translate(0px, 0px)`,
+                    transformOrigin: 'top left',
+                    objectFit: 'none',
+                    objectPosition: '0 0',
+                }}
+            />
         </div>
     );
 }
