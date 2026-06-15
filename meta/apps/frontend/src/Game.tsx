@@ -2437,16 +2437,25 @@ const ArenaInner = () => {
             const bumpOff = bump ? Math.sin((performance.now() - bump.startTime) / bump.duration * Math.PI * 4) * 4 * Math.max(0, 1 - (performance.now() - bump.startTime) / bump.duration) : 0;
             const cx = animPosRef.current.x * 50 + bumpOff;
             const cy = animPosRef.current.y * 50 - walkBobRef.current;
-            if (img) {
+            if (img && img.complete && img.naturalWidth > 0) {
                 const dirCol = { down: 0, left: 1, right: 2, up: 3 }[facingRef.current] ?? 0;
                 const sx = dirCol * 32;
                 const sy = walkFrameRef.current * 48;
+                ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(img, sx, sy, 32, 48, cx - 16, cy - 24, 32, 48);
-            } else if (imageLoadFailed.current.has(avatarUrl)) {
+                ctx.imageSmoothingEnabled = true;
+            } else {
+                // Placeholder circle with first letter while loading or if image failed
                 ctx.beginPath();
-                ctx.fillStyle = '#FF6B6B';
-                ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+                ctx.fillStyle = imageLoadFailed.current.has(avatarUrl) ? '#FF6B6B' : '#6366f1';
+                ctx.arc(cx, cy, 16, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 13px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText((currentUser.username[0] ?? '?').toUpperCase(), cx, cy);
+                ctx.textBaseline = 'alphabetic';
             }
             ctx.fillStyle = '#000';
             ctx.font = 'bold 11px sans-serif';
@@ -2463,23 +2472,32 @@ const ArenaInner = () => {
             preloadAvatarImage(effectiveAvatarId);
             const avatarUrl = `/avatars/${effectiveAvatarId}.png`;
             const img = imageCache.current.get(avatarUrl);
-            if (img) {
-                ctx.drawImage(img, 0, 0, 32, 48, user.x * 50 - 16, user.y * 50 - 24, 32, 48);
-            } else if (imageLoadFailed.current.has(avatarUrl)) {
+            const ux = user.x * 50, uy = user.y * 50;
+            if (img && img.complete && img.naturalWidth > 0) {
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(img, 0, 0, 32, 48, ux - 16, uy - 24, 32, 48);
+                ctx.imageSmoothingEnabled = true;
+            } else {
                 ctx.beginPath();
-                ctx.fillStyle = '#4ECDC4';
-                ctx.arc(user.x * 50, user.y * 50, 20, 0, Math.PI * 2);
+                ctx.fillStyle = imageLoadFailed.current.has(avatarUrl) ? '#4ECDC4' : '#6366f1';
+                ctx.arc(ux, uy, 16, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 13px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText((user.username[0] ?? '?').toUpperCase(), ux, uy);
+                ctx.textBaseline = 'alphabetic';
             }
             ctx.fillStyle = '#000';
             ctx.font = 'bold 11px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(user.username, user.x * 50, user.y * 50 + 28);
+            ctx.fillText(user.username, ux, uy + 28);
             // Activity emoji
             const uActivity = othersActivity.get(user.userId);
             if (uActivity) {
                 ctx.font = '16px sans-serif';
-                ctx.fillText(uActivity === 'working' ? '💻' : '💺', user.x * 50, user.y * 50 - 38);
+                ctx.fillText(uActivity === 'working' ? '💻' : '💺', ux, uy - 38);
             }
             // 👂 proximity indicator when we're typing a chat message
             if (currentUser && showChatInput) {
@@ -2487,7 +2505,7 @@ const ArenaInner = () => {
                 if (dist <= 4) {
                     ctx.font = '14px sans-serif';
                     ctx.globalAlpha = 1;
-                    ctx.fillText('👂', user.x * 50, user.y * 50 - 52);
+                    ctx.fillText('👂', ux, uy - 52);
                 }
             }
         });
@@ -2521,13 +2539,21 @@ const ArenaInner = () => {
             const walkFrame = (!isStatic && isWalking) ? (Math.floor(performance.now() / 100) % 2) : 0;
             const bob = (!isStatic && isWalking) ? Math.sin(performance.now() / 100) * 2 : 0;
 
-            if (img) {
+            if (img && img.complete && img.naturalWidth > 0) {
+                ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(img, dirCol * 32, walkFrame * 48, 32, 48, px - 16, py - 24 - bob, 32, 48);
-            } else if (imageLoadFailed.current.has(avatarUrl)) {
+                ctx.imageSmoothingEnabled = true;
+            } else {
                 ctx.beginPath();
                 ctx.fillStyle = '#FFD700';
-                ctx.arc(px, py, 20, 0, Math.PI * 2);
+                ctx.arc(px, py, 16, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.fillStyle = '#1a1a1a';
+                ctx.font = 'bold 13px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText((npc.name[0] ?? '?').toUpperCase(), px, py);
+                ctx.textBaseline = 'alphabetic';
             }
             ctx.shadowColor = 'rgba(0,0,0,0.8)';
             ctx.shadowBlur = 3;
