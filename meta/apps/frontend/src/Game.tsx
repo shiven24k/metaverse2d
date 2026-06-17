@@ -123,6 +123,20 @@ const ALL_TILE_PATHS = [...Object.values(TILE_IMAGE), ...Object.values(ITEM_IMAG
 
 const EMOTES = ['👋', '💃', '🧘', '😴', '🎉', '❤️'];
 
+const EMOTE_EMOJI: Record<string, string> = {
+    coffee: '☕', tea: '🍵', yawn: '😴',
+    stretch: '🙆', afk: '💤', brb: '🔜',
+};
+
+const STATUS_EMOTES = [
+    { id: 'coffee',  emoji: '☕', label: 'Coffee'  },
+    { id: 'tea',     emoji: '🍵', label: 'Tea'     },
+    { id: 'yawn',    emoji: '😴', label: 'Yawn'    },
+    { id: 'stretch', emoji: '🙆', label: 'Stretch' },
+    { id: 'afk',     emoji: '💤', label: 'AFK'     },
+    { id: 'brb',     emoji: '🔜', label: 'BRB'     },
+];
+
 interface InventoryItem {
     id: string;
     itemId: string;
@@ -333,7 +347,9 @@ const ArenaInner = () => {
     const showNotifPanelRef = useRef(false);
     const [pingsSent, setPingsSent] = useState<Set<string>>(new Set());
 
-    const [showEmotePalette, setShowEmotePalette] = useState(false);
+    const [showEmotePicker, setShowEmotePicker] = useState(false);
+    const [activeEmotes, setActiveEmotes] = useState<Map<string, { emoteId: string; expiresAt: number }>>(new Map());
+    const [myActiveEmote, setMyActiveEmote] = useState<string | null>(null);
     const [playerPopup, setPlayerPopup] = useState<{ userId: string; username: string; x: number; y: number } | null>(null);
     const [showGiftModal, setShowGiftModal] = useState(false);
     const [giftTarget, setGiftTarget] = useState<{ userId: string; username: string } | null>(null);
@@ -1126,7 +1142,7 @@ const ArenaInner = () => {
                 moveTarget.current = null;
                 setMovePreview(null);
                 setPlayerPopup(null);
-                setShowEmotePalette(false);
+                setShowEmotePicker(false);
             }
             return;
         }
@@ -1135,6 +1151,11 @@ const ArenaInner = () => {
 
         if (e.key >= '1' && e.key <= '6') {
             sendEmote(parseInt(e.key));
+            return;
+        }
+
+        if (e.key === 'e' || e.key === 'E') {
+            setShowEmotePicker(p => !p);
             return;
         }
 
@@ -1162,6 +1183,7 @@ const ArenaInner = () => {
             );
             if (coffeeItem) {
                 setInteractionPopup({ type: 'sign', title: '☕ Coffee Machine', text: 'You grab a coffee. +10 energy boost! Now back to work.' });
+                wsRef.current?.send(JSON.stringify({ type: 'status-emote', payload: { emoteId: 'coffee' } }));
                 return;
             }
             // Vending machine interaction
@@ -1611,6 +1633,34 @@ const ArenaInner = () => {
                     createdAt: Date.now(),
                 }]);
                 break;
+
+            case 'emote-broadcast': {
+                const { userId: emoteUserId, emoteId, expiresAt } = message.payload as { userId: string; emoteId: string; expiresAt: number };
+                setActiveEmotes(prev => {
+                    const next = new Map(prev);
+                    if (!emoteId) {
+                        next.delete(emoteUserId);
+                    } else {
+                        next.set(emoteUserId, { emoteId, expiresAt });
+                    }
+                    return next;
+                });
+                if (emoteId && expiresAt > 0) {
+                    const delay = expiresAt - Date.now();
+                    if (delay > 0) {
+                        setTimeout(() => setActiveEmotes(m => {
+                            const n = new Map(m);
+                            n.delete(emoteUserId);
+                            return n;
+                        }), delay);
+                    }
+                }
+                const liveUser = currentUserRef.current;
+                if (liveUser && emoteUserId === liveUser.userId) {
+                    setMyActiveEmote(emoteId || null);
+                }
+                break;
+            }
 
             case 'interacted':
                 setInteractions(prev => [...prev, {
@@ -2576,6 +2626,8 @@ const ArenaInner = () => {
             const bumpOff = bump ? Math.sin((performance.now() - bump.startTime) / bump.duration * Math.PI * 4) * 4 * Math.max(0, 1 - (performance.now() - bump.startTime) / bump.duration) : 0;
             const cx = animPosRef.current.x * 50 + bumpOff;
             const cy = animPosRef.current.y * 50 - walkBobRef.current;
+            const myStatusEmote = activeEmotes.get(currentUser.userId);
+            if (myStatusEmote?.emoteId === 'afk') ctx.globalAlpha = 0.6;
             if (img && img.complete && img.naturalWidth > 0) {
                 const dirCol = { down: 0, left: 1, right: 2, up: 3 }[facingRef.current] ?? 0;
                 const sx = dirCol * 32;
@@ -2596,6 +2648,7 @@ const ArenaInner = () => {
                 ctx.fillText((currentUser.username[0] ?? '?').toUpperCase(), cx, cy);
                 ctx.textBaseline = 'alphabetic';
             }
+            ctx.globalAlpha = 1;
             ctx.fillStyle = '#000';
             ctx.font = 'bold 11px sans-serif';
             ctx.textAlign = 'center';
@@ -2603,6 +2656,15 @@ const ArenaInner = () => {
             if (effectiveActivity) {
                 ctx.font = '16px sans-serif';
                 ctx.fillText(effectiveActivity === 'working' ? '💻' : '💺', cx, cy - 38);
+            }
+            if (myStatusEmote?.emoteId) {
+                ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                ctx.beginPath();
+                ctx.roundRect(cx - 16, cy - 56, 32, 24, 8);
+                ctx.fill();
+                ctx.font = '14px serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(EMOTE_EMOJI[myStatusEmote.emoteId] ?? myStatusEmote.emoteId, cx, cy - 38);
             }
         }
 
@@ -2612,6 +2674,8 @@ const ArenaInner = () => {
             const avatarUrl = `/avatars/${effectiveAvatarId}.png`;
             const img = imageCache.current.get(avatarUrl);
             const ux = user.x * 50, uy = user.y * 50;
+            const userStatusEmote = activeEmotes.get(user.userId);
+            if (userStatusEmote?.emoteId === 'afk') ctx.globalAlpha = 0.6;
             if (img && img.complete && img.naturalWidth > 0) {
                 ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(img, 0, 0, 32, 48, ux - 16, uy - 24, 32, 48);
@@ -2628,6 +2692,7 @@ const ArenaInner = () => {
                 ctx.fillText((user.username[0] ?? '?').toUpperCase(), ux, uy);
                 ctx.textBaseline = 'alphabetic';
             }
+            ctx.globalAlpha = 1;
             ctx.fillStyle = '#000';
             ctx.font = 'bold 11px sans-serif';
             ctx.textAlign = 'center';
@@ -2638,13 +2703,23 @@ const ArenaInner = () => {
                 ctx.font = '16px sans-serif';
                 ctx.fillText(uActivity === 'working' ? '💻' : '💺', ux, uy - 38);
             }
+            // Status emote bubble
+            if (userStatusEmote?.emoteId) {
+                ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                ctx.beginPath();
+                ctx.roundRect(ux - 16, uy - 56, 32, 24, 8);
+                ctx.fill();
+                ctx.font = '14px serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(EMOTE_EMOJI[userStatusEmote.emoteId] ?? userStatusEmote.emoteId, ux, uy - 38);
+            }
             // 👂 proximity indicator when actively typing in proximity chat
             if (currentUser && proximityChatInput.length > 0) {
                 const dist = Math.sqrt((user.x - currentUser.x) ** 2 + (user.y - currentUser.y) ** 2);
                 if (dist <= 4) {
                     ctx.font = '14px sans-serif';
                     ctx.globalAlpha = 1;
-                    ctx.fillText('👂', ux, uy - 52);
+                    ctx.fillText('👂', ux, uy - 68);
                 }
             }
         });
@@ -2983,7 +3058,7 @@ const ArenaInner = () => {
                     style={{ position: 'absolute', top: 56, left: 0, right: 0, bottom: 0, overflow: 'hidden', outline: 'none', marginLeft: !editMode && showProximityChat && isDesktop ? 292 : 0, transition: 'margin-left 0.2s ease' }}
                     onKeyDown={handleKeyDown}
                     onKeyUp={handleKeyUp}
-                    onClick={() => setShowEmotePalette(false)}
+                    onClick={() => setShowEmotePicker(false)}
                     tabIndex={0}
                 >
                     <canvas
@@ -3205,14 +3280,35 @@ const ArenaInner = () => {
                     <div style={{ position: 'absolute', bottom: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 2, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', border: '1px solid #ecebf3', borderRadius: 999, padding: 5, boxShadow: '0 1px 2px rgba(22,15,52,0.04), 0 6px 16px rgba(22,15,52,0.07)' }}>
                         {/* Emote button */}
                         <div style={{ position: 'relative' }}>
-                            <button title="Emotes" onClick={() => setShowEmotePalette(!showEmotePalette)} style={{ width: 38, height: 38, borderRadius: 999, border: showEmotePalette ? '1px solid #e7ddfb' : '1px solid transparent', background: showEmotePalette ? '#f4f0fe' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: showEmotePalette ? '#5b21b6' : '#6f6b82' }}>
+                            <button title="Emotes (E)" onClick={() => setShowEmotePicker(!showEmotePicker)} style={{ width: 38, height: 38, borderRadius: 999, border: showEmotePicker ? '1px solid #e7ddfb' : '1px solid transparent', background: showEmotePicker ? '#f4f0fe' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: showEmotePicker ? '#5b21b6' : '#6f6b82', position: 'relative' }}>
                                 <Smile size={18} />
+                                {myActiveEmote && <span style={{ position: 'absolute', top: -2, right: -2, fontSize: 11, lineHeight: 1 }}>{EMOTE_EMOJI[myActiveEmote]}</span>}
                             </button>
-                            {showEmotePalette && (
-                                <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', left: '50%', transform: 'translateX(-50%)', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, padding: 10, borderRadius: 14, background: '#fff', border: '1px solid #ecebf3', boxShadow: '0 24px 60px rgba(22,15,52,0.22)', zIndex: 100 }}>
+                            {showEmotePicker && (
+                                <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, padding: '12px 16px', borderRadius: 16, background: '#fff', border: '1px solid #ecebf3', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 100, alignItems: 'center', whiteSpace: 'nowrap' }}>
+                                    {STATUS_EMOTES.map(em => {
+                                        const isActive = myActiveEmote === em.id;
+                                        return (
+                                            <button key={em.id}
+                                                onClick={() => {
+                                                    const next = isActive ? '' : em.id;
+                                                    wsRef.current?.send(JSON.stringify({ type: 'status-emote', payload: { emoteId: next } }));
+                                                    setShowEmotePicker(false);
+                                                }}
+                                                style={{ width: 48, height: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 10, border: isActive ? '2px solid #7c3aed' : '1px solid #ecebf3', background: isActive ? '#f4f0fe' : '#f9f8fc', cursor: 'pointer', padding: 0 }}
+                                                onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.1)')}
+                                                onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                                            >
+                                                <span style={{ fontSize: 22, lineHeight: 1 }}>{em.emoji}</span>
+                                                <span style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{em.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                    {/* Quick reactions row */}
+                                    <div style={{ width: 1, height: 40, background: '#ecebf3', margin: '0 4px' }} />
                                     {EMOTES.map((emoji, i) => (
-                                        <button key={i} onClick={() => { sendEmote(i + 1); setShowEmotePalette(false); }}
-                                            style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: '#f4f3f9', cursor: 'pointer', fontSize: 22, lineHeight: 1, transition: 'transform 0.1s' }}
+                                        <button key={i} onClick={() => { sendEmote(i + 1); setShowEmotePicker(false); }}
+                                            style={{ width: 40, height: 40, borderRadius: 10, border: '1px solid #ecebf3', background: '#f9f8fc', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}
                                             onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.15)')}
                                             onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
                                         >{emoji}</button>

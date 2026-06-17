@@ -69,6 +69,11 @@ type NotificationReadMessage = {
     payload: { notificationId: string };
 };
 
+type StatusEmoteIncoming = {
+    type: 'status-emote';
+    payload: { emoteId: 'coffee' | 'tea' | 'yawn' | 'stretch' | 'afk' | 'brb' | '' };
+};
+
 export type IncomingMessage =
     | JoinMessage
     | MoveMessage
@@ -83,7 +88,8 @@ export type IncomingMessage =
     | ProximityChatIncoming
     | AnnouncementMessage
     | PingUserMessage
-    | NotificationReadMessage;
+    | NotificationReadMessage
+    | StatusEmoteIncoming;
 
 // ─── Outgoing messages (server → client) ─────────────────────────────────────
 
@@ -214,6 +220,15 @@ type ChatHistoryMessage = {
     };
 };
 
+type EmoteBroadcastMessage = {
+    type: 'emote-broadcast';
+    payload: {
+        userId: string;
+        emoteId: string;
+        expiresAt: number;
+    };
+};
+
 export type OutgoingMessage =
     | SpaceJoinedMessage
     | UserJoinedMessage
@@ -232,4 +247,5 @@ export type OutgoingMessage =
     | ProximityChatMessage
     | ChatRoomUpdateMessage
     | ChatHistoryMessage
-    | NotificationOutgoing;
+    | NotificationOutgoing
+    | EmoteBroadcastMessage;

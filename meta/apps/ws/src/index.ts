@@ -3,6 +3,7 @@ import { User } from './User';
 import { getRoomManager } from './getRoomManager';
 import client from '@repo/db/client';
 import { getBlockingCells } from './blockingCache';
+import type { OutgoingMessage } from './types';
 
 const WS_PORT = parseInt(process.env.PORT || '3001', 10);
 const wss = new WebSocketServer({ port: WS_PORT });
@@ -15,6 +16,23 @@ wss.on('connection', function connection(ws) {
     user?.destroy();
   });
 });
+
+// ─── AFK detection ───────────────────────────────────────────────────────────
+setInterval(() => {
+    const now = Date.now();
+    for (const [, users] of getRoomManager().rooms) {
+        for (const user of users) {
+            if (now - user.lastActivityAt > 180_000 && user.currentEmote !== 'afk') {
+                user.currentEmote = 'afk';
+                const msg: OutgoingMessage = {
+                    type: 'emote-broadcast',
+                    payload: { userId: user.userId ?? user.id, emoteId: 'afk', expiresAt: 0 },
+                };
+                for (const u of users) u.send(msg);
+            }
+        }
+    }
+}, 30_000);
 
 // ─── NPC movement ticker ──────────────────────────────────────────────────────
 interface NpcState {

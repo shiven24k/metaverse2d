@@ -48,6 +48,8 @@ export class User {
     public x: number;
     public y: number;
     public currentRoomKey: string | null = null;
+    public currentEmote: string | null = null;
+    public lastActivityAt: number = Date.now();
     private ws: WebSocket;
     private lastMove: Promise<void> = Promise.resolve();
 
@@ -316,6 +318,13 @@ export class User {
                 case "chat-message": {
                     const { content } = parsedData.payload;
                     if (!content || typeof content !== 'string' || !content.trim() || !this.spaceId) break;
+                    this.lastActivityAt = Date.now();
+                    if (this.currentEmote === 'afk') {
+                        this.currentEmote = null;
+                        const chatSpaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                        const clearEmote: OutgoingMessage = { type: 'emote-broadcast', payload: { userId: this.userId ?? this.id, emoteId: '', expiresAt: 0 } };
+                        for (const u of chatSpaceUsers) u.send(clearEmote);
+                    }
                     const allUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
                     const nearbyUsers = allUsers.filter(u =>
                         u.id !== this.id &&
@@ -411,6 +420,22 @@ export class User {
                     break;
                 }
 
+                case "status-emote": {
+                    const VALID_EMOTE_IDS = new Set(['coffee', 'tea', 'yawn', 'stretch', 'afk', 'brb', '']);
+                    const { emoteId } = parsedData.payload;
+                    if (!VALID_EMOTE_IDS.has(emoteId) || !this.spaceId) break;
+                    const persistent = emoteId === 'afk' || emoteId === 'brb' || emoteId === '';
+                    const expiresAt = persistent ? 0 : Date.now() + 5000;
+                    this.currentEmote = emoteId || null;
+                    const emoteUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                    const emoteMsg: OutgoingMessage = {
+                        type: 'emote-broadcast',
+                        payload: { userId: this.userId ?? this.id, emoteId, expiresAt },
+                    };
+                    for (const u of emoteUsers) u.send(emoteMsg);
+                    break;
+                }
+
                 case "notification-read":
                     break;
 
@@ -445,6 +470,13 @@ export class User {
             }
             this.x = moveX;
             this.y = moveY;
+            this.lastActivityAt = Date.now();
+            if (this.currentEmote === 'afk' && this.spaceId) {
+                this.currentEmote = null;
+                const spaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                const clearEmote: OutgoingMessage = { type: 'emote-broadcast', payload: { userId: this.userId ?? this.id, emoteId: '', expiresAt: 0 } };
+                for (const u of spaceUsers) u.send(clearEmote);
+            }
             getRoomManager().broadcast(
                 {
                     type: "movement",
