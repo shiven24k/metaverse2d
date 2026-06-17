@@ -282,8 +282,6 @@ const ArenaInner = () => {
     const [selectionRect, setSelectionRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
     const [selectedPlacedGroup, setSelectedPlacedGroup] = useState<{ type: 'element' | 'item'; id: string }[]>([]);
     const [chatBubbles, setChatBubbles] = useState<{ id: string; username: string; message: string; x: number; y: number; createdAt: number }[]>([]);
-    const [chatInput, setChatInput] = useState('');
-    const [showChatInput, setShowChatInput] = useState(false);
 
     // ── Proximity chat ────────────────────────────────────────────────────────
     interface ProximityChatMsg {
@@ -300,8 +298,10 @@ const ArenaInner = () => {
     const [proximityChatMembers, setProximityChatMembers] = useState<{ userId: string; username: string }[]>([]);
     const [proximityChatMessages, setProximityChatMessages] = useState<ProximityChatMsg[]>([]);
     const [showProximityChat, setShowProximityChat] = useState(true);
+    const [proximityChatUnread, setProximityChatUnread] = useState(0);
     const [proximityChatInput, setProximityChatInput] = useState('');
     const proximityChatRoomIdRef = useRef<string | null>(null);
+    const showProximityChatRef = useRef(true);
     const lastProximityChatAtRef = useRef<number>(0);
     const proximityChatMessagesEndRef = useRef<HTMLDivElement | null>(null);
     const [showEmotePalette, setShowEmotePalette] = useState(false);
@@ -1046,6 +1046,10 @@ const ArenaInner = () => {
     }, [editMode, fetchElementsCatalog]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (
+            document.activeElement instanceof HTMLInputElement ||
+            document.activeElement instanceof HTMLTextAreaElement
+        ) return;
         if (e.key === ' ' && !e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             isSpaceHeld.current = true;
@@ -1090,20 +1094,12 @@ const ArenaInner = () => {
                 moveTarget.current = null;
                 setMovePreview(null);
                 setPlayerPopup(null);
-                setShowChatInput(false);
-                setChatInput('');
                 setShowEmotePalette(false);
             }
             return;
         }
 
         if (!currentUserRef.current) return;
-
-        if (e.key === 'Enter' && !editMode) {
-            setShowChatInput(m => !m);
-            if (!showChatInput) setChatInput('');
-            return;
-        }
 
         if (e.key >= '1' && e.key <= '6') {
             sendEmote(parseInt(e.key));
@@ -1655,6 +1651,7 @@ const ArenaInner = () => {
                 if (m.roomId === proximityChatRoomIdRef.current) {
                     setProximityChatMessages(prev => [...prev, m]);
                     lastProximityChatAtRef.current = Date.now();
+                    if (!showProximityChatRef.current) setProximityChatUnread(n => n + 1);
                 }
                 break;
             }
@@ -1665,9 +1662,12 @@ const ArenaInner = () => {
                 if (roomId !== prevRoomId) {
                     proximityChatRoomIdRef.current = roomId;
                     setProximityChatRoomId(roomId);
-                    // Clear messages — chat-history will populate them, or show empty state
                     setProximityChatMessages([]);
-                    if (roomId !== null) setShowProximityChat(true);
+                    setProximityChatUnread(0);
+                    if (roomId !== null) {
+                        showProximityChatRef.current = true;
+                        setShowProximityChat(true);
+                    }
                 }
                 setProximityChatMembers(members);
                 break;
@@ -1696,8 +1696,8 @@ const ArenaInner = () => {
                         ...histMsgs.map(m => ({ ...m, roomId: histRoomId })),
                     ]);
                     lastProximityChatAtRef.current = Date.now();
+                    if (!showProximityChatRef.current) setProximityChatUnread(histMsgs.length);
                 } else {
-                    // Genuinely new room — show "You joined"
                     const systemMsg: ProximityChatMsg = {
                         id: `sys-${Date.now()}`,
                         roomId: histRoomId,
@@ -1745,25 +1745,6 @@ const ArenaInner = () => {
             y: liveUser.y,
             createdAt: Date.now(),
         }]);
-    };
-
-    const sendChat = () => {
-        const liveUser = currentUserRef.current;
-        if (!liveUser || !wsRef.current || !chatInput.trim()) return;
-        wsRef.current.send(JSON.stringify({
-            type: 'chat',
-            payload: { message: chatInput.trim(), x: liveUser.x, y: liveUser.y },
-        }));
-        setChatBubbles(prev => [...prev, {
-            id: Math.random().toString(36).slice(2),
-            username: liveUser.username,
-            message: chatInput.trim(),
-            x: liveUser.x,
-            y: liveUser.y,
-            createdAt: Date.now(),
-        }]);
-        setChatInput('');
-        setShowChatInput(false);
     };
 
     const sendProximityChat = () => {
@@ -2608,8 +2589,8 @@ const ArenaInner = () => {
                 ctx.font = '16px sans-serif';
                 ctx.fillText(uActivity === 'working' ? '💻' : '💺', ux, uy - 38);
             }
-            // 👂 proximity indicator when we're typing a chat message
-            if (currentUser && showChatInput) {
+            // 👂 proximity indicator when actively typing in proximity chat
+            if (currentUser && proximityChatInput.length > 0) {
                 const dist = Math.sqrt((user.x - currentUser.x) ** 2 + (user.y - currentUser.y) ** 2);
                 if (dist <= 4) {
                     ctx.font = '14px sans-serif';
@@ -2846,7 +2827,7 @@ const ArenaInner = () => {
     // npcs intentionally omitted — canvas reads npcsRef.current (always current) so NPC
     // position broadcasts don't trigger extra re-renders that could interrupt player animation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentUser, users, portals, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, showChatInput, myActivity, othersActivity, selectedNpcId, proximityChatMembers, proximityChatRoomId]);
+    }, [currentUser, users, portals, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, myActivity, othersActivity, selectedNpcId, proximityChatMembers, proximityChatRoomId, proximityChatInput]);
 
     return (
         <div style={{ fontFamily: 'system-ui', background: '#9aa3b5', position: 'fixed', inset: 0, width: '100vw', height: '100vh', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
@@ -2956,135 +2937,151 @@ const ArenaInner = () => {
                         style={{ display: 'block', width: '100%', height: '100%', cursor: isPanningRef.current ? 'grabbing' : spaceHeld ? 'grab' : editMode ? (selectedElement || selectedItem ? 'cell' : 'crosshair') : 'default', outline: canvasIsOver ? '2px solid #4f46e5' : 'none' }}
                     />
 
-                    {/* ── Proximity Chat Panel (left sidebar) ── */}
+                    {/* ── Proximity Chat Panel ── */}
                     {!editMode && showProximityChat && (
                         <div style={{
-                            position: 'absolute', top: 0, left: 0, width: 272, bottom: 0, zIndex: 50,
+                            position: 'fixed', top: 56, left: 12, width: 280,
+                            height: 'calc(100vh - 80px)', zIndex: 50,
                             display: 'flex', flexDirection: 'column',
-                            background: 'rgba(15,12,30,0.82)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-                            borderRight: '1px solid rgba(255,255,255,0.07)',
+                            background: '#ffffff', borderRadius: 16,
+                            border: '1px solid #e5e7eb',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
                         }}>
                             {/* Header */}
-                            <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 7 }}>
-                                        <span>💬</span>
-                                        <span>Nearby Chat</span>
-                                        {proximityChatRoomId && proximityChatMembers.length === 1 && (
-                                            <span style={{ fontSize: 10, fontWeight: 700, background: '#6d28d9', color: '#fff', borderRadius: 999, padding: '2px 7px' }}>Private</span>
-                                        )}
-                                        {proximityChatRoomId && proximityChatMembers.length >= 2 && (
-                                            <span style={{ fontSize: 10, fontWeight: 700, background: '#0891b2', color: '#fff', borderRadius: 999, padding: '2px 7px' }}>{proximityChatMembers.length + 1} members</span>
-                                        )}
-                                    </div>
-                                    {proximityChatRoomId && proximityChatMembers.length > 0 && (
-                                        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {proximityChatMembers.map(m => m.username).join(', ')}
-                                        </div>
+                            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ fontSize: 15 }}>💬</span>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: '#111', flex: 1 }}>Nearby Chat</span>
+                                    {proximityChatRoomId && proximityChatMembers.length === 1 && (
+                                        <span style={{ fontSize: 10, fontWeight: 700, background: '#ede9fe', color: '#6d28d9', borderRadius: 999, padding: '2px 8px' }}>Private</span>
                                     )}
+                                    {proximityChatRoomId && proximityChatMembers.length >= 2 && (
+                                        <span style={{ fontSize: 10, fontWeight: 700, background: '#e0f2fe', color: '#0369a1', borderRadius: 999, padding: '2px 8px' }}>Group · {proximityChatMembers.length + 1}</span>
+                                    )}
+                                    <button
+                                        onClick={() => { showProximityChatRef.current = false; setShowProximityChat(false); }}
+                                        style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: '#f3f4f6', color: '#6b7280', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                                    >✕</button>
                                 </div>
-                                <button onClick={() => setShowProximityChat(false)} style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+                                {proximityChatRoomId && proximityChatMembers.length > 0 && (
+                                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {proximityChatMembers.map(m => m.username).join(', ')}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Messages */}
-                            <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
                                 {!proximityChatRoomId ? (
                                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20 }}>
                                         <div>
                                             <div style={{ fontSize: 28, marginBottom: 8 }}>🚶</div>
-                                            <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>Move closer to someone to chat</p>
+                                            <p style={{ margin: 0, fontSize: 12, color: '#9ca3af', lineHeight: 1.5 }}>Move closer to someone to start chatting</p>
                                         </div>
                                     </div>
                                 ) : proximityChatMessages.length === 0 ? (
                                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>Say something!</p>
+                                        <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>Say something!</p>
                                     </div>
                                 ) : (
                                     proximityChatMessages.map(msg => {
                                         const isSelf = msg.senderId === currentUser?.userId;
-                                        const isSystem = msg.isSystem;
+                                        const isGroup = proximityChatMembers.length >= 2;
                                         if (msg.isDivider) {
                                             return (
-                                                <div key={msg.id} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0' }}>
-                                                    <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
-                                                    <span style={{ fontSize: 9, color: '#475569', whiteSpace: 'nowrap', letterSpacing: '0.05em', textTransform: 'uppercase' }}>earlier messages</span>
-                                                    <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
+                                                <div key={msg.id} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0' }}>
+                                                    <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                                                    <span style={{ fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap' }}>Earlier messages</span>
+                                                    <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
                                                 </div>
                                             );
                                         }
-                                        if (isSystem) {
+                                        if (msg.isSystem) {
                                             return (
-                                                <div key={msg.id} style={{ textAlign: 'center', fontSize: 10, color: '#64748b', padding: '4px 0' }}>
-                                                    — {msg.content} —
+                                                <div key={msg.id} style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', margin: '8px 0' }}>
+                                                    {msg.content}
                                                 </div>
                                             );
                                         }
                                         return (
                                             <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start', gap: 2 }}>
-                                                {!isSelf && (
-                                                    <span style={{ fontSize: 10, color: '#94a3b8', paddingLeft: 4 }}>{msg.senderName}</span>
+                                                {!isSelf && isGroup && (
+                                                    <span style={{ fontSize: 11, color: '#9ca3af', paddingLeft: 4 }}>{msg.senderName}</span>
                                                 )}
                                                 <div style={{
-                                                    maxWidth: '85%', padding: '7px 11px', borderRadius: isSelf ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                                                    background: isSelf ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : 'rgba(255,255,255,0.1)',
-                                                    color: isSelf ? '#fff' : '#e2e8f0',
-                                                    fontSize: 12, lineHeight: 1.4, wordBreak: 'break-word',
+                                                    maxWidth: '75%', padding: '7px 12px',
+                                                    borderRadius: isSelf ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                                                    background: isSelf ? '#6d28d9' : '#f3f4f6',
+                                                    color: isSelf ? '#fff' : '#111',
+                                                    fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word',
                                                 }}>
                                                     {msg.content}
                                                 </div>
-                                                <span style={{ fontSize: 9, color: '#475569', paddingLeft: 4, paddingRight: 4 }}>
+                                                <span style={{ fontSize: 10, color: '#9ca3af', paddingLeft: 4, paddingRight: 4 }}>
                                                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                             </div>
                                         );
                                     })
                                 )}
-                                <div ref={proximityChatMessagesEndRef} />
+                                <div ref={proximityChatMessagesEndRef} style={{ paddingBottom: 8 }} />
                             </div>
 
-                            {/* Input */}
-                            <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                    <input
-                                        value={proximityChatInput}
-                                        onChange={e => setProximityChatInput(e.target.value)}
-                                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); sendProximityChat(); } }}
-                                        placeholder={proximityChatRoomId ? 'Type a message…' : 'Not in range'}
-                                        disabled={!proximityChatRoomId}
-                                        maxLength={200}
-                                        style={{
-                                            flex: 1, padding: '8px 10px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)',
-                                            background: 'rgba(255,255,255,0.07)', color: '#e2e8f0', fontSize: 12, outline: 'none',
-                                            opacity: proximityChatRoomId ? 1 : 0.4,
-                                        }}
-                                    />
-                                    <button
-                                        onClick={sendProximityChat}
-                                        disabled={!proximityChatInput.trim() || !proximityChatRoomId}
-                                        style={{
-                                            padding: '8px 12px', borderRadius: 9, border: 'none', fontSize: 13, cursor: 'pointer', fontWeight: 700,
-                                            background: proximityChatInput.trim() && proximityChatRoomId ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : 'rgba(255,255,255,0.08)',
-                                            color: proximityChatInput.trim() && proximityChatRoomId ? '#fff' : '#475569',
-                                        }}
-                                    >→</button>
-                                </div>
+                            {/* Input row */}
+                            <div style={{ padding: '10px 12px', borderTop: '1px solid #f0f0f0', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <input
+                                    value={proximityChatInput}
+                                    onChange={e => setProximityChatInput(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); sendProximityChat(); } }}
+                                    placeholder={proximityChatRoomId ? 'Type a message…' : 'Move closer to chat'}
+                                    disabled={!proximityChatRoomId}
+                                    maxLength={200}
+                                    style={{
+                                        flex: 1, border: '1px solid #e5e7eb', borderRadius: 20,
+                                        padding: '8px 14px', fontSize: 13, outline: 'none',
+                                        color: '#111', background: '#fff',
+                                    }}
+                                    onFocus={e => { e.currentTarget.style.borderColor = '#6d28d9'; }}
+                                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                                />
+                                <button
+                                    onClick={sendProximityChat}
+                                    disabled={!proximityChatInput.trim() || !proximityChatRoomId}
+                                    style={{
+                                        width: 32, height: 32, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                                        background: proximityChatInput.trim() && proximityChatRoomId ? '#6d28d9' : '#e5e7eb',
+                                        color: proximityChatInput.trim() && proximityChatRoomId ? '#fff' : '#9ca3af',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0,
+                                    }}
+                                >→</button>
                             </div>
                         </div>
                     )}
 
-                    {/* ── Toggle proximity chat button (when panel is hidden) ── */}
+                    {/* ── Floating chat bubble button (when panel is hidden) ── */}
                     {!editMode && !showProximityChat && (
                         <button
-                            onClick={() => setShowProximityChat(true)}
+                            onClick={() => { showProximityChatRef.current = true; setShowProximityChat(true); setProximityChatUnread(0); }}
                             title="Nearby Chat"
                             style={{
-                                position: 'absolute', top: 10, left: 10, zIndex: 50,
-                                width: 38, height: 38, borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)',
-                                background: proximityChatRoomId ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : 'rgba(15,12,30,0.75)',
-                                color: '#fff', fontSize: 17, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                backdropFilter: 'blur(8px)', boxShadow: proximityChatRoomId ? '0 0 0 3px rgba(109,40,217,0.35)' : 'none',
+                                position: 'fixed', bottom: 20, left: 12, zIndex: 50,
+                                width: 44, height: 44, borderRadius: '50%', border: 'none',
+                                background: '#6d28d9', color: '#fff', fontSize: 20, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                boxShadow: '0 4px 12px rgba(109,40,217,0.4)',
                             }}
-                        >💬</button>
+                        >
+                            💬
+                            {proximityChatUnread > 0 && (
+                                <span style={{
+                                    position: 'absolute', top: -4, right: -4,
+                                    background: '#ef4444', color: '#fff', borderRadius: '50%',
+                                    width: 18, height: 18, fontSize: 10, fontWeight: 700,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    border: '2px solid #fff',
+                                }}>{proximityChatUnread > 9 ? '9+' : proximityChatUnread}</span>
+                            )}
+                        </button>
                     )}
 
                     {/* ── Error / reconnect banner ── */}
@@ -3121,22 +3118,6 @@ const ArenaInner = () => {
                     </div>
                 )}
 
-                {/* ── Chat input (above dock) ── */}
-                {!editMode && showChatInput && (
-                    <div style={{ position: 'absolute', bottom: 72, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, zIndex: 50 }}>
-                        <input
-                            value={chatInput}
-                            onChange={e => setChatInput(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') sendChat(); if (e.key === 'Escape') { setShowChatInput(false); setChatInput(''); } }}
-                            placeholder="Type a message…"
-                            autoFocus
-                            maxLength={100}
-                            style={{ width: 300, padding: '9px 14px', borderRadius: 10, border: '1.5px solid #6d28d9', fontSize: 13, outline: 'none', background: 'rgba(255,255,255,0.95)', color: '#191427', boxShadow: '0 4px 16px rgba(109,40,217,0.2)', backdropFilter: 'blur(8px)' }}
-                        />
-                        <button onClick={sendChat} disabled={!chatInput.trim()} style={{ padding: '9px 18px', borderRadius: 10, border: 'none', background: chatInput.trim() ? '#6d28d9' : '#e3e1ee', color: chatInput.trim() ? '#fff' : '#a3a0b3', fontSize: 13, cursor: chatInput.trim() ? 'pointer' : 'not-allowed', fontWeight: 700 }}>Send</button>
-                    </div>
-                )}
-
                 {/* ── Bottom dock (light pill bar) ── */}
                 {!editMode && (
                     <div style={{ position: 'absolute', bottom: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 2, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', border: '1px solid #ecebf3', borderRadius: 999, padding: 5, boxShadow: '0 1px 2px rgba(22,15,52,0.04), 0 6px 16px rgba(22,15,52,0.07)' }}>
@@ -3159,8 +3140,11 @@ const ArenaInner = () => {
                         </div>
                         <div style={{ width: 1, height: 22, background: '#ecebf3', margin: '0 2px' }} />
                         {/* Chat button */}
-                        <button onClick={() => setShowChatInput(!showChatInput)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 13px', height: 38, borderRadius: 999, border: showChatInput ? '1px solid #e7ddfb' : '1px solid transparent', background: showChatInput ? '#f4f0fe' : 'transparent', color: showChatInput ? '#5b21b6' : '#4d495f', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                        <button onClick={() => { const next = !showProximityChat; showProximityChatRef.current = next; setShowProximityChat(next); if (next) setProximityChatUnread(0); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 13px', height: 38, borderRadius: 999, border: showProximityChat ? '1px solid #e7ddfb' : '1px solid transparent', background: showProximityChat ? '#f4f0fe' : 'transparent', color: showProximityChat ? '#5b21b6' : '#4d495f', fontSize: 13, fontWeight: 600, cursor: 'pointer', position: 'relative' }}>
                             <MessageCircle size={16} />Chat
+                            {proximityChatUnread > 0 && !showProximityChat && (
+                                <span style={{ position: 'absolute', top: 4, right: 4, background: '#ef4444', color: '#fff', borderRadius: '50%', width: 16, height: 16, fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{proximityChatUnread > 9 ? '9+' : proximityChatUnread}</span>
+                            )}
                         </button>
                         <div style={{ width: 1, height: 22, background: '#ecebf3', margin: '0 2px' }} />
                         {/* Hint */}
