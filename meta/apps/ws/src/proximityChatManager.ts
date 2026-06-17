@@ -1,31 +1,23 @@
 import { createHash } from 'crypto';
-
-export interface ChatMessage {
-    id: string;
-    roomId: string;
-    senderId: string;
-    senderName: string;
-    content: string;
-    timestamp: number;
-}
-
-interface ChatRoom {
-    messages: ChatMessage[];
-    lastActivity: number;
-}
+import client from '@repo/db/client';
 
 const PROXIMITY_PX = 150;
 const TILE_PX = 50;
 const MAX_MESSAGES = 50;
-const ROOM_TTL_MS = 30 * 60 * 1000;
+
+export interface HistoryMessage {
+    id: string;
+    senderId: string;
+    senderName: string;
+    content: string;
+    isSystem: boolean;
+    timestamp: number;
+}
 
 export class ProximityChatManager {
     private static instance: ProximityChatManager;
-    private rooms: Map<string, ChatRoom> = new Map();
 
-    private constructor() {
-        setInterval(() => this.cleanup(), 5 * 60 * 1000);
-    }
+    private constructor() {}
 
     static getInstance(): ProximityChatManager {
         if (!this.instance) this.instance = new ProximityChatManager();
@@ -43,20 +35,68 @@ export class ProximityChatManager {
         return Math.sqrt(dx * dx + dy * dy) <= PROXIMITY_PX;
     }
 
-    addMessage(roomId: string, message: ChatMessage): void {
-        if (!this.rooms.has(roomId)) {
-            this.rooms.set(roomId, { messages: [], lastActivity: Date.now() });
-        }
-        const room = this.rooms.get(roomId)!;
-        room.messages.push(message);
-        room.lastActivity = Date.now();
-        if (room.messages.length > MAX_MESSAGES) room.messages.shift();
+    private async getOrCreateRoom(roomKey: string, spaceId: string): Promise<string> {
+        const room = await client.proximityRoom.upsert({
+            where: { roomKey },
+            update: { updatedAt: new Date() },
+            create: { roomKey, spaceId },
+            select: { id: true },
+        });
+        return room.id;
     }
 
-    private cleanup(): void {
-        const now = Date.now();
-        for (const [roomId, room] of this.rooms) {
-            if (now - room.lastActivity > ROOM_TTL_MS) this.rooms.delete(roomId);
+    async saveMessage(
+        roomKey: string,
+        spaceId: string,
+        senderId: string,
+        senderName: string,
+        content: string,
+        isSystem = false,
+    ): Promise<string> {
+        const roomDbId = await this.getOrCreateRoom(roomKey, spaceId);
+
+        const created = await client.proximityChatMessage.create({
+            data: { roomId: roomDbId, senderId, senderName, content, isSystem },
+            select: { id: true },
+        });
+
+        // Trim to MAX_MESSAGES oldest
+        const all = await client.proximityChatMessage.findMany({
+            where: { roomId: roomDbId },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+        });
+        if (all.length > MAX_MESSAGES) {
+            const toDelete = all.slice(0, all.length - MAX_MESSAGES);
+            await client.proximityChatMessage.deleteMany({
+                where: { id: { in: toDelete.map(m => m.id) } },
+            });
         }
+
+        return created.id;
+    }
+
+    async getHistory(roomKey: string, limit = 50): Promise<HistoryMessage[]> {
+        const room = await client.proximityRoom.findUnique({
+            where: { roomKey },
+            select: { id: true },
+        });
+        if (!room) return [];
+
+        const messages = await client.proximityChatMessage.findMany({
+            where: { roomId: room.id },
+            orderBy: { createdAt: 'asc' },
+            take: limit,
+            select: { id: true, senderId: true, senderName: true, content: true, isSystem: true, createdAt: true },
+        });
+
+        return messages.map(m => ({
+            id: m.id,
+            senderId: m.senderId,
+            senderName: m.senderName,
+            content: m.content,
+            isSystem: m.isSystem,
+            timestamp: m.createdAt.getTime(),
+        }));
     }
 }

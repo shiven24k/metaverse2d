@@ -435,3 +435,23 @@ model KanbanComment {
   card      KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model ProximityRoom {
+  id        String                 @id @default(cuid())
+  roomKey   String                 @unique
+  spaceId   String
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+  messages  ProximityChatMessage[]
+}
+
+model ProximityChatMessage {
+  id         String        @id @default(cuid())
+  roomId     String
+  senderId   String
+  senderName String
+  content    String
+  isSystem   Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  room       ProximityRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}

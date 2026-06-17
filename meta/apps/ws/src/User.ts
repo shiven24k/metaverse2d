@@ -46,6 +46,7 @@ export class User {
     private spaceId?: string;
     public x: number;
     public y: number;
+    public currentRoomKey: string | null = null;
     private ws: WebSocket;
     private lastMove: Promise<void> = Promise.resolve();
 
@@ -74,6 +75,7 @@ export class User {
                     if (this.spaceId) {
                         getRoomManager().removeUser(this, this.spaceId);
                         this.spaceId = undefined;
+                        this.currentRoomKey = null;
                     }
 
                     const spaceId = parsedData.payload.spaceId;
@@ -302,18 +304,28 @@ export class User {
                     );
                     if (nearbyUsers.length === 0) break;
                     const participantIds = [this.userId ?? this.id, ...nearbyUsers.map(u => u.userId ?? u.id)];
-                    const roomId = ProximityChatManager.computeRoomId(participantIds);
-                    const msg = {
-                        id: randomUUID(),
-                        roomId,
-                        senderId: this.userId ?? this.id,
-                        senderName: this.username,
-                        content: content.trim(),
-                        timestamp: Date.now(),
-                    };
-                    ProximityChatManager.getInstance().addMessage(roomId, msg);
-                    const outgoing: OutgoingMessage = { type: 'proximity-chat-message', payload: msg };
-                    for (const u of nearbyUsers) u.send(outgoing);
+                    const roomKey = ProximityChatManager.computeRoomId(participantIds);
+                    const trimmedContent = content.trim();
+                    const timestamp = Date.now();
+                    const senderId = this.userId ?? this.id;
+                    // Persist to DB (fire-and-forget, use DB-assigned id when available)
+                    ProximityChatManager.getInstance()
+                        .saveMessage(roomKey, this.spaceId, senderId, this.username, trimmedContent)
+                        .then(dbId => {
+                            const outgoing: OutgoingMessage = {
+                                type: 'proximity-chat-message',
+                                payload: { id: dbId, roomId: roomKey, senderId, senderName: this.username, content: trimmedContent, timestamp },
+                            };
+                            for (const u of nearbyUsers) u.send(outgoing);
+                        })
+                        .catch(() => {
+                            // Fallback: broadcast with random id if DB write fails
+                            const outgoing: OutgoingMessage = {
+                                type: 'proximity-chat-message',
+                                payload: { id: randomUUID(), roomId: roomKey, senderId, senderName: this.username, content: trimmedContent, timestamp },
+                            };
+                            for (const u of nearbyUsers) u.send(outgoing);
+                        });
                     break;
                 }
 
@@ -368,20 +380,36 @@ export class User {
     }
 
     private broadcastRoomUpdates(spaceId: string): void {
+        // Fire-and-forget the async work so callers don't need to await
+        this._broadcastRoomUpdatesAsync(spaceId).catch(() => {});
+    }
+
+    private async _broadcastRoomUpdatesAsync(spaceId: string): Promise<void> {
         const allUsers = getRoomManager().rooms.get(spaceId) ?? [];
         for (const u of allUsers) {
             const nearby = allUsers.filter(other =>
                 other.id !== u.id &&
                 ProximityChatManager.isInRange(u.x, u.y, other.x, other.y)
             );
-            const roomId = nearby.length > 0
+            const roomKey = nearby.length > 0
                 ? ProximityChatManager.computeRoomId([
                     u.userId ?? u.id,
                     ...nearby.map(o => o.userId ?? o.id),
                 ])
                 : null;
             const members = nearby.map(o => ({ userId: o.userId ?? o.id, username: o.username }));
-            u.send({ type: 'chat-room-update', payload: { roomId, members } });
+
+            // Always send room update so member list stays current
+            u.send({ type: 'chat-room-update', payload: { roomId: roomKey, members } });
+
+            // Send history only when the room key changes for this user
+            if (roomKey !== u.currentRoomKey) {
+                u.currentRoomKey = roomKey;
+                if (roomKey !== null) {
+                    const history = await ProximityChatManager.getInstance().getHistory(roomKey);
+                    u.send({ type: 'chat-history', payload: { roomId: roomKey, messages: history } });
+                }
+            }
         }
     }
 
@@ -393,6 +421,7 @@ export class User {
             this.spaceId
         );
         const spaceId = this.spaceId;
+        this.currentRoomKey = null;
         getRoomManager().removeUser(this, spaceId);
         this.broadcastRoomUpdates(spaceId);
     }

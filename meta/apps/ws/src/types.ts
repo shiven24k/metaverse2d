@@ -166,6 +166,21 @@ type ChatRoomUpdateMessage = {
     };
 };
 
+type ChatHistoryMessage = {
+    type: 'chat-history';
+    payload: {
+        roomId: string;
+        messages: {
+            id: string;
+            senderId: string;
+            senderName: string;
+            content: string;
+            isSystem: boolean;
+            timestamp: number;
+        }[];
+    };
+};
+
 export type OutgoingMessage =
     | SpaceJoinedMessage
     | UserJoinedMessage
@@ -182,4 +197,5 @@ export type OutgoingMessage =
     | ActivityChangedOutgoing
     | PongMessage
     | ProximityChatMessage
-    | ChatRoomUpdateMessage;
+    | ChatRoomUpdateMessage
+    | ChatHistoryMessage;

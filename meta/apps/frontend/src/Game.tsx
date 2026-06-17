@@ -294,6 +294,7 @@ const ArenaInner = () => {
         content: string;
         timestamp: number;
         isSystem?: boolean;
+        isDivider?: boolean;
     }
     const [proximityChatRoomId, setProximityChatRoomId] = useState<string | null>(null);
     const [proximityChatMembers, setProximityChatMembers] = useState<{ userId: string; username: string }[]>([]);
@@ -1664,24 +1665,50 @@ const ArenaInner = () => {
                 if (roomId !== prevRoomId) {
                     proximityChatRoomIdRef.current = roomId;
                     setProximityChatRoomId(roomId);
-                    if (roomId !== null) {
-                        const systemMsg: ProximityChatMsg = {
-                            id: `sys-${Date.now()}`,
-                            roomId,
-                            senderId: 'system',
-                            senderName: 'System',
-                            content: 'You joined the conversation',
-                            timestamp: Date.now(),
-                            isSystem: true,
-                        };
-                        setProximityChatMessages([systemMsg]);
-                        setShowProximityChat(true);
-                        lastProximityChatAtRef.current = Date.now();
-                    } else {
-                        setProximityChatMessages([]);
-                    }
+                    // Clear messages — chat-history will populate them, or show empty state
+                    setProximityChatMessages([]);
+                    if (roomId !== null) setShowProximityChat(true);
                 }
                 setProximityChatMembers(members);
+                break;
+            }
+
+            case 'chat-history': {
+                const { roomId: histRoomId, messages: histMsgs } = message.payload as {
+                    roomId: string;
+                    messages: { id: string; senderId: string; senderName: string; content: string; isSystem: boolean; timestamp: number }[];
+                };
+                if (histRoomId !== proximityChatRoomIdRef.current) break;
+                if (histMsgs.length > 0) {
+                    const divider: ProximityChatMsg = {
+                        id: 'divider-history',
+                        roomId: histRoomId,
+                        senderId: 'system',
+                        senderName: 'System',
+                        content: 'Earlier messages',
+                        timestamp: histMsgs[0].timestamp - 1,
+                        isSystem: true,
+                        isDivider: true,
+                    };
+                    setProximityChatMessages([
+                        divider,
+                        ...histMsgs.map(m => ({ ...m, roomId: histRoomId })),
+                    ]);
+                    lastProximityChatAtRef.current = Date.now();
+                } else {
+                    // Genuinely new room — show "You joined"
+                    const systemMsg: ProximityChatMsg = {
+                        id: `sys-${Date.now()}`,
+                        roomId: histRoomId,
+                        senderId: 'system',
+                        senderName: 'System',
+                        content: 'You joined the conversation',
+                        timestamp: Date.now(),
+                        isSystem: true,
+                    };
+                    setProximityChatMessages([systemMsg]);
+                    lastProximityChatAtRef.current = Date.now();
+                }
                 break;
             }
 
@@ -2975,6 +3002,15 @@ const ArenaInner = () => {
                                     proximityChatMessages.map(msg => {
                                         const isSelf = msg.senderId === currentUser?.userId;
                                         const isSystem = msg.isSystem;
+                                        if (msg.isDivider) {
+                                            return (
+                                                <div key={msg.id} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0' }}>
+                                                    <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
+                                                    <span style={{ fontSize: 9, color: '#475569', whiteSpace: 'nowrap', letterSpacing: '0.05em', textTransform: 'uppercase' }}>earlier messages</span>
+                                                    <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
+                                                </div>
+                                            );
+                                        }
                                         if (isSystem) {
                                             return (
                                                 <div key={msg.id} style={{ textAlign: 'center', fontSize: 10, color: '#64748b', padding: '4px 0' }}>
