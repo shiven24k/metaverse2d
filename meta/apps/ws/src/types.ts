@@ -49,6 +49,11 @@ type PingMessage = {
     type: 'ping';
 };
 
+type ProximityChatIncoming = {
+    type: 'chat-message';
+    payload: { content: string };
+};
+
 export type IncomingMessage =
     | JoinMessage
     | MoveMessage
@@ -59,7 +64,8 @@ export type IncomingMessage =
     | GiftIncomingMessage
     | EditorRelayIncoming
     | ActivityChangedIncoming
-    | PingMessage;
+    | PingMessage
+    | ProximityChatIncoming;
 
 // ─── Outgoing messages (server → client) ─────────────────────────────────────
 
@@ -140,6 +146,26 @@ type PongMessage = {
     type: 'pong';
 };
 
+type ProximityChatMessage = {
+    type: 'proximity-chat-message';
+    payload: {
+        id: string;
+        roomId: string;
+        senderId: string;
+        senderName: string;
+        content: string;
+        timestamp: number;
+    };
+};
+
+type ChatRoomUpdateMessage = {
+    type: 'chat-room-update';
+    payload: {
+        roomId: string | null;
+        members: { userId: string; username: string }[];
+    };
+};
+
 export type OutgoingMessage =
     | SpaceJoinedMessage
     | UserJoinedMessage
@@ -154,4 +180,6 @@ export type OutgoingMessage =
     | EditorRelayOutgoing
     | NpcMovedMessage
     | ActivityChangedOutgoing
-    | PongMessage;
+    | PongMessage
+    | ProximityChatMessage
+    | ChatRoomUpdateMessage;

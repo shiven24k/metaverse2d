@@ -4,6 +4,8 @@ import { IncomingMessage, OutgoingMessage } from "./types";
 import client from "@repo/db/client";
 import { auth } from "./lib/auth";
 import { getBlockingCells, invalidateBlockingCache } from "./blockingCache";
+import { ProximityChatManager } from "./proximityChatManager";
+import { randomUUID } from "crypto";
 
 async function findNearestWalkable(
     x: number, y: number,
@@ -177,6 +179,7 @@ export class User {
                         this,
                         this.spaceId!
                     );
+                    this.broadcastRoomUpdates(spaceId);
                     break;
                 }
 
@@ -289,6 +292,31 @@ export class User {
                     break;
                 }
 
+                case "chat-message": {
+                    const { content } = parsedData.payload;
+                    if (!content || typeof content !== 'string' || !content.trim() || !this.spaceId) break;
+                    const allUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                    const nearbyUsers = allUsers.filter(u =>
+                        u.id !== this.id &&
+                        ProximityChatManager.isInRange(this.x, this.y, u.x, u.y)
+                    );
+                    if (nearbyUsers.length === 0) break;
+                    const participantIds = [this.userId ?? this.id, ...nearbyUsers.map(u => u.userId ?? u.id)];
+                    const roomId = ProximityChatManager.computeRoomId(participantIds);
+                    const msg = {
+                        id: randomUUID(),
+                        roomId,
+                        senderId: this.userId ?? this.id,
+                        senderName: this.username,
+                        content: content.trim(),
+                        timestamp: Date.now(),
+                    };
+                    ProximityChatManager.getInstance().addMessage(roomId, msg);
+                    const outgoing: OutgoingMessage = { type: 'proximity-chat-message', payload: msg };
+                    for (const u of nearbyUsers) u.send(outgoing);
+                    break;
+                }
+
                 case "ping":
                     this.send({ type: "pong" });
                     break;
@@ -332,10 +360,29 @@ export class User {
                 this,
                 this.spaceId!
             );
+            if (this.spaceId) this.broadcastRoomUpdates(this.spaceId);
             return;
         }
 
         this.send({ type: "movement-rejected", payload: { x: this.x, y: this.y } });
+    }
+
+    private broadcastRoomUpdates(spaceId: string): void {
+        const allUsers = getRoomManager().rooms.get(spaceId) ?? [];
+        for (const u of allUsers) {
+            const nearby = allUsers.filter(other =>
+                other.id !== u.id &&
+                ProximityChatManager.isInRange(u.x, u.y, other.x, other.y)
+            );
+            const roomId = nearby.length > 0
+                ? ProximityChatManager.computeRoomId([
+                    u.userId ?? u.id,
+                    ...nearby.map(o => o.userId ?? o.id),
+                ])
+                : null;
+            const members = nearby.map(o => ({ userId: o.userId ?? o.id, username: o.username }));
+            u.send({ type: 'chat-room-update', payload: { roomId, members } });
+        }
     }
 
     destroy() {
@@ -345,7 +392,9 @@ export class User {
             this,
             this.spaceId
         );
-        getRoomManager().removeUser(this, this.spaceId);
+        const spaceId = this.spaceId;
+        getRoomManager().removeUser(this, spaceId);
+        this.broadcastRoomUpdates(spaceId);
     }
 
     send(payload: OutgoingMessage) {
