@@ -1678,6 +1678,7 @@ const ArenaInner = () => {
                     roomId: string;
                     messages: { id: string; senderId: string; senderName: string; content: string; isSystem: boolean; timestamp: number }[];
                 };
+                console.log('[ProxChat] received chat-history', histRoomId, histMsgs.length, 'messages', 'currentRef:', proximityChatRoomIdRef.current);
                 if (histRoomId !== proximityChatRoomIdRef.current) break;
                 if (histMsgs.length > 0) {
                     const divider: ProximityChatMsg = {

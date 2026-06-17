@@ -309,8 +309,9 @@ export class User {
                     const timestamp = Date.now();
                     const senderId = this.userId ?? this.id;
                     // Persist to DB (fire-and-forget, use DB-assigned id when available)
+                    const spaceId = this.spaceId;
                     ProximityChatManager.getInstance()
-                        .saveMessage(roomKey, this.spaceId, senderId, this.username, trimmedContent)
+                        .saveMessage(roomKey, spaceId, senderId, this.username, trimmedContent)
                         .then(dbId => {
                             const outgoing: OutgoingMessage = {
                                 type: 'proximity-chat-message',
@@ -318,7 +319,8 @@ export class User {
                             };
                             for (const u of nearbyUsers) u.send(outgoing);
                         })
-                        .catch(() => {
+                        .catch((err) => {
+                            console.error('[ProxChat] saveMessage failed, broadcasting without persistence', { roomKey, senderId }, err);
                             // Fallback: broadcast with random id if DB write fails
                             const outgoing: OutgoingMessage = {
                                 type: 'proximity-chat-message',
@@ -406,8 +408,17 @@ export class User {
             if (roomKey !== u.currentRoomKey) {
                 u.currentRoomKey = roomKey;
                 if (roomKey !== null) {
-                    const history = await ProximityChatManager.getInstance().getHistory(roomKey);
-                    u.send({ type: 'chat-history', payload: { roomId: roomKey, messages: history } });
+                    try {
+                        const history = await ProximityChatManager.getInstance().getHistory(roomKey);
+                        console.log('[ProxChat] sending chat-history to', u.userId ?? u.id, 'roomKey:', roomKey, 'messages:', history.length);
+                        u.send({ type: 'chat-history', payload: { roomId: roomKey, messages: history } });
+                    } catch (error) {
+                        console.error('[ProxChat] getHistory failed for', u.userId ?? u.id, 'roomKey:', roomKey, error);
+                        // Reset so the next move triggers a retry
+                        u.currentRoomKey = null;
+                        // Send empty history so frontend shows "You joined" instead of hanging blank
+                        u.send({ type: 'chat-history', payload: { roomId: roomKey, messages: [] } });
+                    }
                 }
             }
         }
