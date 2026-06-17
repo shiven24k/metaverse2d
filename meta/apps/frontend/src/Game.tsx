@@ -222,6 +222,11 @@ const ArenaInner = () => {
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectAttempts = useRef(0);
     const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const intentionalCloseRef = useRef(false);
+    const spaceIdRef = useRef(spaceId);
+    spaceIdRef.current = spaceId;
+    const tokenRef = useRef(token);
+    tokenRef.current = token;
     const [reconnecting, setReconnecting] = useState(false);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -937,8 +942,9 @@ const ArenaInner = () => {
     };
 
     const connect = useCallback(() => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) return;
+        if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return;
 
+        intentionalCloseRef.current = false;
         const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
 
@@ -949,7 +955,7 @@ const ArenaInner = () => {
             reconnectAttempts.current = 0;
             ws.send(JSON.stringify({
                 type: 'join',
-                payload: { spaceId, token: token || '' },
+                payload: { spaceId: spaceIdRef.current, token: tokenRef.current || '' },
             }));
             if (heartbeatRef.current) clearInterval(heartbeatRef.current);
             heartbeatRef.current = setInterval(() => {
@@ -970,6 +976,7 @@ const ArenaInner = () => {
                 heartbeatRef.current = null;
             }
             setConnected(false);
+            if (intentionalCloseRef.current) return;
             reconnectAttempts.current++;
             const delay = Math.min(500 * Math.pow(2, reconnectAttempts.current - 1), 4_000);
             setReconnecting(true);
@@ -980,11 +987,12 @@ const ArenaInner = () => {
         ws.onerror = () => {
             ws.close();
         };
-    }, [spaceId, token]);
+    }, []); // stable — reads spaceId/token via refs
 
     useEffect(() => {
         connect();
         return () => {
+            intentionalCloseRef.current = true;
             if (heartbeatRef.current) {
                 clearInterval(heartbeatRef.current);
                 heartbeatRef.current = null;
