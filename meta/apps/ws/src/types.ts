@@ -54,6 +54,21 @@ type ProximityChatIncoming = {
     payload: { content: string };
 };
 
+type AnnouncementMessage = {
+    type: 'announcement';
+    payload: { title: string; message: string; priority: 'normal' | 'urgent' };
+};
+
+type PingUserMessage = {
+    type: 'ping-user';
+    payload: { targetUserId: string };
+};
+
+type NotificationReadMessage = {
+    type: 'notification-read';
+    payload: { notificationId: string };
+};
+
 export type IncomingMessage =
     | JoinMessage
     | MoveMessage
@@ -65,7 +80,10 @@ export type IncomingMessage =
     | EditorRelayIncoming
     | ActivityChangedIncoming
     | PingMessage
-    | ProximityChatIncoming;
+    | ProximityChatIncoming
+    | AnnouncementMessage
+    | PingUserMessage
+    | NotificationReadMessage;
 
 // ─── Outgoing messages (server → client) ─────────────────────────────────────
 
@@ -146,6 +164,21 @@ type PongMessage = {
     type: 'pong';
 };
 
+type NotificationOutgoing = {
+    type: 'notification';
+    payload: {
+        id: string;
+        notifType: 'announcement' | 'ping' | 'user-joined' | 'user-left' | 'mention';
+        title: string;
+        message: string;
+        priority: 'normal' | 'urgent';
+        fromUserId?: string;
+        fromUserName?: string;
+        timestamp: number;
+        urgentBanner?: boolean;
+    };
+};
+
 type ProximityChatMessage = {
     type: 'proximity-chat-message';
     payload: {
@@ -198,4 +231,5 @@ export type OutgoingMessage =
     | PongMessage
     | ProximityChatMessage
     | ChatRoomUpdateMessage
-    | ChatHistoryMessage;
+    | ChatHistoryMessage
+    | NotificationOutgoing;

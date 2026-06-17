@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
-import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Smile, MessageCircle, Settings } from 'lucide-react';
+import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Smile, MessageCircle, Settings, Bell } from 'lucide-react';
 import { KanbanPanel } from './KanbanPanel';
 import { SpaceSettingsModal } from './SpaceSettingsModal';
 
@@ -294,6 +294,19 @@ const ArenaInner = () => {
         isSystem?: boolean;
         isDivider?: boolean;
     }
+    interface AppNotification {
+        id: string;
+        notifType: 'announcement' | 'ping' | 'user-joined' | 'user-left' | 'mention';
+        title: string;
+        message: string;
+        priority: 'normal' | 'urgent';
+        fromUserId?: string;
+        fromUserName?: string;
+        timestamp: number;
+        urgentBanner?: boolean;
+        read: boolean;
+    }
+
     const [proximityChatRoomId, setProximityChatRoomId] = useState<string | null>(null);
     const [proximityChatMembers, setProximityChatMembers] = useState<{ userId: string; username: string }[]>([]);
     const [proximityChatMessages, setProximityChatMessages] = useState<ProximityChatMsg[]>([]);
@@ -305,6 +318,16 @@ const ArenaInner = () => {
     const showProximityChatRef = useRef(true);
     const lastProximityChatAtRef = useRef<number>(0);
     const proximityChatMessagesEndRef = useRef<HTMLDivElement | null>(null);
+
+    // Notifications
+    const [notifications, setNotifications] = useState<AppNotification[]>([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [showNotifPanel, setShowNotifPanel] = useState(false);
+    const [urgentBanner, setUrgentBanner] = useState<AppNotification | null>(null);
+    const [notifToasts, setNotifToasts] = useState<AppNotification[]>([]);
+    const showNotifPanelRef = useRef(false);
+    const [pingsSent, setPingsSent] = useState<Set<string>>(new Set());
+
     const [showEmotePalette, setShowEmotePalette] = useState(false);
     const [playerPopup, setPlayerPopup] = useState<{ userId: string; username: string; x: number; y: number } | null>(null);
     const [showGiftModal, setShowGiftModal] = useState(false);
@@ -1720,6 +1743,17 @@ const ArenaInner = () => {
                 break;
             }
 
+            case 'notification': {
+                const raw = message.payload as Omit<AppNotification, 'read'>;
+                const notif: AppNotification = { ...raw, read: false };
+                setNotifications(prev => [notif, ...prev].slice(0, 50));
+                if (!showNotifPanelRef.current) setUnreadCount(c => c + 1);
+                setNotifToasts(prev => [notif, ...prev].slice(0, 3));
+                setTimeout(() => setNotifToasts(prev => prev.filter(t => t.id !== notif.id)), 4000);
+                if (notif.urgentBanner) setUrgentBanner(notif);
+                break;
+            }
+
             case 'board-updated':
                 setBoardWsFlag(f => f + 1);
                 break;
@@ -2888,6 +2922,19 @@ const ArenaInner = () => {
                             <Coins size={14} />{walletCoins.toLocaleString()}
                         </span>
                     )}
+                    {/* Bell button */}
+                    <button
+                        title="Notifications"
+                        onClick={() => { showNotifPanelRef.current = !showNotifPanel; setShowNotifPanel(p => !p); if (!showNotifPanel) setUnreadCount(0); }}
+                        style={{ position: 'relative', width: 34, height: 34, borderRadius: 9, border: '1px solid #e3e1ee', background: showNotifPanel ? '#f4f0fe' : '#fff', color: showNotifPanel ? '#6d28d9' : '#4d495f', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                    >
+                        <Bell size={16} />
+                        {unreadCount > 0 && (
+                            <span style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff', borderRadius: '50%', width: 16, height: 16, fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #fff' }}>
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                            </span>
+                        )}
+                    </button>
                     <div style={{ width: 1, height: 24, background: '#ecebf3' }} />
                     {/* Icon button group */}
                     <div style={{ display: 'flex', gap: 2, padding: 3, background: '#f4f3f9', borderRadius: 9 }}>
@@ -3516,9 +3563,18 @@ const ArenaInner = () => {
                 {playerPopup && (
                     <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', border: '1px solid #ecebf3', borderRadius: 14, padding: '22px 28px', boxShadow: '0 24px 60px rgba(22,15,52,0.22)', zIndex: 1100, textAlign: 'center' }}>
                         <p style={{ fontSize: 16, fontWeight: 700, color: '#191427', margin: '0 0 16px' }}>{playerPopup.username}</p>
-                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
                             <button onClick={() => navigate(`/profile/${playerPopup.userId}`)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>View Profile</button>
                             <button onClick={() => { setGiftTarget({ userId: playerPopup.userId, username: playerPopup.username }); setShowGiftModal(true); setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e7ddfb', background: '#f4f0fe', color: '#6d28d9', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>Send Gift</button>
+                            <button
+                                onClick={() => {
+                                    if (pingsSent.has(playerPopup.userId)) return;
+                                    wsRef.current?.send(JSON.stringify({ type: 'ping-user', payload: { targetUserId: playerPopup.userId } }));
+                                    setPingsSent(prev => new Set([...prev, playerPopup.userId]));
+                                    setTimeout(() => setPingsSent(prev => { const n = new Set(prev); n.delete(playerPopup.userId); return n; }), 2000);
+                                }}
+                                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #fed7aa', background: pingsSent.has(playerPopup.userId) ? '#fff7ed' : '#fff7ed', color: pingsSent.has(playerPopup.userId) ? '#9a3412' : '#c2410c', fontSize: 13, cursor: pingsSent.has(playerPopup.userId) ? 'default' : 'pointer', fontWeight: 500 }}
+                            >{pingsSent.has(playerPopup.userId) ? 'Sent! ✓' : 'Ping 👋'}</button>
                             <button onClick={() => { setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}>Close</button>
                         </div>
                     </div>
@@ -4118,7 +4174,81 @@ const ArenaInner = () => {
                     </div>
                 )}
 
-                <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                {/* ── Notification toasts (top-right) ── */}
+                {notifToasts.length > 0 && (
+                    <div style={{ position: 'fixed', top: 64, right: 16, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8, width: 300, pointerEvents: 'none' }}>
+                        {notifToasts.map(t => {
+                            const borderColor = t.notifType === 'announcement' ? '#6d28d9' : t.notifType === 'ping' ? '#f97316' : t.notifType === 'user-joined' ? '#10b981' : '#6b7280';
+                            const icon = t.notifType === 'announcement' ? '📢' : t.notifType === 'ping' ? '👋' : t.notifType === 'user-joined' ? '✅' : '🚶';
+                            return (
+                                <div key={t.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', borderLeft: `4px solid ${borderColor}`, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', padding: '10px 12px', display: 'flex', alignItems: 'flex-start', gap: 10, animation: 'notifSlideIn 0.2s ease', pointerEvents: 'auto' }}>
+                                    <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{icon}</span>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                                        {t.message && <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.message}</div>}
+                                    </div>
+                                    <button onClick={() => setNotifToasts(prev => prev.filter(x => x.id !== t.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 14, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* ── Notification panel ── */}
+                {showNotifPanel && (
+                    <div style={{ position: 'fixed', top: 56, right: 12, width: 300, height: 'calc(100vh - 80px)', zIndex: 200, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 16, border: '1px solid #e5e7eb', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
+                        {/* Header */}
+                        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#111', flex: 1 }}>Notifications</span>
+                            {notifications.some(n => !n.read) && (
+                                <button onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))} style={{ fontSize: 11, color: '#6d28d9', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, padding: 0 }}>Mark all read</button>
+                            )}
+                            <button onClick={() => { showNotifPanelRef.current = false; setShowNotifPanel(false); }} style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: '#f3f4f6', color: '#6b7280', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                        </div>
+                        {/* List */}
+                        <div style={{ flex: 1, overflowY: 'auto' }}>
+                            {notifications.length === 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, color: '#9ca3af' }}>
+                                    <Bell size={32} strokeWidth={1.2} />
+                                    <span style={{ fontSize: 13 }}>No notifications yet</span>
+                                </div>
+                            ) : notifications.map(n => {
+                                const borderColor = n.notifType === 'announcement' ? '#6d28d9' : n.notifType === 'ping' ? '#f97316' : n.notifType === 'user-joined' ? '#10b981' : '#6b7280';
+                                const icon = n.notifType === 'announcement' ? '📢' : n.notifType === 'ping' ? '👋' : n.notifType === 'user-joined' ? '✅' : '🚶';
+                                const diff = Date.now() - n.timestamp;
+                                const rel = diff < 60000 ? 'just now' : diff < 3600000 ? `${Math.floor(diff / 60000)}m ago` : `${Math.floor(diff / 3600000)}h ago`;
+                                return (
+                                    <div
+                                        key={n.id}
+                                        onClick={() => setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x))}
+                                        style={{ padding: '10px 14px', borderBottom: '1px solid #f5f5f5', display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', background: n.read ? '#fff' : '#fafafa', borderLeft: n.read ? 'none' : `3px solid ${borderColor}` }}
+                                    >
+                                        <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{icon}</span>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontSize: 13, fontWeight: n.read ? 400 : 600, color: '#111', marginBottom: 2 }}>{n.title}</div>
+                                            {n.message && <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>{n.message}</div>}
+                                            <div style={{ fontSize: 10, color: '#9ca3af' }}>{rel}</div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Urgent banner ── */}
+                {urgentBanner && (
+                    <div style={{ position: 'fixed', top: 48, left: 0, right: 0, zIndex: 10000, background: 'linear-gradient(135deg,#6d28d9,#4f46e5)', color: '#fff', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 0 0 3px rgba(109,40,217,0.4), 0 4px 20px rgba(109,40,217,0.4)' }}>
+                        <span style={{ fontSize: 20, flexShrink: 0 }}>📢</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700 }}>{urgentBanner.title}</div>
+                            {urgentBanner.message && <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{urgentBanner.message}</div>}
+                        </div>
+                        <button onClick={() => setUrgentBanner(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 28, height: 28, borderRadius: 6, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
+                    </div>
+                )}
+
+                <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes notifSlideIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }`}</style>
         </div>
     );
 };

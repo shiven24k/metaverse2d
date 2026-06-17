@@ -43,6 +43,7 @@ export class User {
     public username: string;
     public avatarId?: string;
     public isGuest: boolean;
+    public role: string = 'User';
     private spaceId?: string;
     public x: number;
     public y: number;
@@ -118,10 +119,11 @@ export class User {
 
                         const userRecord = await client.user.findUnique({
                             where: { id: userId },
-                            select: { name: true, avatarId: true },
+                            select: { name: true, avatarId: true, role: true },
                         });
                         this.username = userRecord?.name ?? 'Unknown';
                         this.avatarId = userRecord?.avatarId ?? undefined;
+                        this.role = userRecord?.role ?? 'User';
                     }
 
                     const space = await client.space.findFirst({
@@ -177,6 +179,23 @@ export class User {
                         {
                             type: "user-joined",
                             payload: { userId: this.userId!, x: this.x, y: this.y, username: this.username, avatarId: this.avatarId },
+                        },
+                        this,
+                        this.spaceId!
+                    );
+                    getRoomManager().broadcast(
+                        {
+                            type: 'notification',
+                            payload: {
+                                id: randomUUID(),
+                                notifType: 'user-joined',
+                                title: `${this.username} joined the space`,
+                                message: '',
+                                priority: 'normal',
+                                fromUserId: this.userId ?? this.id,
+                                fromUserName: this.username,
+                                timestamp: Date.now(),
+                            },
                         },
                         this,
                         this.spaceId!
@@ -335,6 +354,66 @@ export class User {
                     this.send({ type: "pong" });
                     break;
 
+                case "announcement": {
+                    if (this.role !== 'Admin' || !this.spaceId) break;
+                    const { title, message: msg, priority } = parsedData.payload;
+                    const senderId = this.userId ?? this.id;
+                    const allUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                    const notif: OutgoingMessage = {
+                        type: 'notification',
+                        payload: {
+                            id: randomUUID(),
+                            notifType: 'announcement',
+                            title,
+                            message: msg,
+                            priority,
+                            fromUserId: senderId,
+                            fromUserName: this.username,
+                            timestamp: Date.now(),
+                            urgentBanner: priority === 'urgent',
+                        },
+                    };
+                    for (const u of allUsers) u.send(notif);
+                    break;
+                }
+
+                case "ping-user": {
+                    if (!this.spaceId) break;
+                    const { targetUserId } = parsedData.payload;
+                    const allUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                    const target = allUsers.find(u => (u.userId ?? u.id) === targetUserId);
+                    if (!target) break;
+                    const senderId = this.userId ?? this.id;
+                    target.send({
+                        type: 'notification',
+                        payload: {
+                            id: randomUUID(),
+                            notifType: 'ping',
+                            title: `${this.username} pinged you`,
+                            message: 'Come join them!',
+                            priority: 'normal',
+                            fromUserId: senderId,
+                            fromUserName: this.username,
+                            timestamp: Date.now(),
+                        },
+                    });
+                    this.send({
+                        type: 'notification',
+                        payload: {
+                            id: randomUUID(),
+                            notifType: 'ping',
+                            title: 'Ping sent!',
+                            message: `${target.username} has been notified.`,
+                            priority: 'normal',
+                            timestamp: Date.now(),
+                        },
+                    });
+                    break;
+                }
+
+                case "notification-read":
+                    break;
+
                 case "move": {
                     const moveX = parsedData.payload.x;
                     const moveY = parsedData.payload.y;
@@ -428,6 +507,23 @@ export class User {
         if (!this.spaceId) return; // disconnected before completing join
         getRoomManager().broadcast(
             { type: "user-left", payload: { userId: this.userId } },
+            this,
+            this.spaceId
+        );
+        getRoomManager().broadcast(
+            {
+                type: 'notification',
+                payload: {
+                    id: randomUUID(),
+                    notifType: 'user-left',
+                    title: `${this.username} left the space`,
+                    message: '',
+                    priority: 'normal',
+                    fromUserId: this.userId ?? this.id,
+                    fromUserName: this.username,
+                    timestamp: Date.now(),
+                },
+            },
             this,
             this.spaceId
         );
