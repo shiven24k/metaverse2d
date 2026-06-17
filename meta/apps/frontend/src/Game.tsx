@@ -300,6 +300,7 @@ const ArenaInner = () => {
     const [showProximityChat, setShowProximityChat] = useState(true);
     const [proximityChatUnread, setProximityChatUnread] = useState(0);
     const [proximityChatInput, setProximityChatInput] = useState('');
+    const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024);
     const proximityChatRoomIdRef = useRef<string | null>(null);
     const showProximityChatRef = useRef(true);
     const lastProximityChatAtRef = useRef<number>(0);
@@ -1453,6 +1454,12 @@ const ArenaInner = () => {
     useEffect(() => {
         proximityChatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [proximityChatMessages.length]);
+
+    useEffect(() => {
+        const handler = () => setIsDesktop(window.innerWidth >= 1024);
+        window.addEventListener('resize', handler);
+        return () => window.removeEventListener('resize', handler);
+    }, []);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleMessage = (message: any) => {
@@ -2918,7 +2925,7 @@ const ArenaInner = () => {
             {/* ── Canvas area: position absolute fills the area below the header ── */}
                 <div
                     ref={containerRef}
-                    style={{ position: 'absolute', top: 56, left: 0, right: 0, bottom: 0, overflow: 'hidden', outline: 'none' }}
+                    style={{ position: 'absolute', top: 56, left: 0, right: 0, bottom: 0, overflow: 'hidden', outline: 'none', marginLeft: !editMode && showProximityChat && isDesktop ? 292 : 0, transition: 'margin-left 0.2s ease' }}
                     onKeyDown={handleKeyDown}
                     onKeyUp={handleKeyUp}
                     onClick={() => setShowEmotePalette(false)}
@@ -2939,14 +2946,28 @@ const ArenaInner = () => {
 
                     {/* ── Proximity Chat Panel ── */}
                     {!editMode && showProximityChat && (
-                        <div style={{
+                        <div style={isDesktop ? {
                             position: 'fixed', top: 56, left: 12, width: 280,
                             height: 'calc(100vh - 80px)', zIndex: 50,
                             display: 'flex', flexDirection: 'column',
                             background: '#ffffff', borderRadius: 16,
                             border: '1px solid #e5e7eb',
                             boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+                        } : {
+                            position: 'fixed', bottom: 0, left: 0, right: 0, width: '100%',
+                            height: '55vh', zIndex: 50,
+                            display: 'flex', flexDirection: 'column',
+                            background: '#ffffff', borderRadius: '16px 16px 0 0',
+                            border: '1px solid #e5e7eb',
+                            boxShadow: '0 -4px 20px rgba(0,0,0,0.08)',
                         }}>
+                            {/* Mobile drag handle */}
+                            {!isDesktop && (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 4px', flexShrink: 0 }}>
+                                    <div style={{ width: 32, height: 4, borderRadius: 2, background: '#d1d5db' }} />
+                                </div>
+                            )}
+
                             {/* Header */}
                             <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2973,11 +2994,11 @@ const ArenaInner = () => {
                             {/* Messages */}
                             <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
                                 {!proximityChatRoomId ? (
-                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20 }}>
-                                        <div>
-                                            <div style={{ fontSize: 28, marginBottom: 8 }}>🚶</div>
-                                            <p style={{ margin: 0, fontSize: 12, color: '#9ca3af', lineHeight: 1.5 }}>Move closer to someone to start chatting</p>
-                                        </div>
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, gap: 8 }}>
+                                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                        </svg>
+                                        <p style={{ margin: 0, fontSize: 12, color: '#9ca3af', lineHeight: 1.5 }}>Move closer to someone</p>
                                     </div>
                                 ) : proximityChatMessages.length === 0 ? (
                                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -3006,18 +3027,24 @@ const ArenaInner = () => {
                                         return (
                                             <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start', gap: 2 }}>
                                                 {!isSelf && isGroup && (
-                                                    <span style={{ fontSize: 11, color: '#9ca3af', paddingLeft: 4 }}>{msg.senderName}</span>
+                                                    <span style={{ fontSize: 11, color: '#6b7280', paddingLeft: 4 }}>{msg.senderName}</span>
                                                 )}
-                                                <div style={{
-                                                    maxWidth: '75%', padding: '7px 12px',
-                                                    borderRadius: isSelf ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                                                    background: isSelf ? '#6d28d9' : '#f3f4f6',
-                                                    color: isSelf ? '#fff' : '#111',
-                                                    fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word',
-                                                }}>
+                                                <div
+                                                    style={{
+                                                        alignSelf: isSelf ? 'flex-end' : 'flex-start',
+                                                        maxWidth: '75%', padding: '7px 12px',
+                                                        borderRadius: isSelf ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                                                        background: isSelf ? '#6d28d9' : '#f3f4f6',
+                                                        color: isSelf ? '#fff' : '#111827',
+                                                        fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word',
+                                                        opacity: 1,
+                                                    }}
+                                                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '0.92'; }}
+                                                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                                                >
                                                     {msg.content}
                                                 </div>
-                                                <span style={{ fontSize: 10, color: '#9ca3af', paddingLeft: 4, paddingRight: 4 }}>
+                                                <span style={{ alignSelf: isSelf ? 'flex-end' : 'flex-start', fontSize: 10, color: '#9ca3af', paddingLeft: isSelf ? 0 : 4, paddingRight: isSelf ? 4 : 0 }}>
                                                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                             </div>
@@ -3033,7 +3060,7 @@ const ArenaInner = () => {
                                     value={proximityChatInput}
                                     onChange={e => setProximityChatInput(e.target.value)}
                                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); sendProximityChat(); } }}
-                                    placeholder={proximityChatRoomId ? 'Type a message…' : 'Move closer to chat'}
+                                    placeholder={proximityChatRoomId ? 'Message nearby people...' : 'Move closer to chat'}
                                     disabled={!proximityChatRoomId}
                                     maxLength={200}
                                     style={{
