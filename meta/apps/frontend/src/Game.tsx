@@ -2654,8 +2654,10 @@ const ArenaInner = () => {
                 if (emoteImg && emoteImg.complete && emoteImg.naturalWidth > 0) {
                     const frames = EMOTE_FRAMES[emoteId] ?? 1;
                     const frame = Math.floor(Date.now() / 200) % frames;
+                    const [rcx, rcy, rcw, rch] = EMOTE_CROP[emoteId] ?? [23, 18, 18, 42];
+                    console.log('reaction emote src', frame * 64 + rcx, rcy, rcw, rch, 'dest', ex - 16, ey - 48, 32, 48);
                     ctx.imageSmoothingEnabled = false;
-                    ctx.drawImage(emoteImg, frame * 64, 0, 64, 64, ex - 20, ey - 70, 40, 40);
+                    ctx.drawImage(emoteImg, frame * 64 + rcx, rcy, rcw, rch, ex - 16, ey - 48, 32, 48);
                     ctx.imageSmoothingEnabled = true;
                 } else {
                     ctx.font = '24px sans-serif';
@@ -2710,7 +2712,6 @@ const ArenaInner = () => {
                 const frames = EMOTE_FRAMES[myEmoteId] ?? 1;
                 const frame = Math.floor(Date.now() / 200) % frames;
                 const [cropX, cropY, cropW, cropH] = EMOTE_CROP[myEmoteId] ?? [23, 18, 18, 42];
-                console.log('emote draw', { destX: cx - 16, destY: cy - 24, srcX: frame * 64 + cropX, srcY: cropY, srcW: cropW, srcH: cropH });
                 ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(myEmoteImg!, frame * 64 + cropX, cropY, cropW, cropH, cx - 16, cy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
@@ -2760,7 +2761,7 @@ const ArenaInner = () => {
             if (uEmoteReady && uEmoteId) {
                 const frames = EMOTE_FRAMES[uEmoteId] ?? 1;
                 const frame = Math.floor(Date.now() / 200) % frames;
-                const [cropX, cropY, cropW, cropH] = EMOTE_CROP[uEmoteId] ?? [21, 14, 22, 46];
+                const [cropX, cropY, cropW, cropH] = EMOTE_CROP[uEmoteId] ?? [23, 18, 18, 42];
                 ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(uEmoteImg!, frame * 64 + cropX, cropY, cropW, cropH, ux - 16, uy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
