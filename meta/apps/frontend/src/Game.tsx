@@ -1683,15 +1683,33 @@ const ArenaInner = () => {
                 fetchInventory();
                 break;
 
-            case 'emoted':
+            case 'emoted': {
+                const { userId: emotedUserId, emoji: emotedEmoji } = message.payload as { userId: string; emoji: string; x: number; y: number };
                 setEmotes(prev => [...prev, {
-                    userId: message.payload.userId,
-                    emoji: message.payload.emoji,
+                    userId: emotedUserId,
+                    emoji: emotedEmoji,
                     x: message.payload.x,
                     y: message.payload.y,
                     createdAt: Date.now(),
                 }]);
+                const reactEmoteId = EMOJI_TO_EMOTE_ID[emotedEmoji];
+                if (reactEmoteId) {
+                    const reactExpiresAt = Date.now() + 5000;
+                    setActiveEmotes(prev => {
+                        const next = new Map(prev);
+                        next.set(emotedUserId, { emoteId: reactEmoteId, expiresAt: reactExpiresAt });
+                        return next;
+                    });
+                    setTimeout(() => {
+                        setActiveEmotes(m => {
+                            const n = new Map(m);
+                            if (n.get(emotedUserId)?.emoteId === reactEmoteId) n.delete(emotedUserId);
+                            return n;
+                        });
+                    }, 5000);
+                }
                 break;
+            }
 
             case 'emote-broadcast': {
                 const { userId: emoteUserId, emoteId, expiresAt } = message.payload as { userId: string; emoteId: string; expiresAt: number };
@@ -1892,6 +1910,7 @@ const ArenaInner = () => {
         const liveUser = currentUserRef.current;
         if (!liveUser || !wsRef.current) return;
         const emoji = EMOTES[emoteIndex - 1] || EMOTES[0];
+        const emoteId = EMOJI_TO_EMOTE_ID[emoji];
         wsRef.current.send(JSON.stringify({
             type: 'emote',
             payload: { emoji, x: liveUser.x, y: liveUser.y },
@@ -1903,6 +1922,23 @@ const ArenaInner = () => {
             y: liveUser.y,
             createdAt: Date.now(),
         }]);
+        if (emoteId) {
+            const expiresAt = Date.now() + 5000;
+            setActiveEmotes(prev => {
+                const next = new Map(prev);
+                next.set(liveUser.userId, { emoteId, expiresAt });
+                return next;
+            });
+            setMyActiveEmote(emoteId);
+            setTimeout(() => {
+                setActiveEmotes(m => {
+                    const n = new Map(m);
+                    if (n.get(liveUser.userId)?.emoteId === emoteId) n.delete(liveUser.userId);
+                    return n;
+                });
+                setMyActiveEmote(prev => prev === emoteId ? null : prev);
+            }, 5000);
+        }
     };
 
     const sendProximityChat = () => {
@@ -2649,35 +2685,6 @@ const ArenaInner = () => {
             ctx.setLineDash([]);
         }
 
-        emotes.forEach(em => {
-            const emoteId = EMOJI_TO_EMOTE_ID[em.emoji];
-            const bubbleAvatarId = em.userId === currentUser?.userId
-                ? (currentUser?.avatarId ?? 'avatar-intern')
-                : (users.get(em.userId)?.avatarId ?? 'avatar-intern');
-            const ex = em.x * 50, ey = em.y * 50;
-            if (emoteId) {
-                const emoteUrl = `/emotes/${bubbleAvatarId.replace('avatar-', '')}/${emoteId}.png`;
-                preloadEmoteImage(bubbleAvatarId, emoteId);
-                const emoteImg = imageCache.current.get(emoteUrl);
-                if (emoteImg && emoteImg.complete && emoteImg.naturalWidth > 0) {
-                    const frames = EMOTE_FRAMES[emoteId] ?? 1;
-                    const frame = Math.floor(Date.now() / 200) % frames;
-                    const [rcx, rcy, rcw, rch] = EMOTE_CROP[emoteId] ?? [16, 15, 32, 48];
-                    ctx.imageSmoothingEnabled = false;
-                    ctx.drawImage(emoteImg, frame * 64 + rcx, rcy, rcw, rch, ex - 16, ey - 48, 32, 48);
-                    ctx.imageSmoothingEnabled = true;
-                } else {
-                    ctx.font = '24px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(em.emoji, ex, ey - 30);
-                }
-            } else {
-                ctx.font = '24px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(em.emoji, ex, ey - 30);
-            }
-        });
-
         interactions.forEach(int => {
             const alpha = Math.max(0, 1 - (Date.now() - int.createdAt) / 3000);
             ctx.globalAlpha = alpha;
@@ -3039,7 +3046,7 @@ const ArenaInner = () => {
     // npcs intentionally omitted — canvas reads npcsRef.current (always current) so NPC
     // position broadcasts don't trigger extra re-renders that could interrupt player animation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentUser, users, portals, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, myActivity, othersActivity, selectedNpcId, proximityChatMembers, proximityChatRoomId, proximityChatInput]);
+    }, [currentUser, users, portals, placedItems, spaceElements, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, myActivity, othersActivity, selectedNpcId, proximityChatMembers, proximityChatRoomId, proximityChatInput]);
 
     const emotePreviewDiv = (emoteId: string, displayH: number) => {
         const aFolder = (currentUser?.avatarId ?? 'avatar-intern').replace('avatar-', '');
