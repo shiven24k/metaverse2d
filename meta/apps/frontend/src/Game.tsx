@@ -3048,17 +3048,19 @@ const ArenaInner = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentUser, users, portals, placedItems, spaceElements, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, myActivity, othersActivity, selectedNpcId, proximityChatMembers, proximityChatRoomId, proximityChatInput]);
 
-    const emotePreviewDiv = (emoteId: string, displayH: number) => {
+    const emotePreviewDiv = (emoteId: string, displayH = 40) => {
         const aFolder = (currentUser?.avatarId ?? 'avatar-intern').replace('avatar-', '');
-        const [cropX, cropY, cropW, cropH] = EMOTE_CROP[emoteId] ?? [16, 15, 32, 48];
-        const s = displayH / cropH;
+        const [cx, cy, cw, ch] = EMOTE_CROP[emoteId] ?? [21, 14, 22, 46];
+        const scale = displayH / ch;
+        const displayW = Math.round(cw * scale);
+        const fullSheetW = (EMOTE_FRAMES[emoteId] ?? 1) * 64;
         return (
             <div style={{
-                width: Math.round(cropW * s),
+                width: displayW,
                 height: displayH,
                 backgroundImage: `url(/emotes/${aFolder}/${emoteId}.png)`,
-                backgroundPosition: `-${cropX * s}px -${cropY * s}px`,
-                backgroundSize: `${(EMOTE_FRAMES[emoteId] ?? 1) * 64 * s}px ${64 * s}px`,
+                backgroundPosition: `-${Math.round(cx * scale)}px -${Math.round(cy * scale)}px`,
+                backgroundSize: `${Math.round(fullSheetW * scale)}px ${Math.round(64 * scale)}px`,
                 imageRendering: 'pixelated',
                 flexShrink: 0,
             }} />
@@ -3411,11 +3413,13 @@ const ArenaInner = () => {
                                                     wsRef.current?.send(JSON.stringify({ type: 'status-emote', payload: { emoteId: next } }));
                                                     setShowEmotePicker(false);
                                                 }}
-                                                style={{ width: 48, height: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 10, border: isActive ? '2px solid #7c3aed' : '1px solid #ecebf3', background: isActive ? '#f4f0fe' : '#f9f8fc', cursor: 'pointer', padding: 0 }}
+                                                style={{ width: 48, height: 62, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 10, border: isActive ? '2px solid #7c3aed' : '1px solid #ecebf3', background: isActive ? '#f4f0fe' : '#f9f8fc', cursor: 'pointer', padding: 0 }}
                                                 onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.1)')}
                                                 onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
                                             >
-                                                {emotePreviewDiv(em.id, 36)}
+                                                <div style={{ width: 48, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                                    {emotePreviewDiv(em.id)}
+                                                </div>
                                                 <span style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{em.label}</span>
                                             </button>
                                         );
@@ -3424,11 +3428,13 @@ const ArenaInner = () => {
                                     <div style={{ width: 1, height: 40, background: '#ecebf3', margin: '0 4px' }} />
                                     {QUICK_REACTIONS.map((qr, i) => (
                                         <button key={qr.id} onClick={() => { sendEmote(i + 1); setShowEmotePicker(false); }}
-                                            style={{ width: 48, height: 58, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 10, border: '1px solid #ecebf3', background: '#f9f8fc', cursor: 'pointer', padding: 0 }}
+                                            style={{ width: 48, height: 62, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 10, border: '1px solid #ecebf3', background: '#f9f8fc', cursor: 'pointer', padding: 0 }}
                                             onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.1)')}
                                             onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
                                         >
-                                            {emotePreviewDiv(qr.id, 36)}
+                                            <div style={{ width: 48, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                                {emotePreviewDiv(qr.id)}
+                                            </div>
                                             <span style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{qr.label}</span>
                                         </button>
                                     ))}
