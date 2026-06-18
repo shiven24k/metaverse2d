@@ -149,19 +149,22 @@ const EMOTE_FRAMES: Record<string, number> = {
 
 const ALL_EMOTE_IDS = Object.keys(EMOTE_FRAMES);
 
+// Crop origin (x, y) positions the emote content at (7, 3) within the 32×48 crop,
+// matching where the avatar character sits within its 32×48 frame — so src and dest
+// are both 32×48, giving 1:1 scale with no stretching.
 const EMOTE_CROP: Record<string, [number, number, number, number]> = {
-    coffee:    [23, 18, 18, 42],
-    tea:       [23, 18, 18, 42],
-    yawn:      [23, 18, 18, 42],
-    stretch:   [23, 18, 18, 42],
-    afk:       [23, 17, 20, 43],
-    sleep:     [23, 16, 22, 44],
-    brb:       [21,  9, 21, 51],
-    celebrate: [12,  8, 33, 52],
-    dance:     [12, 18, 28, 42],
-    love:      [23, 18, 18, 42],
-    wave:      [23, 18, 19, 42],
-    meditate:  [23, 20, 18, 41],
+    coffee:    [16, 15, 32, 48],
+    tea:       [16, 15, 32, 48],
+    yawn:      [16, 15, 32, 48],
+    stretch:   [12, 11, 32, 48],
+    afk:       [16,  2, 32, 48],
+    sleep:     [16, 11, 32, 48],
+    brb:       [14,  6, 32, 48],
+    celebrate: [ 3,  3, 32, 48],
+    dance:     [ 5, 15, 32, 48],
+    love:      [16,  1, 32, 48],
+    wave:      [16, 15, 32, 48],
+    meditate:  [ 1,  9, 32, 48],
 };
 
 interface InventoryItem {
@@ -2654,8 +2657,7 @@ const ArenaInner = () => {
                 if (emoteImg && emoteImg.complete && emoteImg.naturalWidth > 0) {
                     const frames = EMOTE_FRAMES[emoteId] ?? 1;
                     const frame = Math.floor(Date.now() / 200) % frames;
-                    const [rcx, rcy, rcw, rch] = EMOTE_CROP[emoteId] ?? [23, 18, 18, 42];
-                    console.log('reaction emote src', frame * 64 + rcx, rcy, rcw, rch, 'dest', ex - 16, ey - 48, 32, 48);
+                    const [rcx, rcy, rcw, rch] = EMOTE_CROP[emoteId] ?? [16, 15, 32, 48];
                     ctx.imageSmoothingEnabled = false;
                     ctx.drawImage(emoteImg, frame * 64 + rcx, rcy, rcw, rch, ex - 16, ey - 48, 32, 48);
                     ctx.imageSmoothingEnabled = true;
@@ -2711,7 +2713,8 @@ const ArenaInner = () => {
             if (myEmoteReady && myEmoteId) {
                 const frames = EMOTE_FRAMES[myEmoteId] ?? 1;
                 const frame = Math.floor(Date.now() / 200) % frames;
-                const [cropX, cropY, cropW, cropH] = EMOTE_CROP[myEmoteId] ?? [23, 18, 18, 42];
+                const [cropX, cropY, cropW, cropH] = EMOTE_CROP[myEmoteId] ?? [16, 15, 32, 48];
+                console.log('EMOTE', { src: [frame * 64 + cropX, cropY, cropW, cropH], dest: [cx - 16, cy - 24, 32, 48], sheetW: myEmoteImg!.naturalWidth });
                 ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(myEmoteImg!, frame * 64 + cropX, cropY, cropW, cropH, cx - 16, cy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
@@ -2719,6 +2722,7 @@ const ArenaInner = () => {
                 const dirCol = { down: 0, left: 1, right: 2, up: 3 }[facingRef.current] ?? 0;
                 const sx = dirCol * 32;
                 const sy = walkFrameRef.current * 48;
+                console.log('AVATAR', { src: [sx, sy, 32, 48], dest: [cx - 16, cy - 24, 32, 48], sheetW: img.naturalWidth });
                 ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(img, sx, sy, 32, 48, cx - 16, cy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
