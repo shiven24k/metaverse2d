@@ -123,6 +123,15 @@ const ALL_TILE_PATHS = [...Object.values(TILE_IMAGE), ...Object.values(ITEM_IMAG
 
 const EMOTES = ['👋', '💃', '🧘', '😴', '🎉', '❤️'];
 
+const QUICK_REACTIONS = [
+    { emoji: '👋', id: 'wave',      label: 'Wave'      },
+    { emoji: '💃', id: 'dance',     label: 'Dance'     },
+    { emoji: '🧘', id: 'meditate',  label: 'Meditate'  },
+    { emoji: '😴', id: 'sleep',     label: 'Sleep'     },
+    { emoji: '🎉', id: 'celebrate', label: 'Celebrate' },
+    { emoji: '❤️', id: 'love',      label: 'Love'      },
+];
+
 const EMOTE_EMOJI: Record<string, string> = {
     coffee: '☕', tea: '🍵', yawn: '😴',
     stretch: '🙆', afk: '💤', brb: '🔜',
@@ -3036,6 +3045,23 @@ const ArenaInner = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentUser, users, portals, placedItems, spaceElements, emotes, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, myActivity, othersActivity, selectedNpcId, proximityChatMembers, proximityChatRoomId, proximityChatInput]);
 
+    const emotePreviewDiv = (emoteId: string, displayH: number) => {
+        const aFolder = (currentUser?.avatarId ?? 'avatar-intern').replace('avatar-', '');
+        const [cropX, cropY, cropW, cropH] = EMOTE_CROP[emoteId] ?? [16, 15, 32, 48];
+        const s = displayH / cropH;
+        return (
+            <div style={{
+                width: Math.round(cropW * s),
+                height: displayH,
+                backgroundImage: `url(/emotes/${aFolder}/${emoteId}.png)`,
+                backgroundPosition: `-${cropX * s}px -${cropY * s}px`,
+                backgroundSize: `${(EMOTE_FRAMES[emoteId] ?? 1) * 64 * s}px ${64 * s}px`,
+                imageRendering: 'pixelated',
+                flexShrink: 0,
+            }} />
+        );
+    };
+
     return (
         <div style={{ fontFamily: 'system-ui', background: '#9aa3b5', position: 'fixed', inset: 0, width: '100vw', height: '100vh', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
             {/* ── Header (light glass bar) ── */}
@@ -3365,7 +3391,11 @@ const ArenaInner = () => {
                         <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
                             <button title="Emotes (E)" onClick={() => setShowEmotePicker(!showEmotePicker)} style={{ width: 38, height: 38, borderRadius: 999, border: showEmotePicker ? '1px solid #e7ddfb' : '1px solid transparent', background: showEmotePicker ? '#f4f0fe' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: showEmotePicker ? '#5b21b6' : '#6f6b82', position: 'relative' }}>
                                 <Smile size={18} />
-                                {myActiveEmote && <span style={{ position: 'absolute', top: -2, right: -2, fontSize: 11, lineHeight: 1 }}>{EMOTE_EMOJI[myActiveEmote]}</span>}
+                                {myActiveEmote && (
+                                    <div style={{ position: 'absolute', top: -4, right: -4, overflow: 'hidden', borderRadius: 3, lineHeight: 0 }}>
+                                        {emotePreviewDiv(myActiveEmote, 18)}
+                                    </div>
+                                )}
                             </button>
                             {showEmotePicker && (
                                 <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, padding: '12px 16px', borderRadius: 16, background: '#fff', border: '1px solid #ecebf3', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 100, alignItems: 'center', whiteSpace: 'nowrap' }}>
@@ -3382,19 +3412,22 @@ const ArenaInner = () => {
                                                 onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.1)')}
                                                 onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
                                             >
-                                                <span style={{ fontSize: 22, lineHeight: 1 }}>{em.emoji}</span>
+                                                {emotePreviewDiv(em.id, 36)}
                                                 <span style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{em.label}</span>
                                             </button>
                                         );
                                     })}
                                     {/* Quick reactions row */}
                                     <div style={{ width: 1, height: 40, background: '#ecebf3', margin: '0 4px' }} />
-                                    {EMOTES.map((emoji, i) => (
-                                        <button key={i} onClick={() => { sendEmote(i + 1); setShowEmotePicker(false); }}
-                                            style={{ width: 40, height: 40, borderRadius: 10, border: '1px solid #ecebf3', background: '#f9f8fc', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}
-                                            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.15)')}
+                                    {QUICK_REACTIONS.map((qr, i) => (
+                                        <button key={qr.id} onClick={() => { sendEmote(i + 1); setShowEmotePicker(false); }}
+                                            style={{ width: 48, height: 58, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 10, border: '1px solid #ecebf3', background: '#f9f8fc', cursor: 'pointer', padding: 0 }}
+                                            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.1)')}
                                             onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
-                                        >{emoji}</button>
+                                        >
+                                            {emotePreviewDiv(qr.id, 36)}
+                                            <span style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{qr.label}</span>
+                                        </button>
                                     ))}
                                 </div>
                             )}
