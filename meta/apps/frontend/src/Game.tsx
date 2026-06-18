@@ -149,6 +149,21 @@ const EMOTE_FRAMES: Record<string, number> = {
 
 const ALL_EMOTE_IDS = Object.keys(EMOTE_FRAMES);
 
+const EMOTE_CROP: Record<string, [number, number, number, number]> = {
+    coffee:    [21, 14, 22, 46],
+    tea:       [21, 14, 22, 46],
+    yawn:      [21, 14, 22, 46],
+    stretch:   [21, 14, 22, 46],
+    afk:       [21, 14, 22, 46],
+    sleep:     [21, 14, 24, 46],
+    brb:       [19,  7, 24, 53],
+    celebrate: [10,  6, 36, 54],
+    dance:     [10, 14, 32, 46],
+    love:      [21, 14, 22, 46],
+    wave:      [21, 14, 22, 46],
+    meditate:  [21, 16, 22, 45],
+};
+
 interface InventoryItem {
     id: string;
     itemId: string;
@@ -2694,8 +2709,9 @@ const ArenaInner = () => {
             if (myEmoteReady && myEmoteId) {
                 const frames = EMOTE_FRAMES[myEmoteId] ?? 1;
                 const frame = Math.floor(Date.now() / 200) % frames;
+                const [cropX, cropY, cropW, cropH] = EMOTE_CROP[myEmoteId] ?? [21, 14, 22, 46];
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(myEmoteImg!, frame * 64, 0, 64, 64, cx - 16, cy - 24, 32, 48);
+                ctx.drawImage(myEmoteImg!, frame * 64 + cropX, cropY, cropW, cropH, cx - 16, cy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
             } else if (img && img.complete && img.naturalWidth > 0) {
                 const dirCol = { down: 0, left: 1, right: 2, up: 3 }[facingRef.current] ?? 0;
@@ -2743,8 +2759,9 @@ const ArenaInner = () => {
             if (uEmoteReady && uEmoteId) {
                 const frames = EMOTE_FRAMES[uEmoteId] ?? 1;
                 const frame = Math.floor(Date.now() / 200) % frames;
+                const [cropX, cropY, cropW, cropH] = EMOTE_CROP[uEmoteId] ?? [21, 14, 22, 46];
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(uEmoteImg!, frame * 64, 0, 64, 64, ux - 16, uy - 24, 32, 48);
+                ctx.drawImage(uEmoteImg!, frame * 64 + cropX, cropY, cropW, cropH, ux - 16, uy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
             } else if (img && img.complete && img.naturalWidth > 0) {
                 ctx.imageSmoothingEnabled = false;
