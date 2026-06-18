@@ -2685,8 +2685,19 @@ const ArenaInner = () => {
             const cx = animPosRef.current.x * 50 + bumpOff;
             const cy = animPosRef.current.y * 50 - walkBobRef.current;
             const myStatusEmote = activeEmotes.get(currentUser.userId);
-            if (myStatusEmote?.emoteId === 'afk') ctx.globalAlpha = 0.6;
-            if (img && img.complete && img.naturalWidth > 0) {
+            const myEmoteId = myStatusEmote?.emoteId;
+            const myEmoteUrl = myEmoteId ? `/emotes/${effectiveAvatarId.replace('avatar-', '')}/${myEmoteId}.png` : null;
+            if (myEmoteId) preloadEmoteImage(effectiveAvatarId, myEmoteId);
+            const myEmoteImg = myEmoteUrl ? imageCache.current.get(myEmoteUrl) : null;
+            const myEmoteReady = !!(myEmoteImg && myEmoteImg.complete && myEmoteImg.naturalWidth > 0);
+            if (myEmoteId === 'afk') ctx.globalAlpha = 0.6;
+            if (myEmoteReady && myEmoteId) {
+                const frames = EMOTE_FRAMES[myEmoteId] ?? 1;
+                const frame = Math.floor(Date.now() / 200) % frames;
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(myEmoteImg!, frame * 64, 0, 64, 64, cx - 24, cy - 24, 48, 48);
+                ctx.imageSmoothingEnabled = true;
+            } else if (img && img.complete && img.naturalWidth > 0) {
                 const dirCol = { down: 0, left: 1, right: 2, up: 3 }[facingRef.current] ?? 0;
                 const sx = dirCol * 32;
                 const sy = walkFrameRef.current * 48;
@@ -2694,7 +2705,6 @@ const ArenaInner = () => {
                 ctx.drawImage(img, sx, sy, 32, 48, cx - 16, cy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
             } else {
-                // Placeholder circle with first letter while loading or if image failed
                 ctx.beginPath();
                 ctx.fillStyle = imageLoadFailed.current.has(avatarUrl) ? '#FF6B6B' : '#6366f1';
                 ctx.arc(cx, cy, 16, 0, Math.PI * 2);
@@ -2715,27 +2725,6 @@ const ArenaInner = () => {
                 ctx.font = '16px sans-serif';
                 ctx.fillText(effectiveActivity === 'working' ? '💻' : '💺', cx, cy - 38);
             }
-            if (myStatusEmote?.emoteId) {
-                const emoteId = myStatusEmote.emoteId;
-                const emoteUrl = `/emotes/${effectiveAvatarId.replace('avatar-', '')}/${emoteId}.png`;
-                preloadEmoteImage(effectiveAvatarId, emoteId);
-                const emoteImg = imageCache.current.get(emoteUrl);
-                const frames = EMOTE_FRAMES[emoteId] ?? 1;
-                const frame = Math.floor(Date.now() / 200) % frames;
-                ctx.fillStyle = 'rgba(255,255,255,0.95)';
-                ctx.beginPath();
-                ctx.roundRect(cx - 20, cy - 70, 40, 40, 8);
-                ctx.fill();
-                if (emoteImg && emoteImg.complete && emoteImg.naturalWidth > 0) {
-                    ctx.imageSmoothingEnabled = false;
-                    ctx.drawImage(emoteImg, frame * 64, 0, 64, 64, cx - 18, cy - 68, 36, 36);
-                    ctx.imageSmoothingEnabled = true;
-                } else {
-                    ctx.font = '14px serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(EMOTE_EMOJI[emoteId] ?? emoteId, cx, cy - 48);
-                }
-            }
         }
 
         users.forEach(user => {
@@ -2745,8 +2734,19 @@ const ArenaInner = () => {
             const img = imageCache.current.get(avatarUrl);
             const ux = user.x * 50, uy = user.y * 50;
             const userStatusEmote = activeEmotes.get(user.userId);
-            if (userStatusEmote?.emoteId === 'afk') ctx.globalAlpha = 0.6;
-            if (img && img.complete && img.naturalWidth > 0) {
+            const uEmoteId = userStatusEmote?.emoteId;
+            const uEmoteUrl = uEmoteId ? `/emotes/${effectiveAvatarId.replace('avatar-', '')}/${uEmoteId}.png` : null;
+            if (uEmoteId) preloadEmoteImage(effectiveAvatarId, uEmoteId);
+            const uEmoteImg = uEmoteUrl ? imageCache.current.get(uEmoteUrl) : null;
+            const uEmoteReady = !!(uEmoteImg && uEmoteImg.complete && uEmoteImg.naturalWidth > 0);
+            if (uEmoteId === 'afk') ctx.globalAlpha = 0.6;
+            if (uEmoteReady && uEmoteId) {
+                const frames = EMOTE_FRAMES[uEmoteId] ?? 1;
+                const frame = Math.floor(Date.now() / 200) % frames;
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(uEmoteImg!, frame * 64, 0, 64, 64, ux - 24, uy - 24, 48, 48);
+                ctx.imageSmoothingEnabled = true;
+            } else if (img && img.complete && img.naturalWidth > 0) {
                 ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(img, 0, 0, 32, 48, ux - 16, uy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
@@ -2772,28 +2772,6 @@ const ArenaInner = () => {
             if (uActivity) {
                 ctx.font = '16px sans-serif';
                 ctx.fillText(uActivity === 'working' ? '💻' : '💺', ux, uy - 38);
-            }
-            // Status emote bubble
-            if (userStatusEmote?.emoteId) {
-                const emoteId = userStatusEmote.emoteId;
-                const emoteUrl = `/emotes/${effectiveAvatarId.replace('avatar-', '')}/${emoteId}.png`;
-                preloadEmoteImage(effectiveAvatarId, emoteId);
-                const emoteImg = imageCache.current.get(emoteUrl);
-                const frames = EMOTE_FRAMES[emoteId] ?? 1;
-                const frame = Math.floor(Date.now() / 200) % frames;
-                ctx.fillStyle = 'rgba(255,255,255,0.95)';
-                ctx.beginPath();
-                ctx.roundRect(ux - 20, uy - 70, 40, 40, 8);
-                ctx.fill();
-                if (emoteImg && emoteImg.complete && emoteImg.naturalWidth > 0) {
-                    ctx.imageSmoothingEnabled = false;
-                    ctx.drawImage(emoteImg, frame * 64, 0, 64, 64, ux - 18, uy - 68, 36, 36);
-                    ctx.imageSmoothingEnabled = true;
-                } else {
-                    ctx.font = '14px serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(EMOTE_EMOJI[emoteId] ?? emoteId, ux, uy - 48);
-                }
             }
             // 👂 proximity indicator when actively typing in proximity chat
             if (currentUser && proximityChatInput.length > 0) {
