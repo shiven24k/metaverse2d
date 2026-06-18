@@ -3361,7 +3361,7 @@ const ArenaInner = () => {
                 {!editMode && (
                     <div style={{ position: 'absolute', bottom: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 2, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', border: '1px solid #ecebf3', borderRadius: 999, padding: 5, boxShadow: '0 1px 2px rgba(22,15,52,0.04), 0 6px 16px rgba(22,15,52,0.07)' }}>
                         {/* Emote button */}
-                        <div style={{ position: 'relative' }}>
+                        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
                             <button title="Emotes (E)" onClick={() => setShowEmotePicker(!showEmotePicker)} style={{ width: 38, height: 38, borderRadius: 999, border: showEmotePicker ? '1px solid #e7ddfb' : '1px solid transparent', background: showEmotePicker ? '#f4f0fe' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: showEmotePicker ? '#5b21b6' : '#6f6b82', position: 'relative' }}>
                                 <Smile size={18} />
                                 {myActiveEmote && <span style={{ position: 'absolute', top: -2, right: -2, fontSize: 11, lineHeight: 1 }}>{EMOTE_EMOJI[myActiveEmote]}</span>}
