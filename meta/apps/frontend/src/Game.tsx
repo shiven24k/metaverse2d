@@ -137,6 +137,18 @@ const STATUS_EMOTES = [
     { id: 'brb',     emoji: '🔜', label: 'BRB'     },
 ];
 
+const EMOJI_TO_EMOTE_ID: Record<string, string> = {
+    '👋': 'wave', '💃': 'dance', '🧘': 'meditate',
+    '😴': 'sleep', '🎉': 'celebrate', '❤️': 'love',
+};
+
+const EMOTE_FRAMES: Record<string, number> = {
+    afk: 3, brb: 1, celebrate: 3, coffee: 3, dance: 3,
+    love: 3, meditate: 2, sleep: 3, stretch: 2, tea: 3, wave: 2, yawn: 2,
+};
+
+const ALL_EMOTE_IDS = Object.keys(EMOTE_FRAMES);
+
 interface InventoryItem {
     id: string;
     itemId: string;
@@ -474,10 +486,34 @@ const ArenaInner = () => {
         img.src = url;
     }, [rerender]);
 
+    const preloadEmoteImage = useCallback((avatarId: string | undefined, emoteId: string) => {
+        if (!avatarId) return;
+        const url = `/emotes/${avatarId.replace('avatar-', '')}/${emoteId}.png`;
+        if (imageCache.current.has(url) || imageLoadFailed.current.has(url) || imageLoadPending.current.has(url)) return;
+        imageLoadPending.current.add(url);
+        const img = new Image();
+        img.onload = () => {
+            imageCache.current.set(url, img);
+            imageLoadPending.current.delete(url);
+            rerender();
+        };
+        img.onerror = () => {
+            imageLoadPending.current.delete(url);
+            imageLoadFailed.current.add(url);
+        };
+        img.src = url;
+    }, [rerender]);
+
     // Preload all tile and item sprites once on mount
     useEffect(() => {
         preloadImages(ALL_TILE_PATHS);
     }, [preloadImages]);
+
+    useEffect(() => {
+        const aid = currentUser?.avatarId;
+        if (!aid) return;
+        ALL_EMOTE_IDS.forEach(id => preloadEmoteImage(aid, id));
+    }, [currentUser?.avatarId, preloadEmoteImage]);
 
     const drawImageOnCanvas = useCallback((ctx: CanvasRenderingContext2D, url: string, x: number, y: number, w: number, h: number, fallbackColor: string, borderColor: string, label?: string) => {
         const img = imageCache.current.get(url);
@@ -2591,9 +2627,31 @@ const ArenaInner = () => {
         }
 
         emotes.forEach(em => {
-            ctx.font = '24px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(em.emoji, em.x * 50, em.y * 50 - 30);
+            const emoteId = EMOJI_TO_EMOTE_ID[em.emoji];
+            const bubbleAvatarId = em.userId === currentUser?.userId
+                ? (currentUser?.avatarId ?? 'avatar-intern')
+                : (users.get(em.userId)?.avatarId ?? 'avatar-intern');
+            const ex = em.x * 50, ey = em.y * 50;
+            if (emoteId) {
+                const emoteUrl = `/emotes/${bubbleAvatarId.replace('avatar-', '')}/${emoteId}.png`;
+                preloadEmoteImage(bubbleAvatarId, emoteId);
+                const emoteImg = imageCache.current.get(emoteUrl);
+                if (emoteImg && emoteImg.complete && emoteImg.naturalWidth > 0) {
+                    const frames = EMOTE_FRAMES[emoteId] ?? 1;
+                    const frame = Math.floor(Date.now() / 200) % frames;
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.drawImage(emoteImg, frame * 64, 0, 64, 64, ex - 20, ey - 70, 40, 40);
+                    ctx.imageSmoothingEnabled = true;
+                } else {
+                    ctx.font = '24px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(em.emoji, ex, ey - 30);
+                }
+            } else {
+                ctx.font = '24px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(em.emoji, ex, ey - 30);
+            }
         });
 
         interactions.forEach(int => {
@@ -2658,13 +2716,25 @@ const ArenaInner = () => {
                 ctx.fillText(effectiveActivity === 'working' ? '💻' : '💺', cx, cy - 38);
             }
             if (myStatusEmote?.emoteId) {
+                const emoteId = myStatusEmote.emoteId;
+                const emoteUrl = `/emotes/${effectiveAvatarId.replace('avatar-', '')}/${emoteId}.png`;
+                preloadEmoteImage(effectiveAvatarId, emoteId);
+                const emoteImg = imageCache.current.get(emoteUrl);
+                const frames = EMOTE_FRAMES[emoteId] ?? 1;
+                const frame = Math.floor(Date.now() / 200) % frames;
                 ctx.fillStyle = 'rgba(255,255,255,0.95)';
                 ctx.beginPath();
-                ctx.roundRect(cx - 16, cy - 56, 32, 24, 8);
+                ctx.roundRect(cx - 20, cy - 70, 40, 40, 8);
                 ctx.fill();
-                ctx.font = '14px serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(EMOTE_EMOJI[myStatusEmote.emoteId] ?? myStatusEmote.emoteId, cx, cy - 38);
+                if (emoteImg && emoteImg.complete && emoteImg.naturalWidth > 0) {
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.drawImage(emoteImg, frame * 64, 0, 64, 64, cx - 18, cy - 68, 36, 36);
+                    ctx.imageSmoothingEnabled = true;
+                } else {
+                    ctx.font = '14px serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(EMOTE_EMOJI[emoteId] ?? emoteId, cx, cy - 48);
+                }
             }
         }
 
@@ -2705,13 +2775,25 @@ const ArenaInner = () => {
             }
             // Status emote bubble
             if (userStatusEmote?.emoteId) {
+                const emoteId = userStatusEmote.emoteId;
+                const emoteUrl = `/emotes/${effectiveAvatarId.replace('avatar-', '')}/${emoteId}.png`;
+                preloadEmoteImage(effectiveAvatarId, emoteId);
+                const emoteImg = imageCache.current.get(emoteUrl);
+                const frames = EMOTE_FRAMES[emoteId] ?? 1;
+                const frame = Math.floor(Date.now() / 200) % frames;
                 ctx.fillStyle = 'rgba(255,255,255,0.95)';
                 ctx.beginPath();
-                ctx.roundRect(ux - 16, uy - 56, 32, 24, 8);
+                ctx.roundRect(ux - 20, uy - 70, 40, 40, 8);
                 ctx.fill();
-                ctx.font = '14px serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(EMOTE_EMOJI[userStatusEmote.emoteId] ?? userStatusEmote.emoteId, ux, uy - 38);
+                if (emoteImg && emoteImg.complete && emoteImg.naturalWidth > 0) {
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.drawImage(emoteImg, frame * 64, 0, 64, 64, ux - 18, uy - 68, 36, 36);
+                    ctx.imageSmoothingEnabled = true;
+                } else {
+                    ctx.font = '14px serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(EMOTE_EMOJI[emoteId] ?? emoteId, ux, uy - 48);
+                }
             }
             // 👂 proximity indicator when actively typing in proximity chat
             if (currentUser && proximityChatInput.length > 0) {
