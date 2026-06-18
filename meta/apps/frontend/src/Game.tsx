@@ -132,10 +132,6 @@ const QUICK_REACTIONS = [
     { emoji: '❤️', id: 'love',      label: 'Love'      },
 ];
 
-const EMOTE_EMOJI: Record<string, string> = {
-    coffee: '☕', tea: '🍵', yawn: '😴',
-    stretch: '🙆', afk: '💤', brb: '🔜',
-};
 
 const STATUS_EMOTES = [
     { id: 'coffee',  emoji: '☕', label: 'Coffee'  },
