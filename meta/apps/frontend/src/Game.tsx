@@ -2695,7 +2695,7 @@ const ArenaInner = () => {
                 const frames = EMOTE_FRAMES[myEmoteId] ?? 1;
                 const frame = Math.floor(Date.now() / 200) % frames;
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(myEmoteImg!, frame * 64, 0, 64, 64, cx - 24, cy - 24, 48, 48);
+                ctx.drawImage(myEmoteImg!, frame * 64, 0, 64, 64, cx - 16, cy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
             } else if (img && img.complete && img.naturalWidth > 0) {
                 const dirCol = { down: 0, left: 1, right: 2, up: 3 }[facingRef.current] ?? 0;
@@ -2744,7 +2744,7 @@ const ArenaInner = () => {
                 const frames = EMOTE_FRAMES[uEmoteId] ?? 1;
                 const frame = Math.floor(Date.now() / 200) % frames;
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(uEmoteImg!, frame * 64, 0, 64, 64, ux - 24, uy - 24, 48, 48);
+                ctx.drawImage(uEmoteImg!, frame * 64, 0, 64, 64, ux - 16, uy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
             } else if (img && img.complete && img.naturalWidth > 0) {
                 ctx.imageSmoothingEnabled = false;
