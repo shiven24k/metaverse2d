@@ -150,18 +150,18 @@ const EMOTE_FRAMES: Record<string, number> = {
 const ALL_EMOTE_IDS = Object.keys(EMOTE_FRAMES);
 
 const EMOTE_CROP: Record<string, [number, number, number, number]> = {
-    coffee:    [21, 14, 22, 46],
-    tea:       [21, 14, 22, 46],
-    yawn:      [21, 14, 22, 46],
-    stretch:   [21, 14, 22, 46],
-    afk:       [21, 14, 22, 46],
-    sleep:     [21, 14, 24, 46],
-    brb:       [19,  7, 24, 53],
-    celebrate: [10,  6, 36, 54],
-    dance:     [10, 14, 32, 46],
-    love:      [21, 14, 22, 46],
-    wave:      [21, 14, 22, 46],
-    meditate:  [21, 16, 22, 45],
+    coffee:    [23, 18, 18, 42],
+    tea:       [23, 18, 18, 42],
+    yawn:      [23, 18, 18, 42],
+    stretch:   [23, 18, 18, 42],
+    afk:       [23, 17, 20, 43],
+    sleep:     [23, 16, 22, 44],
+    brb:       [21,  9, 21, 51],
+    celebrate: [12,  8, 33, 52],
+    dance:     [12, 18, 28, 42],
+    love:      [23, 18, 18, 42],
+    wave:      [23, 18, 19, 42],
+    meditate:  [23, 20, 18, 41],
 };
 
 interface InventoryItem {
@@ -2709,7 +2709,8 @@ const ArenaInner = () => {
             if (myEmoteReady && myEmoteId) {
                 const frames = EMOTE_FRAMES[myEmoteId] ?? 1;
                 const frame = Math.floor(Date.now() / 200) % frames;
-                const [cropX, cropY, cropW, cropH] = EMOTE_CROP[myEmoteId] ?? [21, 14, 22, 46];
+                const [cropX, cropY, cropW, cropH] = EMOTE_CROP[myEmoteId] ?? [23, 18, 18, 42];
+                console.log('emote draw', { destX: cx - 16, destY: cy - 24, srcX: frame * 64 + cropX, srcY: cropY, srcW: cropW, srcH: cropH });
                 ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(myEmoteImg!, frame * 64 + cropX, cropY, cropW, cropH, cx - 16, cy - 24, 32, 48);
                 ctx.imageSmoothingEnabled = true;
