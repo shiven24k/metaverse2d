@@ -161,15 +161,15 @@ const EMOTE_CROP: Record<string, [number, number, number, number]> = {
     coffee:    [16, 15, 32, 48],
     tea:       [16, 15, 32, 48],
     yawn:      [16, 15, 32, 48],
-    stretch:   [12, 11, 32, 48],
-    afk:       [16,  2, 32, 48],
-    sleep:     [16, 11, 32, 48],
-    brb:       [14,  6, 32, 48],
-    celebrate: [ 3,  3, 32, 48],
-    dance:     [ 5, 15, 32, 48],
-    love:      [16,  1, 32, 48],
+    stretch:   [16, 15, 32, 48],
+    afk:       [16, 15, 32, 48],
+    sleep:     [16, 15, 32, 48],
+    brb:       [16, 15, 32, 48],
+    celebrate: [16, 15, 32, 48],
+    dance:     [16, 15, 32, 48],
+    love:      [16, 15, 32, 48],
     wave:      [16, 15, 32, 48],
-    meditate:  [ 1,  9, 32, 48],
+    meditate:  [16, 15, 32, 48],
 };
 
 interface InventoryItem {
