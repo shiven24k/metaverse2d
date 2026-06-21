@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
-import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Smile, MessageCircle, Settings, Bell } from 'lucide-react';
+import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Settings, Bell } from 'lucide-react';
 import { KanbanPanel } from './KanbanPanel';
 import { SpaceSettingsModal } from './SpaceSettingsModal';
+import { useGameStore } from './store/gameStore';
+import { GameDock } from './components/game/GameDock';
+import { ProximityChatPanel } from './components/game/ProximityChatPanel';
+import { NotificationPanel } from './components/game/NotificationPanel';
+import { EMOTE_FRAMES, EMOTE_CROP, ALL_EMOTE_IDS } from './constants/emotes';
+import type { ProximityChatMessage, AppNotification, SpaceElement, PlacedItem, SpacePortal, NPC } from './types/game';
 
 // ── PixelAvatar — CSS pixel art character, ported from design system ──────────
 
@@ -121,56 +127,6 @@ const ITEM_IMAGE: Record<string, string> = {
 
 const ALL_TILE_PATHS = [...Object.values(TILE_IMAGE), ...Object.values(ITEM_IMAGE)];
 
-const EMOTES = ['👋', '💃', '🧘', '😴', '🎉', '❤️'];
-
-const QUICK_REACTIONS = [
-    { emoji: '👋', id: 'wave',      label: 'Wave'      },
-    { emoji: '💃', id: 'dance',     label: 'Dance'     },
-    { emoji: '🧘', id: 'meditate',  label: 'Meditate'  },
-    { emoji: '😴', id: 'sleep',     label: 'Sleep'     },
-    { emoji: '🎉', id: 'celebrate', label: 'Celebrate' },
-    { emoji: '❤️', id: 'love',      label: 'Love'      },
-];
-
-
-const STATUS_EMOTES = [
-    { id: 'coffee',  emoji: '☕', label: 'Coffee'  },
-    { id: 'tea',     emoji: '🍵', label: 'Tea'     },
-    { id: 'yawn',    emoji: '😴', label: 'Yawn'    },
-    { id: 'stretch', emoji: '🙆', label: 'Stretch' },
-    { id: 'afk',     emoji: '💤', label: 'AFK'     },
-    { id: 'brb',     emoji: '🔜', label: 'BRB'     },
-];
-
-const EMOJI_TO_EMOTE_ID: Record<string, string> = {
-    '👋': 'wave', '💃': 'dance', '🧘': 'meditate',
-    '😴': 'sleep', '🎉': 'celebrate', '❤️': 'love',
-};
-
-const EMOTE_FRAMES: Record<string, number> = {
-    afk: 3, brb: 1, celebrate: 3, coffee: 3, dance: 3,
-    love: 3, meditate: 2, sleep: 3, stretch: 2, tea: 3, wave: 2, yawn: 2,
-};
-
-const ALL_EMOTE_IDS = Object.keys(EMOTE_FRAMES);
-
-// Crop origin (x, y) positions the emote content at (7, 3) within the 32×48 crop,
-// matching where the avatar character sits within its 32×48 frame — so src and dest
-// are both 32×48, giving 1:1 scale with no stretching.
-const EMOTE_CROP: Record<string, [number, number, number, number]> = {
-    coffee:    [16, 15, 32, 48],
-    tea:       [16, 15, 32, 48],
-    yawn:      [16, 15, 32, 48],
-    stretch:   [16, 15, 32, 48],
-    afk:       [16, 15, 32, 48],
-    sleep:     [16, 15, 32, 48],
-    brb:       [16, 15, 32, 48],
-    celebrate: [16, 15, 32, 48],
-    dance:     [16, 15, 32, 48],
-    love:      [16, 15, 32, 48],
-    wave:      [16, 15, 32, 48],
-    meditate:  [16, 15, 32, 48],
-};
 
 interface InventoryItem {
     id: string;
@@ -185,14 +141,6 @@ interface InventoryItem {
     quantity: number;
 }
 
-interface SpaceElement {
-    id: string;
-    element: { id: string; imageUrl: string; width: number; height: number; static: boolean; blocking: boolean };
-    x: number;
-    y: number;
-    failedToSave?: boolean;
-}
-
 interface ElementType {
     id: string;
     imageUrl: string;
@@ -202,36 +150,7 @@ interface ElementType {
     blocking: boolean;
 }
 
-interface PlacedItem {
-    id: string;
-    item: { id: string; name: string; imageUrl: string; width: number; height: number; blocking: boolean };
-    x: number;
-    y: number;
-    layer: string;
-    metadata?: { text?: string } | null;
-    failedToSave?: boolean;
-}
-
 type SpaceEdge = 'NORTH' | 'SOUTH' | 'EAST' | 'WEST';
-
-interface SpacePortal {
-    id: string;
-    toSpaceId: string;
-    fromEdge: SpaceEdge;
-    toEdge: SpaceEdge;
-    label: string;
-}
-
-interface NPC {
-    id: string;
-    name: string;
-    sprite: string;
-    dialogues: string[];
-    x: number;
-    y: number;
-    motionType: 'STATIC' | 'PATROL' | 'WANDER';
-    wanderRadius: number;
-}
 
 
 interface QuestInfo {
@@ -338,53 +257,17 @@ const ArenaInner = () => {
     const [chatBubbles, setChatBubbles] = useState<{ id: string; username: string; message: string; x: number; y: number; createdAt: number }[]>([]);
 
     // ── Proximity chat ────────────────────────────────────────────────────────
-    interface ProximityChatMsg {
-        id: string;
-        roomId: string;
-        senderId: string;
-        senderName: string;
-        content: string;
-        timestamp: number;
-        isSystem?: boolean;
-        isDivider?: boolean;
-    }
-    interface AppNotification {
-        id: string;
-        notifType: 'announcement' | 'ping' | 'user-joined' | 'user-left' | 'mention';
-        title: string;
-        message: string;
-        priority: 'normal' | 'urgent';
-        fromUserId?: string;
-        fromUserName?: string;
-        timestamp: number;
-        urgentBanner?: boolean;
-        read: boolean;
-    }
-
-    const [proximityChatRoomId, setProximityChatRoomId] = useState<string | null>(null);
-    const [proximityChatMembers, setProximityChatMembers] = useState<{ userId: string; username: string }[]>([]);
-    const [proximityChatMessages, setProximityChatMessages] = useState<ProximityChatMsg[]>([]);
-    const [showProximityChat, setShowProximityChat] = useState(true);
-    const [proximityChatUnread, setProximityChatUnread] = useState(0);
-    const [proximityChatInput, setProximityChatInput] = useState('');
     const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024);
-    const proximityChatRoomIdRef = useRef<string | null>(null);
-    const showProximityChatRef = useRef(true);
     const lastProximityChatAtRef = useRef<number>(0);
-    const proximityChatMessagesEndRef = useRef<HTMLDivElement | null>(null);
 
-    // Notifications
-    const [notifications, setNotifications] = useState<AppNotification[]>([]);
-    const [unreadCount, setUnreadCount] = useState(0);
-    const [showNotifPanel, setShowNotifPanel] = useState(false);
-    const [urgentBanner, setUrgentBanner] = useState<AppNotification | null>(null);
-    const [notifToasts, setNotifToasts] = useState<AppNotification[]>([]);
-    const showNotifPanelRef = useRef(false);
     const [pingsSent, setPingsSent] = useState<Set<string>>(new Set());
 
-    const [showEmotePicker, setShowEmotePicker] = useState(false);
-    const [activeEmotes, setActiveEmotes] = useState<Map<string, { emoteId: string; expiresAt: number }>>(new Map());
-    const [myActiveEmote, setMyActiveEmote] = useState<string | null>(null);
+    const {
+        proximityChatMessages, proximityChatRoomId, proximityChatMembers,
+        proximityChatUnread, showProximityChat, proximityChatIsTyping,
+        notifications, unreadCount, showNotifPanel, urgentBanner, notifToasts,
+        activeEmotes, myActiveEmote, showEmotePicker,
+    } = useGameStore();
     const [playerPopup, setPlayerPopup] = useState<{ userId: string; username: string; x: number; y: number } | null>(null);
     const [showGiftModal, setShowGiftModal] = useState(false);
     const [giftTarget, setGiftTarget] = useState<{ userId: string; username: string } | null>(null);
@@ -1201,20 +1084,15 @@ const ArenaInner = () => {
                 moveTarget.current = null;
                 setMovePreview(null);
                 setPlayerPopup(null);
-                setShowEmotePicker(false);
+                useGameStore.getState().setShowEmotePicker(false);
             }
             return;
         }
 
         if (!currentUserRef.current) return;
 
-        if (e.key >= '1' && e.key <= '6') {
-            sendEmote(parseInt(e.key));
-            return;
-        }
-
         if (e.key === 'e' || e.key === 'E') {
-            setShowEmotePicker(p => !p);
+            useGameStore.getState().toggleEmotePicker();
             return;
         }
 
@@ -1564,10 +1442,6 @@ const ArenaInner = () => {
     }, [chatBubbles.length]);
 
     useEffect(() => {
-        proximityChatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [proximityChatMessages.length]);
-
-    useEffect(() => {
         const handler = () => setIsDesktop(window.innerWidth >= 1024);
         window.addEventListener('resize', handler);
         return () => window.removeEventListener('resize', handler);
@@ -1575,6 +1449,7 @@ const ArenaInner = () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleMessage = (message: any) => {
+        const gs = useGameStore.getState();
         switch (message.type) {
             case 'space-joined': {
                 setCurrentUser({
@@ -1692,49 +1567,25 @@ const ArenaInner = () => {
                     y: message.payload.y,
                     createdAt: Date.now(),
                 }]);
-                const reactEmoteId = EMOJI_TO_EMOTE_ID[emotedEmoji];
-                if (reactEmoteId) {
-                    const reactExpiresAt = Date.now() + 5000;
-                    setActiveEmotes(prev => {
-                        const next = new Map(prev);
-                        next.set(emotedUserId, { emoteId: reactEmoteId, expiresAt: reactExpiresAt });
-                        return next;
-                    });
-                    setTimeout(() => {
-                        setActiveEmotes(m => {
-                            const n = new Map(m);
-                            if (n.get(emotedUserId)?.emoteId === reactEmoteId) n.delete(emotedUserId);
-                            return n;
-                        });
-                    }, 5000);
-                }
                 break;
             }
 
             case 'emote-broadcast': {
                 const { userId: emoteUserId, emoteId, expiresAt } = message.payload as { userId: string; emoteId: string; expiresAt: number };
-                setActiveEmotes(prev => {
-                    const next = new Map(prev);
-                    if (!emoteId) {
-                        next.delete(emoteUserId);
-                    } else {
-                        next.set(emoteUserId, { emoteId, expiresAt });
-                    }
-                    return next;
-                });
+                if (!emoteId) {
+                    gs.clearActiveEmote(emoteUserId);
+                } else {
+                    gs.setActiveEmote(emoteUserId, emoteId, expiresAt);
+                }
                 if (emoteId && expiresAt > 0) {
                     const delay = expiresAt - Date.now();
                     if (delay > 0) {
-                        setTimeout(() => setActiveEmotes(m => {
-                            const n = new Map(m);
-                            n.delete(emoteUserId);
-                            return n;
-                        }), delay);
+                        setTimeout(() => useGameStore.getState().clearActiveEmote(emoteUserId), delay);
                     }
                 }
                 const liveUser = currentUserRef.current;
                 if (liveUser && emoteUserId === liveUser.userId) {
-                    setMyActiveEmote(emoteId || null);
+                    gs.setMyActiveEmote(emoteId || null);
                 }
                 break;
             }
@@ -1812,29 +1663,26 @@ const ArenaInner = () => {
             }
 
             case 'proximity-chat-message': {
-                const m = message.payload as ProximityChatMsg;
-                if (m.roomId === proximityChatRoomIdRef.current) {
-                    setProximityChatMessages(prev => [...prev, m]);
+                const pcm = message.payload as ProximityChatMessage;
+                if (pcm.roomId === useGameStore.getState().proximityChatRoomId) {
+                    gs.addProximityChatMessage(pcm);
                     lastProximityChatAtRef.current = Date.now();
-                    if (!showProximityChatRef.current) setProximityChatUnread(n => n + 1);
+                    if (!useGameStore.getState().showProximityChat) gs.incrementChatUnread();
                 }
                 break;
             }
 
             case 'chat-room-update': {
                 const { roomId, members } = message.payload as { roomId: string | null; members: { userId: string; username: string }[] };
-                const prevRoomId = proximityChatRoomIdRef.current;
+                const prevRoomId = useGameStore.getState().proximityChatRoomId;
                 if (roomId !== prevRoomId) {
-                    proximityChatRoomIdRef.current = roomId;
-                    setProximityChatRoomId(roomId);
-                    setProximityChatMessages([]);
-                    setProximityChatUnread(0);
-                    if (roomId !== null) {
-                        showProximityChatRef.current = true;
-                        setShowProximityChat(true);
-                    }
+                    gs.setProximityChatRoom(roomId, members);
+                    gs.setProximityChatMessages([]);
+                    gs.resetChatUnread();
+                    if (roomId !== null) gs.setShowProximityChat(true);
+                } else {
+                    gs.setProximityChatRoom(roomId, members);
                 }
-                setProximityChatMembers(members);
                 break;
             }
 
@@ -1843,10 +1691,10 @@ const ArenaInner = () => {
                     roomId: string;
                     messages: { id: string; senderId: string; senderName: string; content: string; isSystem: boolean; timestamp: number }[];
                 };
-                console.log('[ProxChat] received chat-history', histRoomId, histMsgs.length, 'messages', 'currentRef:', proximityChatRoomIdRef.current);
-                if (histRoomId !== proximityChatRoomIdRef.current) break;
+                console.log('[ProxChat] received chat-history', histRoomId, histMsgs.length, 'messages', 'currentRoomId:', useGameStore.getState().proximityChatRoomId);
+                if (histRoomId !== useGameStore.getState().proximityChatRoomId) break;
                 if (histMsgs.length > 0) {
-                    const divider: ProximityChatMsg = {
+                    const divider: ProximityChatMessage = {
                         id: 'divider-history',
                         roomId: histRoomId,
                         senderId: 'system',
@@ -1856,14 +1704,13 @@ const ArenaInner = () => {
                         isSystem: true,
                         isDivider: true,
                     };
-                    setProximityChatMessages([
+                    gs.setProximityChatMessages([
                         divider,
                         ...histMsgs.map(m => ({ ...m, roomId: histRoomId })),
                     ]);
                     lastProximityChatAtRef.current = Date.now();
-                    if (!showProximityChatRef.current) setProximityChatUnread(histMsgs.length);
                 } else {
-                    const systemMsg: ProximityChatMsg = {
+                    const systemMsg: ProximityChatMessage = {
                         id: `sys-${Date.now()}`,
                         roomId: histRoomId,
                         senderId: 'system',
@@ -1872,7 +1719,7 @@ const ArenaInner = () => {
                         timestamp: Date.now(),
                         isSystem: true,
                     };
-                    setProximityChatMessages([systemMsg]);
+                    gs.setProximityChatMessages([systemMsg]);
                     lastProximityChatAtRef.current = Date.now();
                 }
                 break;
@@ -1881,11 +1728,11 @@ const ArenaInner = () => {
             case 'notification': {
                 const raw = message.payload as Omit<AppNotification, 'read'>;
                 const notif: AppNotification = { ...raw, read: false };
-                setNotifications(prev => [notif, ...prev].slice(0, 50));
-                if (!showNotifPanelRef.current) setUnreadCount(c => c + 1);
-                setNotifToasts(prev => [notif, ...prev].slice(0, 3));
-                setTimeout(() => setNotifToasts(prev => prev.filter(t => t.id !== notif.id)), 4000);
-                if (notif.urgentBanner) setUrgentBanner(notif);
+                gs.addNotification(notif);
+                if (!useGameStore.getState().showNotifPanel) gs.incrementUnreadCount();
+                gs.addNotifToast(notif);
+                setTimeout(() => gs.dismissToast(notif.id), 4000);
+                if (notif.urgentBanner) gs.setUrgentBanner(notif);
                 break;
             }
 
@@ -1906,58 +1753,28 @@ const ArenaInner = () => {
         return () => clearTimeout(t);
     }, [interactionPopup]);
 
-    const sendEmote = (emoteIndex: number) => {
+    const sendStatusEmote = (emoteId: string) => {
         const liveUser = currentUserRef.current;
         if (!liveUser || !wsRef.current) return;
-        const emoji = EMOTES[emoteIndex - 1] || EMOTES[0];
-        const emoteId = EMOJI_TO_EMOTE_ID[emoji];
-        wsRef.current.send(JSON.stringify({
-            type: 'emote',
-            payload: { emoji, x: liveUser.x, y: liveUser.y },
-        }));
-        setEmotes(prev => [...prev, {
-            userId: liveUser.userId,
-            emoji,
-            x: liveUser.x,
-            y: liveUser.y,
-            createdAt: Date.now(),
-        }]);
-        if (emoteId) {
-            const expiresAt = Date.now() + 5000;
-            setActiveEmotes(prev => {
-                const next = new Map(prev);
-                next.set(liveUser.userId, { emoteId, expiresAt });
-                return next;
-            });
-            setMyActiveEmote(emoteId);
-            setTimeout(() => {
-                setActiveEmotes(m => {
-                    const n = new Map(m);
-                    if (n.get(liveUser.userId)?.emoteId === emoteId) n.delete(liveUser.userId);
-                    return n;
-                });
-                setMyActiveEmote(prev => prev === emoteId ? null : prev);
-            }, 5000);
-        }
+        const isActive = useGameStore.getState().myActiveEmote === emoteId;
+        wsRef.current.send(JSON.stringify({ type: 'status-emote', payload: { emoteId: isActive ? '' : emoteId } }));
     };
 
-    const sendProximityChat = () => {
+    const sendProximityChat = (text: string) => {
         const liveUser = currentUserRef.current;
-        const trimmed = proximityChatInput.trim();
-        const roomId = proximityChatRoomIdRef.current;
-        if (!liveUser || !wsRef.current || !trimmed || !roomId) return;
-        wsRef.current.send(JSON.stringify({ type: 'chat-message', payload: { content: trimmed } }));
-        const optimistic: ProximityChatMsg = {
+        const roomId = useGameStore.getState().proximityChatRoomId;
+        if (!liveUser || !wsRef.current || !text || !roomId) return;
+        wsRef.current.send(JSON.stringify({ type: 'chat-message', payload: { content: text } }));
+        const optimistic: ProximityChatMessage = {
             id: `opt-${Date.now()}`,
             roomId,
             senderId: liveUser.userId,
             senderName: liveUser.username,
-            content: trimmed,
+            content: text,
             timestamp: Date.now(),
         };
-        setProximityChatMessages(prev => [...prev, optimistic]);
+        useGameStore.getState().addProximityChatMessage(optimistic);
         lastProximityChatAtRef.current = Date.now();
-        setProximityChatInput('');
     };
 
     const handleMove = (newX: number, newY: number) => {
@@ -2809,7 +2626,7 @@ const ArenaInner = () => {
                 ctx.fillText(uActivity === 'working' ? '💻' : '💺', ux, uy - 38);
             }
             // 👂 proximity indicator when actively typing in proximity chat
-            if (currentUser && proximityChatInput.length > 0) {
+            if (currentUser && proximityChatIsTyping) {
                 const dist = Math.sqrt((user.x - currentUser.x) ** 2 + (user.y - currentUser.y) ** 2);
                 if (dist <= 4) {
                     ctx.font = '14px sans-serif';
@@ -3046,26 +2863,7 @@ const ArenaInner = () => {
     // npcs intentionally omitted — canvas reads npcsRef.current (always current) so NPC
     // position broadcasts don't trigger extra re-renders that could interrupt player animation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentUser, users, portals, placedItems, spaceElements, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, myActivity, othersActivity, selectedNpcId, proximityChatMembers, proximityChatRoomId, proximityChatInput]);
-
-    const emotePreviewDiv = (emoteId: string, displayH = 40) => {
-        const aFolder = (currentUser?.avatarId ?? 'avatar-intern').replace('avatar-', '');
-        const [cx, cy, cw, ch] = EMOTE_CROP[emoteId] ?? [21, 14, 22, 46];
-        const scale = displayH / ch;
-        const displayW = Math.round(cw * scale);
-        const fullSheetW = (EMOTE_FRAMES[emoteId] ?? 1) * 64;
-        return (
-            <div style={{
-                width: displayW,
-                height: displayH,
-                backgroundImage: `url(/emotes/${aFolder}/${emoteId}.png)`,
-                backgroundPosition: `-${Math.round(cx * scale)}px -${Math.round(cy * scale)}px`,
-                backgroundSize: `${Math.round(fullSheetW * scale)}px ${Math.round(64 * scale)}px`,
-                imageRendering: 'pixelated',
-                flexShrink: 0,
-            }} />
-        );
-    };
+    }, [currentUser, users, portals, placedItems, spaceElements, interactions, hoverPos, selectedPlaced, selectedPlacedGroup, selectedElement, selectedItem, editMode, renderTick, spaceDims, movePreview, moveTarget, selectionRect, chatBubbles, myActivity, othersActivity, selectedNpcId, proximityChatMembers, proximityChatRoomId, proximityChatIsTyping]);
 
     return (
         <div style={{ fontFamily: 'system-ui', background: '#9aa3b5', position: 'fixed', inset: 0, width: '100vw', height: '100vh', overflow: 'hidden', animation: 'ovPop 0.18s cubic-bezier(.2,.8,.3,1)' }}>
@@ -3122,7 +2920,7 @@ const ArenaInner = () => {
                     {/* Bell button */}
                     <button
                         title="Notifications"
-                        onClick={() => { showNotifPanelRef.current = !showNotifPanel; setShowNotifPanel(p => !p); if (!showNotifPanel) setUnreadCount(0); }}
+                        onClick={() => useGameStore.getState().toggleNotifPanel()}
                         style={{ position: 'relative', width: 34, height: 34, borderRadius: 9, border: '1px solid #e3e1ee', background: showNotifPanel ? '#f4f0fe' : '#fff', color: showNotifPanel ? '#6d28d9' : '#4d495f', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
                     >
                         <Bell size={16} />
@@ -3172,7 +2970,7 @@ const ArenaInner = () => {
                     style={{ position: 'absolute', top: 56, left: 0, right: 0, bottom: 0, overflow: 'hidden', outline: 'none', marginLeft: !editMode && showProximityChat && isDesktop ? 292 : 0, transition: 'margin-left 0.2s ease' }}
                     onKeyDown={handleKeyDown}
                     onKeyUp={handleKeyUp}
-                    onClick={() => setShowEmotePicker(false)}
+                    onClick={() => useGameStore.getState().setShowEmotePicker(false)}
                     tabIndex={0}
                 >
                     <canvas
@@ -3190,149 +2988,23 @@ const ArenaInner = () => {
 
                     {/* ── Proximity Chat Panel ── */}
                     {!editMode && showProximityChat && (
-                        <div style={isDesktop ? {
-                            position: 'fixed', top: 56, left: 12, width: 280,
-                            height: 'calc(100vh - 80px)', zIndex: 50,
-                            display: 'flex', flexDirection: 'column',
-                            background: '#ffffff', borderRadius: 16,
-                            border: '1px solid #e5e7eb',
-                            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-                        } : {
-                            position: 'fixed', bottom: 0, left: 0, right: 0, width: '100%',
-                            height: '55vh', zIndex: 50,
-                            display: 'flex', flexDirection: 'column',
-                            background: '#ffffff', borderRadius: '16px 16px 0 0',
-                            border: '1px solid #e5e7eb',
-                            boxShadow: '0 -4px 20px rgba(0,0,0,0.08)',
-                        }}>
-                            {/* Mobile drag handle */}
-                            {!isDesktop && (
-                                <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 4px', flexShrink: 0 }}>
-                                    <div style={{ width: 32, height: 4, borderRadius: 2, background: '#d1d5db' }} />
-                                </div>
-                            )}
-
-                            {/* Header */}
-                            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ fontSize: 15 }}>💬</span>
-                                    <span style={{ fontSize: 13, fontWeight: 600, color: '#111', flex: 1 }}>Nearby Chat</span>
-                                    {proximityChatRoomId && proximityChatMembers.length === 1 && (
-                                        <span style={{ fontSize: 10, fontWeight: 700, background: '#ede9fe', color: '#6d28d9', borderRadius: 999, padding: '2px 8px' }}>Private</span>
-                                    )}
-                                    {proximityChatRoomId && proximityChatMembers.length >= 2 && (
-                                        <span style={{ fontSize: 10, fontWeight: 700, background: '#e0f2fe', color: '#0369a1', borderRadius: 999, padding: '2px 8px' }}>Group · {proximityChatMembers.length + 1}</span>
-                                    )}
-                                    <button
-                                        onClick={() => { showProximityChatRef.current = false; setShowProximityChat(false); }}
-                                        style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: '#f3f4f6', color: '#6b7280', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                                    >✕</button>
-                                </div>
-                                {proximityChatRoomId && proximityChatMembers.length > 0 && (
-                                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {proximityChatMembers.map(m => m.username).join(', ')}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Messages */}
-                            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                {!proximityChatRoomId ? (
-                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, gap: 8 }}>
-                                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                        </svg>
-                                        <p style={{ margin: 0, fontSize: 12, color: '#9ca3af', lineHeight: 1.5 }}>Move closer to someone</p>
-                                    </div>
-                                ) : proximityChatMessages.length === 0 ? (
-                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>Say something!</p>
-                                    </div>
-                                ) : (
-                                    proximityChatMessages.map(msg => {
-                                        const isSelf = msg.senderId === currentUser?.userId;
-                                        const isGroup = proximityChatMembers.length >= 2;
-                                        if (msg.isDivider) {
-                                            return (
-                                                <div key={msg.id} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0' }}>
-                                                    <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
-                                                    <span style={{ fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap' }}>Earlier messages</span>
-                                                    <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
-                                                </div>
-                                            );
-                                        }
-                                        if (msg.isSystem) {
-                                            return (
-                                                <div key={msg.id} style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', margin: '8px 0' }}>
-                                                    {msg.content}
-                                                </div>
-                                            );
-                                        }
-                                        return (
-                                            <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start', gap: 2 }}>
-                                                {!isSelf && isGroup && (
-                                                    <span style={{ fontSize: 11, color: '#6b7280', paddingLeft: 4 }}>{msg.senderName}</span>
-                                                )}
-                                                <div
-                                                    style={{
-                                                        alignSelf: isSelf ? 'flex-end' : 'flex-start',
-                                                        maxWidth: '75%', padding: '7px 12px',
-                                                        borderRadius: isSelf ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                                                        background: isSelf ? '#6d28d9' : '#f3f4f6',
-                                                        color: isSelf ? '#fff' : '#111827',
-                                                        fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word',
-                                                        opacity: 1,
-                                                    }}
-                                                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '0.92'; }}
-                                                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                                                >
-                                                    {msg.content}
-                                                </div>
-                                                <span style={{ alignSelf: isSelf ? 'flex-end' : 'flex-start', fontSize: 10, color: '#9ca3af', paddingLeft: isSelf ? 0 : 4, paddingRight: isSelf ? 4 : 0 }}>
-                                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                </span>
-                                            </div>
-                                        );
-                                    })
-                                )}
-                                <div ref={proximityChatMessagesEndRef} style={{ paddingBottom: 8 }} />
-                            </div>
-
-                            {/* Input row */}
-                            <div style={{ padding: '10px 12px', borderTop: '1px solid #f0f0f0', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'center' }}>
-                                <input
-                                    value={proximityChatInput}
-                                    onChange={e => setProximityChatInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); sendProximityChat(); } }}
-                                    placeholder={proximityChatRoomId ? 'Message nearby people...' : 'Move closer to chat'}
-                                    disabled={!proximityChatRoomId}
-                                    maxLength={200}
-                                    style={{
-                                        flex: 1, border: '1px solid #e5e7eb', borderRadius: 20,
-                                        padding: '8px 14px', fontSize: 13, outline: 'none',
-                                        color: '#111', background: '#fff',
-                                    }}
-                                    onFocus={e => { e.currentTarget.style.borderColor = '#6d28d9'; }}
-                                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
-                                />
-                                <button
-                                    onClick={sendProximityChat}
-                                    disabled={!proximityChatInput.trim() || !proximityChatRoomId}
-                                    style={{
-                                        width: 32, height: 32, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                                        background: proximityChatInput.trim() && proximityChatRoomId ? '#6d28d9' : '#e5e7eb',
-                                        color: proximityChatInput.trim() && proximityChatRoomId ? '#fff' : '#9ca3af',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0,
-                                    }}
-                                >→</button>
-                            </div>
-                        </div>
+                        <ProximityChatPanel
+                            messages={proximityChatMessages}
+                            roomId={proximityChatRoomId}
+                            members={proximityChatMembers}
+                            unread={proximityChatUnread}
+                            onSend={sendProximityChat}
+                            onClose={() => useGameStore.getState().setShowProximityChat(false)}
+                            isDesktop={isDesktop}
+                            currentUserId={currentUser?.userId ?? ''}
+                            onTypingChange={(isTyping) => useGameStore.getState().setProximityChatIsTyping(isTyping)}
+                        />
                     )}
 
                     {/* ── Floating chat bubble button (when panel is hidden) ── */}
                     {!editMode && !showProximityChat && (
                         <button
-                            onClick={() => { showProximityChatRef.current = true; setShowProximityChat(true); setProximityChatUnread(0); }}
+                            onClick={() => { useGameStore.getState().setShowProximityChat(true); useGameStore.getState().resetChatUnread(); }}
                             title="Nearby Chat"
                             style={{
                                 position: 'fixed', bottom: 20, left: 12, zIndex: 50,
@@ -3391,70 +3063,19 @@ const ArenaInner = () => {
 
                 {/* ── Bottom dock (light pill bar) ── */}
                 {!editMode && (
-                    <div style={{ position: 'absolute', bottom: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 2, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', border: '1px solid #ecebf3', borderRadius: 999, padding: 5, boxShadow: '0 1px 2px rgba(22,15,52,0.04), 0 6px 16px rgba(22,15,52,0.07)' }}>
-                        {/* Emote button */}
-                        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-                            <button title="Emotes (E)" onClick={() => setShowEmotePicker(!showEmotePicker)} style={{ width: 38, height: 38, borderRadius: 999, border: showEmotePicker ? '1px solid #e7ddfb' : '1px solid transparent', background: showEmotePicker ? '#f4f0fe' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: showEmotePicker ? '#5b21b6' : '#6f6b82', position: 'relative' }}>
-                                <Smile size={18} />
-                                {myActiveEmote && (
-                                    <div style={{ position: 'absolute', top: -4, right: -4, overflow: 'hidden', borderRadius: 3, lineHeight: 0 }}>
-                                        {emotePreviewDiv(myActiveEmote, 18)}
-                                    </div>
-                                )}
-                            </button>
-                            {showEmotePicker && (
-                                <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, padding: '12px 16px', borderRadius: 16, background: '#fff', border: '1px solid #ecebf3', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 100, alignItems: 'center', whiteSpace: 'nowrap' }}>
-                                    {STATUS_EMOTES.map(em => {
-                                        const isActive = myActiveEmote === em.id;
-                                        return (
-                                            <button key={em.id}
-                                                onClick={() => {
-                                                    const next = isActive ? '' : em.id;
-                                                    wsRef.current?.send(JSON.stringify({ type: 'status-emote', payload: { emoteId: next } }));
-                                                    setShowEmotePicker(false);
-                                                }}
-                                                style={{ width: 48, height: 62, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 10, border: isActive ? '2px solid #7c3aed' : '1px solid #ecebf3', background: isActive ? '#f4f0fe' : '#f9f8fc', cursor: 'pointer', padding: 0 }}
-                                                onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.1)')}
-                                                onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
-                                            >
-                                                <div style={{ width: 48, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                                                    {emotePreviewDiv(em.id)}
-                                                </div>
-                                                <span style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{em.label}</span>
-                                            </button>
-                                        );
-                                    })}
-                                    {/* Quick reactions row */}
-                                    <div style={{ width: 1, height: 40, background: '#ecebf3', margin: '0 4px' }} />
-                                    {QUICK_REACTIONS.map((qr, i) => (
-                                        <button key={qr.id} onClick={() => { sendEmote(i + 1); setShowEmotePicker(false); }}
-                                            style={{ width: 48, height: 62, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 10, border: '1px solid #ecebf3', background: '#f9f8fc', cursor: 'pointer', padding: 0 }}
-                                            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.1)')}
-                                            onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
-                                        >
-                                            <div style={{ width: 48, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                                                {emotePreviewDiv(qr.id)}
-                                            </div>
-                                            <span style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{qr.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                        <div style={{ width: 1, height: 22, background: '#ecebf3', margin: '0 2px' }} />
-                        {/* Chat button */}
-                        <button onClick={() => { const next = !showProximityChat; showProximityChatRef.current = next; setShowProximityChat(next); if (next) setProximityChatUnread(0); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 13px', height: 38, borderRadius: 999, border: showProximityChat ? '1px solid #e7ddfb' : '1px solid transparent', background: showProximityChat ? '#f4f0fe' : 'transparent', color: showProximityChat ? '#5b21b6' : '#4d495f', fontSize: 13, fontWeight: 600, cursor: 'pointer', position: 'relative' }}>
-                            <MessageCircle size={16} />Chat
-                            {proximityChatUnread > 0 && !showProximityChat && (
-                                <span style={{ position: 'absolute', top: 4, right: 4, background: '#ef4444', color: '#fff', borderRadius: '50%', width: 16, height: 16, fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{proximityChatUnread > 9 ? '9+' : proximityChatUnread}</span>
-                            )}
-                        </button>
-                        <div style={{ width: 1, height: 22, background: '#ecebf3', margin: '0 2px' }} />
-                        {/* Hint */}
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 12px', fontSize: 11.5, color: '#a3a0b3', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                            Arrows to move · F to interact
-                        </span>
-                    </div>
+                    <GameDock
+                        showChat={showProximityChat}
+                        onToggleChat={() => {
+                            const gs = useGameStore.getState();
+                            gs.toggleProximityChat();
+                        }}
+                        chatUnread={proximityChatUnread}
+                        showEmotePicker={showEmotePicker}
+                        onToggleEmotePicker={() => useGameStore.getState().toggleEmotePicker()}
+                        avatarId={currentUser?.avatarId ?? 'avatar-intern'}
+                        activeEmote={myActiveEmote}
+                        onEmote={sendStatusEmote}
+                    />
                 )}
 
                 {/* ── Interaction popup ── */}
@@ -4403,79 +4024,18 @@ const ArenaInner = () => {
                     </div>
                 )}
 
-                {/* ── Notification toasts (top-right) ── */}
-                {notifToasts.length > 0 && (
-                    <div style={{ position: 'fixed', top: 64, right: 16, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8, width: 300, pointerEvents: 'none' }}>
-                        {notifToasts.map(t => {
-                            const borderColor = t.notifType === 'announcement' ? '#6d28d9' : t.notifType === 'ping' ? '#f97316' : t.notifType === 'user-joined' ? '#10b981' : '#6b7280';
-                            const icon = t.notifType === 'announcement' ? '📢' : t.notifType === 'ping' ? '👋' : t.notifType === 'user-joined' ? '✅' : '🚶';
-                            return (
-                                <div key={t.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', borderLeft: `4px solid ${borderColor}`, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', padding: '10px 12px', display: 'flex', alignItems: 'flex-start', gap: 10, animation: 'notifSlideIn 0.2s ease', pointerEvents: 'auto' }}>
-                                    <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{icon}</span>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                                        {t.message && <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.message}</div>}
-                                    </div>
-                                    <button onClick={() => setNotifToasts(prev => prev.filter(x => x.id !== t.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 14, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-
-                {/* ── Notification panel ── */}
-                {showNotifPanel && (
-                    <div style={{ position: 'fixed', top: 56, right: 12, width: 300, height: 'calc(100vh - 80px)', zIndex: 200, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 16, border: '1px solid #e5e7eb', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
-                        {/* Header */}
-                        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: '#111', flex: 1 }}>Notifications</span>
-                            {notifications.some(n => !n.read) && (
-                                <button onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))} style={{ fontSize: 11, color: '#6d28d9', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, padding: 0 }}>Mark all read</button>
-                            )}
-                            <button onClick={() => { showNotifPanelRef.current = false; setShowNotifPanel(false); }} style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: '#f3f4f6', color: '#6b7280', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-                        </div>
-                        {/* List */}
-                        <div style={{ flex: 1, overflowY: 'auto' }}>
-                            {notifications.length === 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, color: '#9ca3af' }}>
-                                    <Bell size={32} strokeWidth={1.2} />
-                                    <span style={{ fontSize: 13 }}>No notifications yet</span>
-                                </div>
-                            ) : notifications.map(n => {
-                                const borderColor = n.notifType === 'announcement' ? '#6d28d9' : n.notifType === 'ping' ? '#f97316' : n.notifType === 'user-joined' ? '#10b981' : '#6b7280';
-                                const icon = n.notifType === 'announcement' ? '📢' : n.notifType === 'ping' ? '👋' : n.notifType === 'user-joined' ? '✅' : '🚶';
-                                const diff = Date.now() - n.timestamp;
-                                const rel = diff < 60000 ? 'just now' : diff < 3600000 ? `${Math.floor(diff / 60000)}m ago` : `${Math.floor(diff / 3600000)}h ago`;
-                                return (
-                                    <div
-                                        key={n.id}
-                                        onClick={() => setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x))}
-                                        style={{ padding: '10px 14px', borderBottom: '1px solid #f5f5f5', display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', background: n.read ? '#fff' : '#fafafa', borderLeft: n.read ? 'none' : `3px solid ${borderColor}` }}
-                                    >
-                                        <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{icon}</span>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontSize: 13, fontWeight: n.read ? 400 : 600, color: '#111', marginBottom: 2 }}>{n.title}</div>
-                                            {n.message && <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>{n.message}</div>}
-                                            <div style={{ fontSize: 10, color: '#9ca3af' }}>{rel}</div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                {/* ── Urgent banner ── */}
-                {urgentBanner && (
-                    <div style={{ position: 'fixed', top: 48, left: 0, right: 0, zIndex: 10000, background: 'linear-gradient(135deg,#6d28d9,#4f46e5)', color: '#fff', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 0 0 3px rgba(109,40,217,0.4), 0 4px 20px rgba(109,40,217,0.4)' }}>
-                        <span style={{ fontSize: 20, flexShrink: 0 }}>📢</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 700 }}>{urgentBanner.title}</div>
-                            {urgentBanner.message && <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{urgentBanner.message}</div>}
-                        </div>
-                        <button onClick={() => setUrgentBanner(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 28, height: 28, borderRadius: 6, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
-                    </div>
-                )}
+                {/* ── Notifications (toasts + panel + banner) ── */}
+                <NotificationPanel
+                    notifications={notifications}
+                    showPanel={showNotifPanel}
+                    notifToasts={notifToasts}
+                    urgentBanner={urgentBanner}
+                    onMarkRead={(id) => useGameStore.getState().markNotificationRead(id)}
+                    onMarkAllRead={() => useGameStore.getState().markAllRead()}
+                    onClose={() => useGameStore.getState().toggleNotifPanel()}
+                    onDismissToast={(id) => useGameStore.getState().dismissToast(id)}
+                    onDismissUrgentBanner={() => useGameStore.getState().setUrgentBanner(null)}
+                />
 
                 <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes notifSlideIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }`}</style>
         </div>
