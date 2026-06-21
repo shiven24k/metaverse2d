@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Copy, RefreshCw, Trash2, X } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
-const INVITE_BASE = "https://metaverse2d-frontend.pages.dev/join";
+const INVITE_BASE = `${window.location.origin}/join`;
 
 interface Member {
     id: string;
@@ -35,15 +35,20 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
 
     const [inviteToken, setInviteToken] = useState<string | null>(null);
     const [generatingInvite, setGeneratingInvite] = useState(false);
+    const [inviteError, setInviteError] = useState("");
     const [copied, setCopied] = useState(false);
+    const [membersError, setMembersError] = useState("");
+    const [removeError, setRemoveError] = useState("");
 
     const fetchMembers = useCallback(async () => {
         if (!isOwner) return;
         setLoadingMembers(true);
+        setMembersError("");
         try {
             const r = await fetch(`${API}/api/v1/space/${spaceId}/members`, { headers: authHeaders });
             if (r.ok) { const d = await r.json(); setMembers(d.members ?? []); }
-        } catch {} finally { setLoadingMembers(false); }
+            else { const d = await r.json(); setMembersError(d.message ?? "Failed to load members"); }
+        } catch { setMembersError("Network error"); } finally { setLoadingMembers(false); }
     }, [spaceId, authHeaders, isOwner]);
 
     useEffect(() => { fetchMembers(); }, [fetchMembers]);
@@ -71,6 +76,7 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
 
     const generateInvite = async () => {
         setGeneratingInvite(true);
+        setInviteError("");
         try {
             const r = await fetch(`${API}/api/v1/space/${spaceId}/invite`, {
                 method: "POST",
@@ -78,7 +84,8 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
                 body: JSON.stringify({}),
             });
             if (r.ok) { const d = await r.json(); setInviteToken(d.token); }
-        } catch {} finally { setGeneratingInvite(false); }
+            else { const d = await r.json(); setInviteError(d.message ?? "Failed to generate invite link"); }
+        } catch { setInviteError("Network error"); } finally { setGeneratingInvite(false); }
     };
 
     const copyInviteLink = async () => {
@@ -88,12 +95,21 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const removeMember = async (userId: string) => {
-        await fetch(`${API}/api/v1/space/${spaceId}/member/${userId}`, {
-            method: "DELETE",
-            headers: authHeaders,
-        });
-        setMembers(prev => prev.filter(m => m.userId !== userId));
+    const removeMember = async (userId: string, memberName: string) => {
+        if (!confirm(`Remove ${memberName} from this space?`)) return;
+        setRemoveError("");
+        try {
+            const r = await fetch(`${API}/api/v1/space/${spaceId}/member/${userId}`, {
+                method: "DELETE",
+                headers: authHeaders,
+            });
+            if (r.ok) {
+                setMembers(prev => prev.filter(m => m.userId !== userId));
+            } else {
+                const d = await r.json();
+                setRemoveError(d.message ?? "Failed to remove member");
+            }
+        } catch { setRemoveError("Network error"); }
     };
 
     const inviteLink = inviteToken ? `${INVITE_BASE}/${inviteToken}` : null;
@@ -158,20 +174,27 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
                         <div style={{ marginBottom: 20 }}>
                             <label style={{ fontSize: 11, fontWeight: 700, color: "#7c6f9c", letterSpacing: ".05em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Invite Link</label>
                             {inviteLink ? (
-                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                    <input readOnly value={inviteLink} style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e3e1ee", fontSize: 12, color: "#4d495f", background: "#f9f8fd", outline: "none" }} />
-                                    <button onClick={copyInviteLink} title="Copy link" style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid #e3e1ee", background: copied ? "#dcfce7" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: copied ? "#15a34a" : "#6f6b82", flexShrink: 0 }}>
-                                        <Copy size={14} />
-                                    </button>
-                                    <button onClick={generateInvite} disabled={generatingInvite} title="Generate new link" style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid #e3e1ee", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#6f6b82", flexShrink: 0 }}>
-                                        <RefreshCw size={14} />
-                                    </button>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                        <input readOnly value={inviteLink} style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e3e1ee", fontSize: 12, color: "#4d495f", background: "#f9f8fd", outline: "none" }} />
+                                        <button onClick={copyInviteLink} title="Copy link" style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid #e3e1ee", background: copied ? "#dcfce7" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: copied ? "#15a34a" : "#6f6b82", flexShrink: 0 }}>
+                                            <Copy size={14} />
+                                        </button>
+                                        <button onClick={generateInvite} disabled={generatingInvite} title="Generate new link" style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid #e3e1ee", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#6f6b82", flexShrink: 0 }}>
+                                            <RefreshCw size={14} />
+                                        </button>
+                                    </div>
+                                    {copied && <span style={{ fontSize: 11, color: "#15a34a", fontWeight: 600 }}>Copied to clipboard!</span>}
+                                    {inviteError && <span style={{ fontSize: 11, color: "#dc2626" }}>{inviteError}</span>}
                                 </div>
                             ) : (
-                                <button onClick={generateInvite} disabled={generatingInvite}
-                                    style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #e7ddfb", background: "#f4f0fe", color: "#5b21b6", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                                    {generatingInvite ? "Generating…" : "Generate Invite Link"}
-                                </button>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                    <button onClick={generateInvite} disabled={generatingInvite}
+                                        style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #e7ddfb", background: "#f4f0fe", color: "#5b21b6", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                                        {generatingInvite ? "Generating…" : "Generate Invite Link"}
+                                    </button>
+                                    {inviteError && <span style={{ fontSize: 11, color: "#dc2626" }}>{inviteError}</span>}
+                                </div>
                             )}
                         </div>
                     </>
@@ -184,10 +207,13 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
                         <label style={{ fontSize: 11, fontWeight: 700, color: "#7c6f9c", letterSpacing: ".05em", textTransform: "uppercase", display: "block", marginBottom: 10 }}>Members</label>
                         {loadingMembers ? (
                             <p style={{ color: "#a3a0b3", fontSize: 13 }}>Loading…</p>
+                        ) : membersError ? (
+                            <p style={{ color: "#dc2626", fontSize: 13, padding: "8px 10px", background: "#fee2e2", borderRadius: 8 }}>{membersError}</p>
                         ) : members.length === 0 ? (
                             <p style={{ color: "#a3a0b3", fontSize: 13 }}>No members yet.</p>
                         ) : (
                             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                {removeError && <p style={{ margin: "0 0 6px", color: "#dc2626", fontSize: 12, padding: "6px 10px", background: "#fee2e2", borderRadius: 7 }}>{removeError}</p>}
                                 {members.map(m => (
                                     <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 9, border: "1px solid #ecebf3", background: "#fafafa" }}>
                                         <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#a78bfa)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
@@ -198,7 +224,7 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
                                             {m.role}
                                         </span>
                                         {m.role !== "OWNER" && (
-                                            <button onClick={() => removeMember(m.userId)} title="Remove member" style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #fecaca", background: "#fff5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#dc2626", flexShrink: 0 }}>
+                                            <button onClick={() => removeMember(m.userId, m.name)} title="Remove member" style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #fecaca", background: "#fff5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#dc2626", flexShrink: 0 }}>
                                                 <Trash2 size={12} />
                                             </button>
                                         )}

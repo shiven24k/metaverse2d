@@ -29,6 +29,7 @@ export default function ProfilePage() {
     const [isOwnProfile, setIsOwnProfile] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState("");
+    const [saveMsgIsError, setSaveMsgIsError] = useState(false);
 
     useEffect(() => {
         if (!userId) return;
@@ -47,6 +48,7 @@ export default function ProfilePage() {
     const handleSelectAvatar = async (avatarId: string) => {
         setSaving(true);
         setSaveMsg("");
+        setSaveMsgIsError(false);
         try {
             const res = await fetch(`${API}/api/v1/user/metadata`, {
                 method: "POST",
@@ -59,9 +61,11 @@ export default function ProfilePage() {
             } else {
                 const d = await res.json();
                 setSaveMsg(d.message || "Failed to update");
+                setSaveMsgIsError(true);
             }
         } catch {
             setSaveMsg("Network error");
+            setSaveMsgIsError(true);
         } finally {
             setSaving(false);
         }
@@ -114,7 +118,7 @@ export default function ProfilePage() {
                             );
                         })}
                     </div>
-                    {saveMsg && <p style={{ margin: "12px 0 0", fontSize: 13, color: "#059669" }}>{saveMsg}</p>}
+                    {saveMsg && <p style={{ margin: "12px 0 0", fontSize: 13, color: saveMsgIsError ? "#dc2626" : "#059669" }}>{saveMsg}</p>}
                 </div>
             )}
         </div>

@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 export default function AuthPage() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const setAuth = useAuthStore((s) => s.setAuth);
     const setGuest = useAuthStore((s) => s.setGuest);
     const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -46,7 +47,7 @@ export default function AuthPage() {
                 }
                 const token = signInRes.headers.get("set-auth-token") ?? "";
                 setAuth(token);
-                navigate("/lobby", { replace: true });
+                navigate(searchParams.get("redirect") || "/lobby", { replace: true });
             } else {
                 const res = await fetch(`${API}/api/auth/sign-in/email`, {
                     method: "POST",
@@ -61,7 +62,7 @@ export default function AuthPage() {
                 }
                 const token = res.headers.get("set-auth-token") ?? "";
                 setAuth(token);
-                navigate("/lobby", { replace: true });
+                navigate(searchParams.get("redirect") || "/lobby", { replace: true });
             }
         } catch (err: any) {
             setError(err.message ?? "Something went wrong");

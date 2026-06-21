@@ -88,8 +88,10 @@ export function KanbanPanel({ spaceId, token, isOwner, currentUserId, users, onC
 
     const [board, setBoard] = useState<BoardData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [boardError, setBoardError] = useState('');
     const [boardName, setBoardName] = useState('Office Board');
     const [creating, setCreating] = useState(false);
+    const [actionError, setActionError] = useState('');
 
     // Card detail
     const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
@@ -118,14 +120,16 @@ export function KanbanPanel({ spaceId, token, isOwner, currentUserId, users, onC
 
     const fetchBoard = useCallback(async () => {
         setLoading(true);
+        setBoardError('');
         try {
-            const res = await fetch(`${API}/api/v1/space/${spaceId}/board`);
+            const res = await fetch(`${API}/api/v1/space/${spaceId}/board`, { headers: authHeaders });
             if (res.status === 404) { setBoard(null); return; }
+            if (!res.ok) { setBoardError('Failed to load board'); setBoard(null); return; }
             const data = await res.json();
             setBoard(data.board ?? null);
-        } catch { setBoard(null); }
+        } catch { setBoardError('Network error — could not load board'); setBoard(null); }
         finally { setLoading(false); }
-    }, [spaceId]);
+    }, [spaceId, token]);
 
     useEffect(() => { fetchBoard(); }, [fetchBoard, refreshFlag]);
 
@@ -151,21 +155,27 @@ export function KanbanPanel({ spaceId, token, isOwner, currentUserId, users, onC
     const handleCreateBoard = async () => {
         if (!boardName.trim()) return;
         setCreating(true);
+        setActionError('');
         try {
             const res = await fetch(`${API}/api/v1/space/${spaceId}/board`, {
                 method: 'POST', headers: authHeaders,
                 body: JSON.stringify({ name: boardName.trim() }),
             });
             if (res.ok) { setBoardName(''); fetchBoard(); }
-        } finally { setCreating(false); }
+            else { const d = await res.json(); setActionError(d.message ?? 'Failed to create board'); }
+        } catch { setActionError('Network error'); } finally { setCreating(false); }
     };
 
     const handleAddCard = async (colId: string) => {
         if (!newCardTitle.trim()) return;
-        await fetch(`${API}/api/v1/board/column/${colId}/card`, {
-            method: 'POST', headers: authHeaders,
-            body: JSON.stringify({ title: newCardTitle.trim() }),
-        });
+        setActionError('');
+        try {
+            const res = await fetch(`${API}/api/v1/board/column/${colId}/card`, {
+                method: 'POST', headers: authHeaders,
+                body: JSON.stringify({ title: newCardTitle.trim() }),
+            });
+            if (!res.ok) { const d = await res.json(); setActionError(d.message ?? 'Failed to add card'); return; }
+        } catch { setActionError('Network error'); return; }
         setAddingToCol(null);
         setNewCardTitle('');
         fetchBoard();
@@ -173,10 +183,14 @@ export function KanbanPanel({ spaceId, token, isOwner, currentUserId, users, onC
 
     const handleAddColumn = async () => {
         if (!newColName.trim() || !board) return;
-        await fetch(`${API}/api/v1/board/${board.id}/column`, {
-            method: 'POST', headers: authHeaders,
-            body: JSON.stringify({ name: newColName.trim() }),
-        });
+        setActionError('');
+        try {
+            const res = await fetch(`${API}/api/v1/board/${board.id}/column`, {
+                method: 'POST', headers: authHeaders,
+                body: JSON.stringify({ name: newColName.trim() }),
+            });
+            if (!res.ok) { const d = await res.json(); setActionError(d.message ?? 'Failed to add column'); return; }
+        } catch { setActionError('Network error'); return; }
         setAddingCol(false);
         setNewColName('');
         fetchBoard();
@@ -184,15 +198,20 @@ export function KanbanPanel({ spaceId, token, isOwner, currentUserId, users, onC
 
     const handleDeleteColumn = async (colId: string) => {
         if (!confirm('Delete this column and all its cards?')) return;
-        await fetch(`${API}/api/v1/board/column/${colId}`, { method: 'DELETE', headers: authHeaders });
+        setActionError('');
+        try {
+            const res = await fetch(`${API}/api/v1/board/column/${colId}`, { method: 'DELETE', headers: authHeaders });
+            if (!res.ok) { const d = await res.json(); setActionError(d.message ?? 'Failed to delete column'); return; }
+        } catch { setActionError('Network error'); return; }
         fetchBoard();
     };
 
     const handleSaveCard = async () => {
         if (!selectedCard) return;
         setSavingCard(true);
+        setActionError('');
         try {
-            await fetch(`${API}/api/v1/board/card/${selectedCard.id}`, {
+            const res = await fetch(`${API}/api/v1/board/card/${selectedCard.id}`, {
                 method: 'PUT', headers: authHeaders,
                 body: JSON.stringify({
                     title: editTitle,
@@ -202,24 +221,33 @@ export function KanbanPanel({ spaceId, token, isOwner, currentUserId, users, onC
                     dueDate: editDue || null,
                 }),
             });
+            if (!res.ok) { const d = await res.json(); setActionError(d.message ?? 'Failed to save card'); return; }
             setSelectedCard(null);
             fetchBoard();
-        } finally { setSavingCard(false); }
+        } catch { setActionError('Network error'); } finally { setSavingCard(false); }
     };
 
     const handleDeleteCard = async (cardId: string) => {
         if (!confirm('Delete this card?')) return;
-        await fetch(`${API}/api/v1/board/card/${cardId}`, { method: 'DELETE', headers: authHeaders });
+        setActionError('');
+        try {
+            const res = await fetch(`${API}/api/v1/board/card/${cardId}`, { method: 'DELETE', headers: authHeaders });
+            if (!res.ok) { const d = await res.json(); setActionError(d.message ?? 'Failed to delete card'); return; }
+        } catch { setActionError('Network error'); return; }
         setSelectedCard(null);
         fetchBoard();
     };
 
     const handleAddComment = async () => {
         if (!selectedCard || !newComment.trim()) return;
-        await fetch(`${API}/api/v1/board/card/${selectedCard.id}/comment`, {
-            method: 'POST', headers: authHeaders,
-            body: JSON.stringify({ content: newComment.trim() }),
-        });
+        setActionError('');
+        try {
+            const res = await fetch(`${API}/api/v1/board/card/${selectedCard.id}/comment`, {
+                method: 'POST', headers: authHeaders,
+                body: JSON.stringify({ content: newComment.trim() }),
+            });
+            if (!res.ok) { const d = await res.json(); setActionError(d.message ?? 'Failed to post comment'); return; }
+        } catch { setActionError('Network error'); return; }
         setNewComment('');
         fetchComments(selectedCard.id);
     };
@@ -299,21 +327,28 @@ export function KanbanPanel({ spaceId, token, isOwner, currentUserId, users, onC
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ background: '#fff', borderRadius: 16, padding: 36, maxWidth: 400, width: '90%', boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }}>
                     <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700, color: '#1a1a2e' }}>📋 Kanban Board</h2>
-                    <p style={{ margin: '0 0 20px', fontSize: 13, color: '#888' }}>
-                        {isOwner ? 'No board for this space yet. Create one to get started.' : 'This space has no Kanban board yet.'}
-                    </p>
-                    {isOwner && (
-                        <div style={{ display: 'flex', gap: 8 }}>
-                            <input
-                                value={boardName}
-                                onChange={e => setBoardName(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && handleCreateBoard()}
-                                placeholder="Board name"
-                                style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, outline: 'none' }}
-                            />
-                            <button onClick={handleCreateBoard} disabled={creating} style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-                                {creating ? '...' : 'Create'}
-                            </button>
+                    {boardError ? (
+                        <p style={{ margin: '0 0 20px', fontSize: 13, color: '#dc2626', padding: '8px 12px', background: '#fee2e2', borderRadius: 8 }}>{boardError}</p>
+                    ) : (
+                        <p style={{ margin: '0 0 20px', fontSize: 13, color: '#888' }}>
+                            {isOwner ? 'No board for this space yet. Create one to get started.' : 'This space has no Kanban board yet.'}
+                        </p>
+                    )}
+                    {isOwner && !boardError && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <input
+                                    value={boardName}
+                                    onChange={e => setBoardName(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleCreateBoard()}
+                                    placeholder="Board name"
+                                    style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, outline: 'none' }}
+                                />
+                                <button onClick={handleCreateBoard} disabled={creating} style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+                                    {creating ? '...' : 'Create'}
+                                </button>
+                            </div>
+                            {actionError && <p style={{ margin: 0, fontSize: 13, color: '#dc2626', padding: '6px 10px', background: '#fee2e2', borderRadius: 7 }}>{actionError}</p>}
                         </div>
                     )}
                     <button onClick={onClose} style={{ marginTop: 16, width: '100%', padding: '10px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#555', fontSize: 14, cursor: 'pointer' }}>Close</button>
@@ -331,6 +366,14 @@ export function KanbanPanel({ spaceId, token, isOwner, currentUserId, users, onC
                     <span style={{ fontSize: 18, fontWeight: 700, color: '#1e293b', flex: 1 }}>📋 {board.name}</span>
                     <button onClick={onClose} style={{ padding: '6px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>✕ Close</button>
                 </div>
+
+                {/* Action error banner */}
+                {actionError && (
+                    <div style={{ padding: '8px 20px', background: '#fee2e2', borderBottom: '1px solid #fecaca', fontSize: 13, color: '#dc2626', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{actionError}</span>
+                        <button onClick={() => setActionError('')} style={{ border: 'none', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+                    </div>
+                )}
 
                 {/* Columns scroll area */}
                 <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', display: 'flex', gap: 14, padding: '16px 20px', alignItems: 'flex-start' }}>
