@@ -391,10 +391,6 @@ spaceRouter.post("/place/batch", userMiddleware, async (req, res) => {
     });
     const typeMap = new Map(itemTypes.map(i => [i.id, i]));
 
-    const existingElements = await client.spaceElements.findMany({
-        where: { spaceId },
-        select: { x: true, y: true, element: { select: { width: true, height: true } } },
-    });
     const existingItems = await client.placedItem.findMany({
         where: { spaceId },
         select: { x: true, y: true, item: { select: { width: true, height: true } } },
@@ -422,10 +418,6 @@ spaceRouter.post("/place/batch", userMiddleware, async (req, res) => {
         const iw = type.width;
         const ih = type.height;
         let collides = false;
-        for (const e of existingElements) {
-            if (it.x < e.x + e.element.width && it.x + iw > e.x && it.y < e.y + e.element.height && it.y + ih > e.y) { collides = true; break; }
-        }
-        if (collides) continue;
         for (const p of existingItems) {
             if (it.x < p.x + p.item.width && it.x + iw > p.x && it.y < p.y + p.item.height && it.y + ih > p.y) { collides = true; break; }
         }
@@ -531,22 +523,12 @@ spaceRouter.post("/place", userMiddleware, async (req, res) => {
         return;
     }
 
-    const existingElements = await client.spaceElements.findMany({
-        where: { spaceId },
-        select: { x: true, y: true, element: { select: { width: true, height: true } } },
-    });
     const existingItems = await client.placedItem.findMany({
         where: { spaceId },
         select: { x: true, y: true, item: { select: { width: true, height: true } } },
     });
     const iw = itemType.width;
     const ih = itemType.height;
-    for (const e of existingElements) {
-        if (x < e.x + e.element.width && x + iw > e.x && y < e.y + e.element.height && y + ih > e.y) {
-            res.status(409).json({ message: "Position overlaps with existing element" });
-            return;
-        }
-    }
     for (const p of existingItems) {
         if (x < p.x + p.item.width && x + iw > p.x && y < p.y + p.item.height && y + ih > p.y) {
             res.status(409).json({ message: "Position overlaps with existing item" });
@@ -699,20 +681,10 @@ spaceRouter.put("/placed/:id/move", userMiddleware, async (req, res) => {
         return;
     }
 
-    const existingElements = await client.spaceElements.findMany({
-        where: { spaceId: placed.spaceId },
-        select: { x: true, y: true, element: { select: { width: true, height: true } } },
-    });
     const existingItems = await client.placedItem.findMany({
         where: { spaceId: placed.spaceId, id: { not: req.params.id } },
         select: { x: true, y: true, item: { select: { width: true, height: true } } },
     });
-    for (const e of existingElements) {
-        if (x < e.x + e.element.width && x + iw > e.x && y < e.y + e.element.height && y + ih > e.y) {
-            res.status(409).json({ message: "Position overlaps with existing element" });
-            return;
-        }
-    }
     for (const p of existingItems) {
         if (x < p.x + p.item.width && x + iw > p.x && y < p.y + p.item.height && y + ih > p.y) {
             res.status(409).json({ message: "Position overlaps with existing item" });
