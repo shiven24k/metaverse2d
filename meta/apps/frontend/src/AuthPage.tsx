@@ -176,7 +176,7 @@ export default function AuthPage() {
 
     const handleOAuth = (provider: "google" | "github") => {
         setOauthLoading(provider);
-        window.location.href = `${API}/api/auth/sign-in/${provider}`;
+        window.location.href = `${API}/api/auth/sign-in/social?provider=${provider}&callbackURL=${window.location.origin}/auth/callback`;
     };
 
     const switchMode = (m: "signin" | "signup") => {

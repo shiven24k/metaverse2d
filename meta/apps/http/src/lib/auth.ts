@@ -63,4 +63,7 @@ export const auth = betterAuth({
     ].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i),
 });
 
+console.log('[Auth] Google provider:', !!process.env.GOOGLE_CLIENT_ID);
+console.log('[Auth] GitHub provider:', !!process.env.GITHUB_CLIENT_ID);
+
 export type Auth = typeof auth;
