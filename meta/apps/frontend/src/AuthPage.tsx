@@ -174,9 +174,30 @@ export default function AuthPage() {
         }
     };
 
-    const handleOAuth = (provider: "google" | "github") => {
+    const handleOAuth = async (provider: "google" | "github") => {
         setOauthLoading(provider);
-        window.location.href = `${API}/api/auth/sign-in/social?provider=${provider}&callbackURL=${window.location.origin}/auth/callback`;
+        try {
+            const res = await fetch(`${API}/api/auth/sign-in/social`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    provider,
+                    callbackURL: `${window.location.origin}/auth/callback`,
+                }),
+            });
+            const data = await res.json();
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                console.error('No redirect URL from OAuth', data);
+                setError(`${provider === 'google' ? 'Google' : 'GitHub'} sign-in is not configured.`);
+                setOauthLoading(null);
+            }
+        } catch (err) {
+            console.error('OAuth error', err);
+            setError('OAuth sign-in failed. Please try again.');
+            setOauthLoading(null);
+        }
     };
 
     const switchMode = (m: "signin" | "signup") => {
