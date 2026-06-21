@@ -8,7 +8,7 @@ import { useGameStore } from './store/gameStore';
 import { GameDock } from './components/game/GameDock';
 import { ProximityChatPanel } from './components/game/ProximityChatPanel';
 import { NotificationPanel } from './components/game/NotificationPanel';
-import { EMOTE_FRAMES, EMOTE_CROP, ALL_EMOTE_IDS } from './constants/emotes';
+import { EMOTE_FRAMES, EMOTE_CROP, ALL_EMOTE_IDS, EMOTES } from './constants/emotes';
 import type { ProximityChatMessage, AppNotification, SpaceElement, PlacedItem, SpacePortal, NPC } from './types/game';
 
 // ── PixelAvatar — CSS pixel art character, ported from design system ──────────
@@ -1474,6 +1474,8 @@ const ArenaInner = () => {
                 fetchSpace();
                 fetchInventory();
                 fetchNpcs();
+                useGameStore.getState().setMyActiveEmote(null);
+                useGameStore.getState().clearActiveEmote(message.payload.userId);
                 break;
             }
 
@@ -1753,11 +1755,40 @@ const ArenaInner = () => {
         return () => clearTimeout(t);
     }, [interactionPopup]);
 
-    const sendStatusEmote = (emoteId: string) => {
+    const sendEmote = (emoteId: string) => {
         const liveUser = currentUserRef.current;
         if (!liveUser || !wsRef.current) return;
-        const isActive = useGameStore.getState().myActiveEmote === emoteId;
-        wsRef.current.send(JSON.stringify({ type: 'status-emote', payload: { emoteId: isActive ? '' : emoteId } }));
+        const config = EMOTES.find(e => e.id === emoteId);
+        if (!config) return;
+
+        if (config.mode === 'status') {
+            const isActive = useGameStore.getState().myActiveEmote === emoteId;
+            wsRef.current.send(JSON.stringify({ type: 'status-emote', payload: { emoteId: isActive ? '' : emoteId } }));
+        } else {
+            // quick: temporary burst via 'emote' WS type
+            wsRef.current.send(JSON.stringify({
+                type: 'emote',
+                payload: { emoji: config.emoji, x: liveUser.x, y: liveUser.y },
+            }));
+            setEmotes(prev => [...prev, {
+                userId: liveUser.userId,
+                emoji: config.emoji!,
+                x: liveUser.x,
+                y: liveUser.y,
+                createdAt: Date.now(),
+            }]);
+            const expiresAt = Date.now() + 5000;
+            useGameStore.getState().setActiveEmote(liveUser.userId, emoteId, expiresAt);
+            useGameStore.getState().setMyActiveEmote(emoteId);
+            setTimeout(() => {
+                if (useGameStore.getState().activeEmotes.get(liveUser.userId)?.emoteId === emoteId) {
+                    useGameStore.getState().clearActiveEmote(liveUser.userId);
+                }
+                if (useGameStore.getState().myActiveEmote === emoteId) {
+                    useGameStore.getState().setMyActiveEmote(null);
+                }
+            }, 5000);
+        }
     };
 
     const sendProximityChat = (text: string) => {
@@ -3074,7 +3105,7 @@ const ArenaInner = () => {
                         onToggleEmotePicker={() => useGameStore.getState().toggleEmotePicker()}
                         avatarId={currentUser?.avatarId ?? 'avatar-intern'}
                         activeEmote={myActiveEmote}
-                        onEmote={sendStatusEmote}
+                        onEmote={sendEmote}
                     />
                 )}
 
