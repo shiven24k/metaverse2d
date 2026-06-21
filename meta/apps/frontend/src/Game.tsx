@@ -268,7 +268,8 @@ const ArenaInner = () => {
         notifications, unreadCount, showNotifPanel, urgentBanner, notifToasts,
         activeEmotes, myActiveEmote, showEmotePicker,
     } = useGameStore();
-    const [playerPopup, setPlayerPopup] = useState<{ userId: string; username: string; x: number; y: number } | null>(null);
+    const [playerPopup, setPlayerPopup] = useState<{ userId: string; username: string; avatarId?: string; x: number; y: number } | null>(null);
+    const [playerPopupVisible, setPlayerPopupVisible] = useState(false);
     const [showGiftModal, setShowGiftModal] = useState(false);
     const [giftTarget, setGiftTarget] = useState<{ userId: string; username: string } | null>(null);
     const [giftSending, setGiftSending] = useState(false);
@@ -2338,7 +2339,9 @@ const ArenaInner = () => {
                 Math.abs(u.x - pos.x) === 0 && Math.abs(u.y - pos.y) === 0
             );
             if (targetUser) {
-                setPlayerPopup({ userId: targetUser.userId, username: targetUser.username, x: targetUser.x, y: targetUser.y });
+                setPlayerPopup({ userId: targetUser.userId, username: targetUser.username, avatarId: targetUser.avatarId, x: targetUser.x, y: targetUser.y });
+                setPlayerPopupVisible(false);
+                requestAnimationFrame(() => setPlayerPopupVisible(true));
                 return;
             }
             const liveUser = currentUserRef.current;
@@ -3470,26 +3473,98 @@ const ArenaInner = () => {
                 )}
                 {showClearAllConfirm && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.28)', backdropFilter: 'blur(3px)', zIndex: 1199 }} onClick={() => !clearingAll && setShowClearAllConfirm(false)} />}
 
+                {/* ── Player bottom-sheet popup ── */}
                 {playerPopup && (
-                    <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', border: '1px solid #ecebf3', borderRadius: 14, padding: '22px 28px', boxShadow: '0 24px 60px rgba(22,15,52,0.22)', zIndex: 1100, textAlign: 'center' }}>
-                        <p style={{ fontSize: 16, fontWeight: 700, color: '#191427', margin: '0 0 16px' }}>{playerPopup.username}</p>
-                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                            <button onClick={() => navigate(`/profile/${playerPopup.userId}`)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>View Profile</button>
-                            <button onClick={() => { setGiftTarget({ userId: playerPopup.userId, username: playerPopup.username }); setShowGiftModal(true); setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e7ddfb', background: '#f4f0fe', color: '#6d28d9', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>Send Gift</button>
-                            <button
-                                onClick={() => {
-                                    if (pingsSent.has(playerPopup.userId)) return;
-                                    wsRef.current?.send(JSON.stringify({ type: 'ping-user', payload: { targetUserId: playerPopup.userId } }));
-                                    setPingsSent(prev => new Set([...prev, playerPopup.userId]));
-                                    setTimeout(() => setPingsSent(prev => { const n = new Set(prev); n.delete(playerPopup.userId); return n; }), 2000);
-                                }}
-                                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #fed7aa', background: pingsSent.has(playerPopup.userId) ? '#fff7ed' : '#fff7ed', color: pingsSent.has(playerPopup.userId) ? '#9a3412' : '#c2410c', fontSize: 13, cursor: pingsSent.has(playerPopup.userId) ? 'default' : 'pointer', fontWeight: 500 }}
-                            >{pingsSent.has(playerPopup.userId) ? 'Sent! ✓' : 'Ping 👋'}</button>
-                            <button onClick={() => { setPlayerPopup(null); }} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #ecebf3', background: '#fff', color: '#6f6b82', fontSize: 13, cursor: 'pointer' }}>Close</button>
+                    <>
+                        {/* Backdrop */}
+                        <div
+                            style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.18)', zIndex: 1099 }}
+                            onClick={() => setPlayerPopup(null)}
+                        />
+                        {/* Bottom sheet */}
+                        <div style={{
+                            position: 'fixed',
+                            bottom: 90,
+                            left: '50%',
+                            transform: `translateX(-50%) translateY(${playerPopupVisible ? '0' : '24px'})`,
+                            opacity: playerPopupVisible ? 1 : 0,
+                            transition: 'transform 200ms ease-out, opacity 180ms ease-out',
+                            width: 320,
+                            background: '#fff',
+                            borderRadius: 20,
+                            boxShadow: '0 -4px 32px rgba(0,0,0,0.12), 0 8px 40px rgba(22,15,52,0.18)',
+                            zIndex: 1100,
+                            overflow: 'hidden',
+                        }}>
+                            {/* Drag handle */}
+                            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 10 }}>
+                                <div style={{ width: 32, height: 4, borderRadius: 2, background: '#e2e0eb' }} />
+                            </div>
+
+                            {/* Player info */}
+                            <div style={{ padding: '14px 20px 0', textAlign: 'center' }}>
+                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+                                    <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'linear-gradient(135deg,#f4f0fe,#ede9fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                        <PixelAvatar avatarId={playerPopup.avatarId} size={48} />
+                                    </div>
+                                </div>
+                                <p style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: '#191427', letterSpacing: '-0.01em' }}>{playerPopup.username}</p>
+                                {playerPopup.avatarId && (() => {
+                                    const ROLE: Record<string, { label: string; bg: string; color: string }> = {
+                                        'avatar-ceo':       { label: 'CEO',       bg: '#fef3c7', color: '#b45309' },
+                                        'avatar-dev':       { label: 'Developer', bg: '#eff6ff', color: '#1d4ed8' },
+                                        'avatar-designer':  { label: 'Designer',  bg: '#f5f3ff', color: '#6d28d9' },
+                                        'avatar-hr':        { label: 'HR',        bg: '#fdf2f8', color: '#be185d' },
+                                        'avatar-marketing': { label: 'Marketing', bg: '#fff7ed', color: '#c2410c' },
+                                        'avatar-intern':    { label: 'Intern',    bg: '#f0fdf4', color: '#166534' },
+                                    };
+                                    const r = ROLE[playerPopup.avatarId];
+                                    return r ? (
+                                        <span style={{ fontSize: 10, fontWeight: 700, color: r.color, background: r.bg, borderRadius: 20, padding: '3px 10px', letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>
+                                            {r.label}
+                                        </span>
+                                    ) : null;
+                                })()}
+                            </div>
+
+                            {/* Divider */}
+                            <div style={{ height: 1, background: '#f0eef8', margin: '16px 0 0' }} />
+
+                            {/* 2×2 action grid */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '14px 16px 16px' }}>
+                                <button
+                                    onClick={() => navigate(`/profile/${playerPopup.userId}`)}
+                                    style={{ height: 44, borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                                >
+                                    👤 View Profile
+                                </button>
+                                <button
+                                    onClick={() => { setGiftTarget({ userId: playerPopup.userId, username: playerPopup.username }); setShowGiftModal(true); setPlayerPopup(null); }}
+                                    style={{ height: 44, borderRadius: 12, border: '1.5px solid #e7ddfb', background: '#f4f0fe', color: '#6d28d9', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                                >
+                                    🎁 Send Gift
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (pingsSent.has(playerPopup.userId)) return;
+                                        wsRef.current?.send(JSON.stringify({ type: 'ping-user', payload: { targetUserId: playerPopup.userId } }));
+                                        setPingsSent(prev => new Set([...prev, playerPopup.userId]));
+                                        setTimeout(() => setPingsSent(prev => { const n = new Set(prev); n.delete(playerPopup.userId); return n; }), 2000);
+                                    }}
+                                    style={{ height: 44, borderRadius: 12, border: '1.5px solid #fed7aa', background: '#fff7ed', color: pingsSent.has(playerPopup.userId) ? '#9a3412' : '#c2410c', fontSize: 13, fontWeight: 700, cursor: pingsSent.has(playerPopup.userId) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                                >
+                                    {pingsSent.has(playerPopup.userId) ? '✓ Sent!' : '👋 Ping'}
+                                </button>
+                                <button
+                                    onClick={() => setPlayerPopup(null)}
+                                    style={{ height: 44, borderRadius: 12, border: '1.5px solid #e3e1ee', background: '#f8f7ff', color: '#6f6b82', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                                >
+                                    ✕ Close
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    </>
                 )}
-                {playerPopup && <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,15,40,0.24)', backdropFilter: 'blur(3px)', zIndex: 1099 }} onClick={() => setPlayerPopup(null)} />}
 
                 {/* ── Editor sidebar (overlays canvas) ── */}
                 {editMode && (
