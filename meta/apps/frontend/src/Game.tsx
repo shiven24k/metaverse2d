@@ -1983,12 +1983,12 @@ const ArenaInner = () => {
         }
     }, [authHeaders, fetchSpace, fetchInventory]);
 
-    const isAreaFree = useCallback((x: number, y: number, w: number, h: number): boolean => {
-        const allPlaced = [
+    const isAreaFree = useCallback((x: number, y: number, w: number, h: number, checkElements = true): boolean => {
+        const toCheck = [
             ...placedItemsRef.current.map(p => ({ x: p.x, y: p.y, w: p.item.width, h: p.item.height })),
-            ...spaceElementsRef.current.map(e => ({ x: e.x, y: e.y, w: e.element.width, h: e.element.height })),
+            ...(checkElements ? spaceElementsRef.current.map(e => ({ x: e.x, y: e.y, w: e.element.width, h: e.element.height })) : []),
         ];
-        return !allPlaced.some(p => x < p.x + p.w && x + w > p.x && y < p.y + p.h && y + h > p.y);
+        return !toCheck.some(p => x < p.x + p.w && x + w > p.x && y < p.y + p.h && y + h > p.y);
     }, []);
 
     const paintPlace = useCallback((pos: { x: number; y: number }) => {
@@ -2014,7 +2014,6 @@ const ArenaInner = () => {
                 if (!deleteFlushTimer.current) {
                     deleteFlushTimer.current = setTimeout(() => flushDeleteBatch(), 500);
                 }
-                setEraserMode(false);
             }
             return;
         }
@@ -2034,7 +2033,7 @@ const ArenaInner = () => {
             return;
         }
         if (selectedItem) {
-            if (!isAreaFree(pos.x, pos.y, selectedItem.width, selectedItem.height)) return;
+            if (!isAreaFree(pos.x, pos.y, selectedItem.width, selectedItem.height, false)) return;
             if (!paintSnapshotSaved.current) { saveUndoSnapshot(); paintSnapshotSaved.current = true; }
             const tempId = `_opt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
             const newEntry: PlacedItem = {
