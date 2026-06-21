@@ -2059,7 +2059,8 @@ const ArenaInner = () => {
         if (!dragItem) return;
         const pos = canvasToGrid(e.clientX, e.clientY);
         if (!pos) return;
-        if (!isAreaFree(pos.x, pos.y, dragItem.width, dragItem.height)) {
+        const checkEls = dragItem.type !== 'inventory-item';
+        if (!isAreaFree(pos.x, pos.y, dragItem.width, dragItem.height, checkEls)) {
             setHoverPos(null);
             return;
         }
@@ -2166,7 +2167,7 @@ const ArenaInner = () => {
         }
         const item = selectedElement || selectedItem;
         if (item) {
-            setHoverPos(isAreaFree(pos.x, pos.y, item.width, item.height) ? pos : null);
+            setHoverPos(isAreaFree(pos.x, pos.y, item.width, item.height, !selectedItem) ? pos : null);
         } else if (eraserMode) {
             setHoverPos(pos);
         } else if (isMoving.current && moveTarget.current) {
