@@ -13,6 +13,10 @@ export const auth = betterAuth({
         bearer(),
         username(),
     ],
+    accountLinking: {
+        enabled: true,
+        trustedProviders: ['google', 'github'],
+    },
     emailAndPassword: {
         enabled: true,
     },
