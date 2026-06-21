@@ -180,6 +180,7 @@ export default function AuthPage() {
             const res = await fetch(`${API}/api/auth/sign-in/social`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({
                     provider,
                     callbackURL: `${window.location.origin}/auth/callback`,
