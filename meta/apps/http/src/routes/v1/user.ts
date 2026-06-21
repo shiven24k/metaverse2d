@@ -125,7 +125,13 @@ userRouter.post("/avatar", userMiddleware, (req, res) => {
 // Exchange active cookie session → bearer token (used after OAuth redirect)
 userRouter.get("/token", async (req, res) => {
     try {
+        console.log('[Token] headers:', JSON.stringify({
+            cookie: req.headers.cookie?.substring(0, 50),
+            origin: req.headers.origin,
+            referer: req.headers.referer,
+        }));
         const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+        console.log('[Token] session:', session ? 'found' : 'null');
         if (!session) {
             res.status(403).json({ message: "No active session" });
             return;
