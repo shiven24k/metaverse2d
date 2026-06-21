@@ -22,6 +22,7 @@ playerRouter.get("/:userId", async (req, res) => {
         username: user.username ?? user.name,
         displayUsername: user.displayUsername,
         avatar: user.avatar ?? null,
+        image: user.image ?? null,
         spaceCount: user._count.spaces,
         createdAt: user.createdAt,
     });
