@@ -5,7 +5,6 @@ import client from "@repo/db/client";
 
 export const auth = betterAuth({
     baseURL: process.env.API_URL ?? process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
-    basePath: '/api/a',
     secret: process.env.BETTER_AUTH_SECRET ?? "metaverse2d-super-secret-key-change-in-prod",
     database: prismaAdapter(client, {
         provider: "postgresql",

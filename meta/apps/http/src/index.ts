@@ -26,9 +26,10 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
 // Intercept preflight for auth routes so toNodeHandler never sees OPTIONS requests.
-app.options("/api/a/*", cors(corsOptions));
+app.options("/api/auth/*", cors(corsOptions));
 
-app.all("/api/a/*", toNodeHandler(auth));
+app.all("/api/auth/*", toNodeHandler(auth));
+console.log('[Auth] better-auth mounted at /api/auth/*');
 
 app.use(express.json());
 

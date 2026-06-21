@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
-import { signIn } from "./lib/auth-client";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -175,17 +174,9 @@ export default function AuthPage() {
         }
     };
 
-    const handleOAuth = async (provider: "google" | "github") => {
+    const handleOAuth = (provider: "google" | "github") => {
         setOauthLoading(provider);
-        try {
-            await signIn.social({
-                provider,
-                callbackURL: `${window.location.origin}/auth/callback`,
-            });
-        } catch {
-            setError(`${provider === "google" ? "Google" : "GitHub"} sign-in is not configured yet.`);
-            setOauthLoading(null);
-        }
+        window.location.href = `${API}/api/auth/sign-in/${provider}`;
     };
 
     const switchMode = (m: "signin" | "signup") => {
