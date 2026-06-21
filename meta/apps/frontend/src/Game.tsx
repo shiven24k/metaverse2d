@@ -2477,7 +2477,7 @@ const ArenaInner = () => {
             }
         });
 
-        placedItems.forEach(p => {
+        placedItems.filter(p => p.layer !== 'WALL').forEach(p => {
             const x = p.x * 50;
             const y = p.y * 50;
             const w = p.item.width * 50;
@@ -2676,6 +2676,23 @@ const ArenaInner = () => {
                     ctx.globalAlpha = 1;
                     ctx.fillText('👂', ux, uy - 68);
                 }
+            }
+        });
+
+        // Wall-layer items render after players so they appear in front
+        placedItems.filter(p => p.layer === 'WALL').forEach(p => {
+            const x = p.x * 50;
+            const y = p.y * 50;
+            const w = p.item.width * 50;
+            const h = p.item.height * 50;
+            const itemUrl = ITEM_IMAGE[p.item.id] || p.item.imageUrl;
+            drawImageOnCanvas(ctx, itemUrl, x, y, w, h, '#fef3c7', 'rgba(0,0,0,0.20)', (editMode && !selectedItem && !selectedElement) ? p.item.name : undefined);
+            if (p.failedToSave) {
+                ctx.fillStyle = 'rgba(220, 38, 38, 0.4)';
+                ctx.fillRect(x, y, w, h);
+                ctx.strokeStyle = 'rgba(220, 38, 38, 0.9)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
             }
         });
 
