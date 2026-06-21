@@ -1072,11 +1072,19 @@ const ArenaInner = () => {
                 setSelectedPlacedGroup([]);
             }
             if (e.key === 'Escape') {
+                // Priority: delete mode → item selection → panels
+                if (eraserMode) {
+                    setEraserMode(false);
+                    return;
+                }
+                if (selectedItem || selectedElement) {
+                    setSelectedItem(null);
+                    setSelectedElement(null);
+                    return;
+                }
+                // Deselect placed items, cancel NPC ops, close panels
                 setSelectedPlaced(null);
                 setSelectedPlacedGroup([]);
-                setSelectedItem(null);
-                setSelectedElement(null);
-                setEraserMode(false);
                 setSelectedNpcId(null);
                 setNpcPickingPos(false);
                 npcDragRef.current = null;
@@ -1084,7 +1092,10 @@ const ArenaInner = () => {
                 moveTarget.current = null;
                 setMovePreview(null);
                 setPlayerPopup(null);
-                useGameStore.getState().setShowEmotePicker(false);
+                const gs = useGameStore.getState();
+                if (gs.showEmotePicker) { gs.setShowEmotePicker(false); return; }
+                if (gs.showProximityChat) { gs.setShowProximityChat(false); return; }
+                if (gs.showNotifPanel) { gs.toggleNotifPanel(); return; }
             }
             return;
         }
@@ -2003,6 +2014,7 @@ const ArenaInner = () => {
                 if (!deleteFlushTimer.current) {
                     deleteFlushTimer.current = setTimeout(() => flushDeleteBatch(), 500);
                 }
+                setEraserMode(false);
             }
             return;
         }
@@ -2471,7 +2483,7 @@ const ArenaInner = () => {
             const w = p.item.width * 50;
             const h = p.item.height * 50;
             const itemUrl = ITEM_IMAGE[p.item.id] || p.item.imageUrl;
-            drawImageOnCanvas(ctx, itemUrl, x, y, w, h, '#fef3c7', 'rgba(0,0,0,0.20)', editMode ? p.item.name : undefined);
+            drawImageOnCanvas(ctx, itemUrl, x, y, w, h, '#fef3c7', 'rgba(0,0,0,0.20)', (editMode && !selectedItem && !selectedElement) ? p.item.name : undefined);
             if (p.failedToSave) {
                 ctx.fillStyle = 'rgba(220, 38, 38, 0.4)';
                 ctx.fillRect(x, y, w, h);
@@ -3623,7 +3635,7 @@ const ArenaInner = () => {
                                             <div
                                                 key={el.id}
                                                 draggable={true}
-                                                onClick={() => setSelectedElement(isSelected ? null : el)}
+                                                onClick={() => { setSelectedElement(isSelected ? null : el); setSelectedItem(null); setEraserMode(false); }}
                                                 onDragStart={(e) => {
                                                     e.dataTransfer.setData('text/plain', 'element');
                                                     e.dataTransfer.effectAllowed = 'move';
@@ -3658,7 +3670,7 @@ const ArenaInner = () => {
                                             <div
                                                 key={item.id}
                                                 draggable={true}
-                                                onClick={() => setSelectedItem(isSelected ? null : item)}
+                                                onClick={() => { setSelectedItem(isSelected ? null : item); setSelectedElement(null); setEraserMode(false); }}
                                                 onDragStart={(e) => {
                                                     e.dataTransfer.setData('text/plain', 'inventory-item');
                                                     e.dataTransfer.effectAllowed = 'move';
