@@ -121,14 +121,23 @@ export class PeerManager {
                 await pc.setLocalDescription(offer);
                 this.ws.send(JSON.stringify({ type: 'rtc:offer', to: peerId, sdp: offer }));
             } catch (err) {
-                console.warn('[PeerManager] renegotiation failed:', err);
+                // Likely a hardware encoder failure (SIGILL path, AVX/SSE4 unsupported).
+                // Disconnect cleanly so the broken connection doesn't hang.
+                console.warn('[PeerManager] renegotiation failed, disconnecting peer:', peerId, err);
+                this.disconnect(peerId);
             }
         };
 
         if (isInitiator) {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            this.ws.send(JSON.stringify({ type: 'rtc:offer', to: peerId, sdp: offer }));
+            try {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                this.ws.send(JSON.stringify({ type: 'rtc:offer', to: peerId, sdp: offer }));
+            } catch (err) {
+                console.warn('[PeerManager] initial offer failed, disconnecting peer:', peerId, err);
+                this.disconnect(peerId);
+                return;
+            }
         }
 
         // Allow renegotiation after initial setup is done
@@ -136,22 +145,31 @@ export class PeerManager {
     }
 
     async handleOffer(fromId: string, sdp: RTCSessionDescriptionInit) {
-        // If peer doesn't exist yet, create as non-initiator
         if (!this.peers.has(fromId)) {
             await this.connect(fromId, 'voice', false);
         }
         const peer = this.peers.get(fromId);
         if (!peer) return;
-        // Works for both initial offers and renegotiation offers
-        await peer.connection.setRemoteDescription(sdp);
-        const answer = await peer.connection.createAnswer();
-        await peer.connection.setLocalDescription(answer);
-        this.ws.send(JSON.stringify({ type: 'rtc:answer', to: fromId, sdp: answer }));
+        try {
+            await peer.connection.setRemoteDescription(sdp);
+            const answer = await peer.connection.createAnswer();
+            await peer.connection.setLocalDescription(answer);
+            this.ws.send(JSON.stringify({ type: 'rtc:answer', to: fromId, sdp: answer }));
+        } catch (err) {
+            console.warn('[PeerManager] handleOffer failed, disconnecting peer:', fromId, err);
+            this.disconnect(fromId);
+        }
     }
 
     async handleAnswer(fromId: string, sdp: RTCSessionDescriptionInit) {
         const peer = this.peers.get(fromId);
-        if (peer) await peer.connection.setRemoteDescription(sdp);
+        if (!peer) return;
+        try {
+            await peer.connection.setRemoteDescription(sdp);
+        } catch (err) {
+            console.warn('[PeerManager] handleAnswer failed, disconnecting peer:', fromId, err);
+            this.disconnect(fromId);
+        }
     }
 
     async handleIce(fromId: string, candidate: RTCIceCandidateInit) {
@@ -175,13 +193,24 @@ export class PeerManager {
 
     // Called when camera is turned on — adds video track to all active connections.
     // Each connection's onnegotiationneeded fires → new offer → answer cycle.
+    // Throws if the video track itself cannot be obtained (caller should surface this to the user).
     async enableCamera(videoStream: MediaStream) {
+        const videoTrack = videoStream.getVideoTracks()[0];
+        if (!videoTrack) throw new Error('No video track in stream');
+
         this.localVideoStream = videoStream;
         this.cameraEnabled = true;
-        const videoTrack = videoStream.getVideoTracks()[0];
-        if (!videoTrack) return;
-        for (const [, peer] of this.peers.entries()) {
-            peer.connection.addTrack(videoTrack, videoStream);
+
+        for (const [peerId, peer] of this.peers.entries()) {
+            try {
+                peer.connection.addTrack(videoTrack, videoStream);
+                // onnegotiationneeded fires automatically after addTrack
+            } catch (err) {
+                // addTrack can fail if the codec/encoder path is unsupported (SIGILL risk).
+                // Disconnect this peer cleanly rather than leaving the connection broken.
+                console.warn('[PeerManager] addTrack failed for peer', peerId, err);
+                this.disconnect(peerId);
+            }
         }
     }
 

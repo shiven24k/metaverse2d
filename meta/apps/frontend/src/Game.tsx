@@ -243,6 +243,7 @@ const ArenaInner = () => {
     const [micEnabled, setMicEnabled] = useState(true);
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [connectedPeers, setConnectedPeers] = useState(0);
+    const [cameraError, setCameraError] = useState<string | null>(null);
     // Live MediaStream objects must NOT live in React state — React can proxy/clone
     // objects during reconciliation, breaking the live stream reference.
     // Instead, keep the Map in a ref and drive re-renders with a plain string[] of keys.
@@ -4367,6 +4368,33 @@ const ArenaInner = () => {
                     onDismissUrgentBanner={() => useGameStore.getState().setUrgentBanner(null)}
                 />
 
+                {/* Camera error toast */}
+                {cameraError && (
+                    <div
+                        onClick={() => setCameraError(null)}
+                        style={{
+                            position: 'fixed',
+                            bottom: 120,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            zIndex: 5000,
+                            background: 'rgba(185,28,28,0.92)',
+                            border: '1px solid rgba(239,68,68,0.6)',
+                            borderRadius: 10,
+                            padding: '10px 18px',
+                            color: '#fef2f2',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                            userSelect: 'none',
+                        }}
+                    >
+                        {cameraError} — tap to dismiss
+                    </div>
+                )}
+
                 {/* Remote peer video tiles — top-right HUD */}
                 {remotePeerIds.length > 0 && (
                     <div style={{
@@ -4406,15 +4434,28 @@ const ArenaInner = () => {
                     onToggleCamera={async () => {
                         const next = !cameraEnabled;
                         if (next) {
+                            let stream: MediaStream | null = null;
                             try {
-                                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                                stream = await navigator.mediaDevices.getUserMedia({ video: true });
                                 localVideoStreamRef.current = stream;
                                 if (selfVideoRef.current) selfVideoRef.current.srcObject = stream;
-                                // Add video track to all active peer connections + renegotiate
+                                // Adds video track to all active peer connections + triggers renegotiation.
+                                // Can throw if the hardware encoder path is unsupported (SIGILL risk).
                                 await peerManagerRef.current?.enableCamera(stream);
                                 setCameraEnabled(true);
+                                setCameraError(null);
                             } catch (err) {
-                                console.warn('[Camera] access denied:', err);
+                                console.warn('[Camera] failed to enable:', err);
+                                // Roll back any partially acquired stream so tracks don't stay open
+                                stream?.getTracks().forEach(t => t.stop());
+                                localVideoStreamRef.current = null;
+                                if (selfVideoRef.current) selfVideoRef.current.srcObject = null;
+                                const msg = err instanceof Error && err.name === 'NotAllowedError'
+                                    ? 'Camera permission denied'
+                                    : 'Camera not supported on this device';
+                                setCameraError(msg);
+                                // Auto-dismiss after 5 s
+                                setTimeout(() => setCameraError(null), 5000);
                             }
                         } else {
                             // Remove video senders from all connections + stop stream
