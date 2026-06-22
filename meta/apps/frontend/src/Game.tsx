@@ -179,6 +179,29 @@ interface EmoteBubble {
 
 
 
+// Renders a single remote peer's video stream. Uses callback ref so srcObject
+// is set synchronously when the element mounts, even during re-renders.
+function RemoteVideoTile({ peerId, stream, username }: { peerId: string; stream: MediaStream; username?: string }) {
+    const ref = useCallback((el: HTMLVideoElement | null) => {
+        if (el && el.srcObject !== stream) el.srcObject = stream;
+    }, [stream]);
+    return (
+        <div key={peerId} style={{ position: 'relative', flexShrink: 0 }}>
+            <video
+                ref={ref}
+                autoPlay
+                playsInline
+                style={{ width: 160, height: 120, borderRadius: 10, objectFit: 'cover', background: '#0f0a1e', display: 'block' }}
+            />
+            {username && (
+                <span style={{ position: 'absolute', bottom: 6, left: 8, fontSize: 11, color: '#fff', fontWeight: 700, textShadow: '0 1px 3px rgba(0,0,0,0.9)', pointerEvents: 'none' }}>
+                    {username}
+                </span>
+            )}
+        </div>
+    );
+}
+
 const ArenaInner = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -214,6 +237,7 @@ const ArenaInner = () => {
     const [micEnabled, setMicEnabled] = useState(true);
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [connectedPeers, setConnectedPeers] = useState(0);
+    const [remoteVideoStreams, setRemoteVideoStreams] = useState(new Map<string, MediaStream>());
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState('');
 
@@ -501,6 +525,28 @@ const ArenaInner = () => {
     const currentUserRef = useRef(currentUser);
     useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
     useEffect(() => { usersRef.current = users; }, [users]);
+
+    // Listen for remote video tracks arriving from PeerManager
+    useEffect(() => {
+        const onRemoteVideo = (e: Event) => {
+            const { peerId, stream } = (e as CustomEvent<{ peerId: string; stream: MediaStream }>).detail;
+            setRemoteVideoStreams(prev => new Map(prev).set(peerId, stream));
+        };
+        const onPeerLeft = (e: Event) => {
+            const { peerId } = (e as CustomEvent<{ peerId: string }>).detail;
+            setRemoteVideoStreams(prev => {
+                const next = new Map(prev);
+                next.delete(peerId);
+                return next;
+            });
+        };
+        window.addEventListener('rtc:remoteVideo', onRemoteVideo);
+        window.addEventListener('rtc:peerLeft', onPeerLeft);
+        return () => {
+            window.removeEventListener('rtc:remoteVideo', onRemoteVideo);
+            window.removeEventListener('rtc:peerLeft', onPeerLeft);
+        };
+    }, []);
 
     // Only tiles (spaceElements) and furniture (placedItems) with blocking=true block movement.
     // Other players, NPCs, and temporary objects are intentionally excluded.
@@ -4313,6 +4359,29 @@ const ArenaInner = () => {
                     onDismissUrgentBanner={() => useGameStore.getState().setUrgentBanner(null)}
                 />
 
+                {/* Remote peer video tiles — top-right HUD */}
+                {remoteVideoStreams.size > 0 && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 16,
+                        right: 16,
+                        zIndex: 4000,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                        pointerEvents: 'none',
+                    }}>
+                        {[...remoteVideoStreams.entries()].map(([peerId, stream]) => (
+                            <RemoteVideoTile
+                                key={peerId}
+                                peerId={peerId}
+                                stream={stream}
+                                username={usersRef.current.get(peerId)?.username}
+                            />
+                        ))}
+                    </div>
+                )}
+
                 <VoiceToolbar
                     micEnabled={micEnabled}
                     cameraEnabled={cameraEnabled}
@@ -4324,24 +4393,26 @@ const ArenaInner = () => {
                     }}
                     onToggleCamera={async () => {
                         const next = !cameraEnabled;
-                        setCameraEnabled(next);
                         if (next) {
                             try {
                                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                                 localVideoStreamRef.current = stream;
-                                if (selfVideoRef.current) {
-                                    selfVideoRef.current.srcObject = stream;
-                                }
+                                if (selfVideoRef.current) selfVideoRef.current.srcObject = stream;
+                                // Add video track to all active peer connections + renegotiate
+                                await peerManagerRef.current?.enableCamera(stream);
+                                setCameraEnabled(true);
                             } catch (err) {
                                 console.warn('[Camera] access denied:', err);
-                                setCameraEnabled(false);
                             }
                         } else {
-                            localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
+                            // Remove video senders from all connections + stop stream
+                            peerManagerRef.current?.disableCamera();
                             localVideoStreamRef.current = null;
                             if (selfVideoRef.current) selfVideoRef.current.srcObject = null;
+                            // Clear remote video tiles that were showing our video on the other side
+                            setRemoteVideoStreams(new Map());
+                            setCameraEnabled(false);
                         }
-                        peerManagerRef.current?.toggleCamera(next);
                     }}
                 />
 
