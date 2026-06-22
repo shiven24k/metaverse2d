@@ -12,16 +12,46 @@ export class PeerManager {
     private peers = new Map<string, PeerState>();
     private conferencePeers = new Set<string>();
     private proximityPeers = new Set<string>();
-    private iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+    private iceServers: RTCIceServer[] = [
+        { 
+            urls: 'stun:stun.l.google.com:19302' 
+
+        },
+        {
+            urls: "stun:stun.relay.metered.ca:80",
+        },
+        {
+            urls: "turn:global.relay.metered.ca:80",
+            username: "5fb5154d7caa476fffa59a3d",
+            credential: "1ujpQgNVUvtMuscG",
+        },
+        {
+            urls: "turn:global.relay.metered.ca:80?transport=tcp",
+            username: "5fb5154d7caa476fffa59a3d",
+            credential: "1ujpQgNVUvtMuscG",
+        },
+        {
+            urls: "turn:global.relay.metered.ca:443",
+            username: "5fb5154d7caa476fffa59a3d",
+            credential: "1ujpQgNVUvtMuscG",
+        },
+        {
+            urls: "turns:global.relay.metered.ca:443?transport=tcp",
+            username: "5fb5154d7caa476fffa59a3d",
+            credential: "1ujpQgNVUvtMuscG",
+        },
+    ];
     private localStream: MediaStream | null = null;
     private audioCtx: AudioContext | null = null;
     private cameraEnabled = false;
     private micEnabled = true;
 
-    constructor(private ws: WebSocket) {}
+    constructor(private ws: WebSocket) { }
 
     async init() {
         try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            this.audioCtx = new AudioContext();
             const res = await fetch('/api/v1/turn-credentials');
             if (res.ok) {
                 const data = await res.json();
@@ -29,8 +59,10 @@ export class PeerManager {
                     this.iceServers = data.iceServers;
                 }
             }
-        } catch {
+        } catch (err) {
             // fallback to STUN only
+            console.warn('[PeerManager] getUserMedia failed:', err);
+
         }
 
         try {
