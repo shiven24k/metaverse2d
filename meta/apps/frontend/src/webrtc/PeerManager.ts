@@ -83,12 +83,17 @@ export class PeerManager {
         gainNode.connect(this.audioCtx.destination);
 
         pc.ontrack = (e) => {
+            console.log('[PeerManager] ontrack from', peerId, '| kind:', e.track.kind, '| readyState:', e.track.readyState, '| streams:', e.streams.length);
             if (e.track.kind === 'audio') {
                 this.audioCtx!.createMediaStreamSource(e.streams[0]).connect(gainNode);
             } else {
-                // Video track arrived — notify Game.tsx to render a video tile
+                const stream = e.streams[0];
+                if (!stream) {
+                    console.warn('[PeerManager] ontrack: video track arrived with no stream, skipping');
+                    return;
+                }
                 window.dispatchEvent(new CustomEvent('rtc:remoteVideo', {
-                    detail: { peerId, stream: e.streams[0] },
+                    detail: { peerId, stream },
                 }));
             }
         };

@@ -179,18 +179,24 @@ interface EmoteBubble {
 
 
 
-// Renders a single remote peer's video stream. Uses callback ref so srcObject
-// is set synchronously when the element mounts, even during re-renders.
 function RemoteVideoTile({ peerId, stream, username }: { peerId: string; stream: MediaStream; username?: string }) {
-    const ref = useCallback((el: HTMLVideoElement | null) => {
-        if (el && el.srcObject !== stream) el.srcObject = stream;
-    }, [stream]);
+    const videoRef = useRef<HTMLVideoElement>(null);
+
+    useEffect(() => {
+        const el = videoRef.current;
+        if (!el) return;
+        console.log('[RemoteVideoTile] attaching stream for', peerId, stream.getTracks().map(t => `${t.kind}:${t.readyState}`));
+        el.srcObject = stream;
+        el.play().catch(err => console.warn('[RemoteVideoTile] play() rejected:', err));
+    }, [peerId, stream]);
+
     return (
-        <div key={peerId} style={{ position: 'relative', flexShrink: 0 }}>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
             <video
-                ref={ref}
+                ref={videoRef}
                 autoPlay
                 playsInline
+                muted={false}
                 style={{ width: 160, height: 120, borderRadius: 10, objectFit: 'cover', background: '#0f0a1e', display: 'block' }}
             />
             {username && (
@@ -237,7 +243,11 @@ const ArenaInner = () => {
     const [micEnabled, setMicEnabled] = useState(true);
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [connectedPeers, setConnectedPeers] = useState(0);
-    const [remoteVideoStreams, setRemoteVideoStreams] = useState(new Map<string, MediaStream>());
+    // Live MediaStream objects must NOT live in React state — React can proxy/clone
+    // objects during reconciliation, breaking the live stream reference.
+    // Instead, keep the Map in a ref and drive re-renders with a plain string[] of keys.
+    const remoteStreamsRef = useRef(new Map<string, MediaStream>());
+    const [remotePeerIds, setRemotePeerIds] = useState<string[]>([]);
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState('');
 
@@ -530,15 +540,13 @@ const ArenaInner = () => {
     useEffect(() => {
         const onRemoteVideo = (e: Event) => {
             const { peerId, stream } = (e as CustomEvent<{ peerId: string; stream: MediaStream }>).detail;
-            setRemoteVideoStreams(prev => new Map(prev).set(peerId, stream));
+            remoteStreamsRef.current.set(peerId, stream);
+            setRemotePeerIds([...remoteStreamsRef.current.keys()]);
         };
         const onPeerLeft = (e: Event) => {
             const { peerId } = (e as CustomEvent<{ peerId: string }>).detail;
-            setRemoteVideoStreams(prev => {
-                const next = new Map(prev);
-                next.delete(peerId);
-                return next;
-            });
+            remoteStreamsRef.current.delete(peerId);
+            setRemotePeerIds([...remoteStreamsRef.current.keys()]);
         };
         window.addEventListener('rtc:remoteVideo', onRemoteVideo);
         window.addEventListener('rtc:peerLeft', onPeerLeft);
@@ -4360,7 +4368,7 @@ const ArenaInner = () => {
                 />
 
                 {/* Remote peer video tiles — top-right HUD */}
-                {remoteVideoStreams.size > 0 && (
+                {remotePeerIds.length > 0 && (
                     <div style={{
                         position: 'fixed',
                         top: 16,
@@ -4371,14 +4379,18 @@ const ArenaInner = () => {
                         gap: 8,
                         pointerEvents: 'none',
                     }}>
-                        {[...remoteVideoStreams.entries()].map(([peerId, stream]) => (
-                            <RemoteVideoTile
-                                key={peerId}
-                                peerId={peerId}
-                                stream={stream}
-                                username={usersRef.current.get(peerId)?.username}
-                            />
-                        ))}
+                        {remotePeerIds.map(peerId => {
+                            const stream = remoteStreamsRef.current.get(peerId);
+                            if (!stream) return null;
+                            return (
+                                <RemoteVideoTile
+                                    key={peerId}
+                                    peerId={peerId}
+                                    stream={stream}
+                                    username={usersRef.current.get(peerId)?.username}
+                                />
+                            );
+                        })}
                     </div>
                 )}
 
@@ -4409,8 +4421,8 @@ const ArenaInner = () => {
                             peerManagerRef.current?.disableCamera();
                             localVideoStreamRef.current = null;
                             if (selfVideoRef.current) selfVideoRef.current.srcObject = null;
-                            // Clear remote video tiles that were showing our video on the other side
-                            setRemoteVideoStreams(new Map());
+                            remoteStreamsRef.current.clear();
+                            setRemotePeerIds([]);
                             setCameraEnabled(false);
                         }
                     }}
