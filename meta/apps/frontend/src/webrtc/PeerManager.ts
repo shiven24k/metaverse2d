@@ -52,6 +52,11 @@ export class PeerManager {
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             this.audioCtx = new AudioContext();
+        } catch (err) {
+            console.warn('[PeerManager] getUserMedia failed — voice disabled:', err);
+        }
+
+        try {
             const res = await fetch('/api/v1/turn-credentials');
             if (res.ok) {
                 const data = await res.json();
@@ -59,17 +64,8 @@ export class PeerManager {
                     this.iceServers = data.iceServers;
                 }
             }
-        } catch (err) {
-            // fallback to STUN only
-            console.warn('[PeerManager] getUserMedia failed:', err);
-
-        }
-
-        try {
-            this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            this.audioCtx = new AudioContext();
-        } catch (err) {
-            console.warn('[PeerManager] getUserMedia failed:', err);
+        } catch {
+            // keep hardcoded fallback iceServers
         }
     }
 
@@ -156,7 +152,8 @@ export class PeerManager {
         for (const peerId of voicePeers) {
             if (!this.peers.has(peerId)) {
                 const mode = videoPeers.includes(peerId) && this.cameraEnabled ? 'video' : 'voice';
-                this.connect(peerId, mode, true);
+                // Defer so RTCPeerConnection setup doesn't block the animation frame
+                setTimeout(() => this.connect(peerId, mode, true), 0);
             }
         }
 

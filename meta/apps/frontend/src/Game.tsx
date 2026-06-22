@@ -208,6 +208,9 @@ const ArenaInner = () => {
     const [users, setUsers] = useState(new Map<string, { x: number; y: number; userId: string; username: string; avatarId?: string }>());
     const usersRef = useRef(new Map<string, { x: number; y: number; userId: string; username: string; avatarId?: string }>());
     const peerManagerRef = useRef<PeerManager | null>(null);
+    const currentConferenceRoomRef = useRef<string | null>(null);
+    const selfVideoRef = useRef<HTMLVideoElement | null>(null);
+    const localVideoStreamRef = useRef<MediaStream | null>(null);
     const [micEnabled, setMicEnabled] = useState(true);
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [connectedPeers, setConnectedPeers] = useState(0);
@@ -528,11 +531,41 @@ const ArenaInner = () => {
         for (const [peerId, peerPos] of usersRef.current.entries()) {
             pm.setVolume(peerId, Math.hypot(peerPos.x - pos.x, peerPos.y - pos.y));
         }
-        setConnectedPeers(pm.getConnectedPeerCount());
+        // Only re-render when count changes to avoid mid-animation jitter
+        const newCount = pm.getConnectedPeerCount();
+        setConnectedPeers(prev => prev !== newCount ? newCount : prev);
     }, []);
 
     const runProximityCheckRef = useRef(runProximityCheck);
     useEffect(() => { runProximityCheckRef.current = runProximityCheck; }, [runProximityCheck]);
+
+    const checkConferenceRoom = useCallback((myPos: { x: number; y: number }) => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        // Find a placed item with conferenceRoomId metadata at the player's tile
+        const roomItem = placedItemsRef.current.find(p => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const roomId = (p.metadata as any)?.conferenceRoomId as string | undefined;
+            if (!roomId) return false;
+            return myPos.x >= p.x && myPos.x < p.x + p.item.width &&
+                   myPos.y >= p.y && myPos.y < p.y + p.item.height;
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const newRoomId = roomItem ? (roomItem.metadata as any).conferenceRoomId as string : null;
+        if (newRoomId !== currentConferenceRoomRef.current) {
+            if (currentConferenceRoomRef.current) {
+                peerManagerRef.current?.leaveConference();
+                ws.send(JSON.stringify({ type: 'rtc:leave-room', roomId: currentConferenceRoomRef.current }));
+            }
+            if (newRoomId) {
+                ws.send(JSON.stringify({ type: 'rtc:join-room', roomId: newRoomId }));
+            }
+            currentConferenceRoomRef.current = newRoomId;
+        }
+    }, []);
+
+    const checkConferenceRoomRef = useRef(checkConferenceRoom);
+    useEffect(() => { checkConferenceRoomRef.current = checkConferenceRoom; }, [checkConferenceRoom]);
 
     const doMove = useCallback((newX: number, newY: number) => {
         const user = currentUserRef.current;
@@ -613,6 +646,7 @@ const ArenaInner = () => {
                     pendingMoveRef.current = false;
                     processWalkQueue();
                     runProximityCheckRef.current({ x: anim.toX, y: anim.toY });
+                    checkConferenceRoomRef.current({ x: anim.toX, y: anim.toY });
                 }
                 rerender();
             }
@@ -991,6 +1025,8 @@ const ArenaInner = () => {
             wsRef.current = null;
             peerManagerRef.current?.destroy();
             peerManagerRef.current = null;
+            localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
+            localVideoStreamRef.current = null;
         };
     }, [connect]);
 
@@ -1523,6 +1559,7 @@ const ArenaInner = () => {
                 useGameStore.getState().setMyActiveEmote(null);
                 useGameStore.getState().clearActiveEmote(message.payload.userId);
                 // Init PeerManager (destroy previous if reconnecting)
+                currentConferenceRoomRef.current = null;
                 if (wsRef.current) {
                     peerManagerRef.current?.destroy();
                     const pm = new PeerManager(wsRef.current);
@@ -3720,6 +3757,30 @@ const ArenaInner = () => {
                                     🗑 Delete
                                 </button>
                             )}
+                            {selectedPlaced?.type === 'item' && (() => {
+                                const pi = placedItems.find(p => p.id === selectedPlaced.id);
+                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                const roomId = (pi?.metadata as any)?.conferenceRoomId as string | undefined;
+                                return (
+                                    <button
+                                        onClick={async () => {
+                                            if (!pi) return;
+                                            const newMeta = roomId
+                                                ? { ...(pi.metadata as object), conferenceRoomId: null }
+                                                : { ...(pi.metadata as object ?? {}), conferenceRoomId: crypto.randomUUID() };
+                                            await fetch(`${API}/api/v1/space/placed/${pi.id}/metadata`, {
+                                                method: 'PUT', headers: authHeaders,
+                                                body: JSON.stringify({ metadata: newMeta }),
+                                            });
+                                            await fetchSpace();
+                                        }}
+                                        title={roomId ? `Room ID: ${roomId}` : 'Mark this item as a conference room zone'}
+                                        style={{ padding: '5px 10px', borderRadius: 5, border: 'none', background: roomId ? '#7c3aed' : '#ecebf3', color: roomId ? '#fff' : '#6f6b82', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                    >
+                                        {roomId ? '📹 Conference Room' : '+ Conf Room'}
+                                    </button>
+                                );
+                            })()}
                         </div>
                         {selectedPlacedGroup.length > 1 && (
                             <div style={{ padding: '10px 16px', borderBottom: '1px solid #ecebf3', background: '#f5f3ff', fontSize: 12, color: '#7c3aed', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -4261,12 +4322,51 @@ const ArenaInner = () => {
                         setMicEnabled(next);
                         peerManagerRef.current?.toggleMic(next);
                     }}
-                    onToggleCamera={() => {
+                    onToggleCamera={async () => {
                         const next = !cameraEnabled;
                         setCameraEnabled(next);
+                        if (next) {
+                            try {
+                                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                                localVideoStreamRef.current = stream;
+                                if (selfVideoRef.current) {
+                                    selfVideoRef.current.srcObject = stream;
+                                }
+                            } catch (err) {
+                                console.warn('[Camera] access denied:', err);
+                                setCameraEnabled(false);
+                            }
+                        } else {
+                            localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
+                            localVideoStreamRef.current = null;
+                            if (selfVideoRef.current) selfVideoRef.current.srcObject = null;
+                        }
                         peerManagerRef.current?.toggleCamera(next);
                     }}
                 />
+
+                {/* Self-view camera preview */}
+                {cameraEnabled && (
+                    <video
+                        ref={selfVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        style={{
+                            position: 'fixed',
+                            bottom: 120,
+                            right: 16,
+                            width: 160,
+                            height: 120,
+                            borderRadius: 10,
+                            border: '2px solid rgba(124,58,237,0.5)',
+                            objectFit: 'cover',
+                            zIndex: 4000,
+                            background: '#0f0a1e',
+                            transform: 'scaleX(-1)',
+                        }}
+                    />
+                )}
 
                 <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes notifSlideIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }`}</style>
         </div>
