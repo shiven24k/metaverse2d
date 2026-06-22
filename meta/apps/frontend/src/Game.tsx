@@ -1676,14 +1676,14 @@ const ArenaInner = () => {
                     let fromX = existingUser.x, fromY = existingUser.y;
                     if (prevAnim) {
                         const t = Math.min((performance.now() - prevAnim.startTime) / prevAnim.duration, 1);
-                        const e = t * (2 - t);
+                        const e = 1 - Math.pow(1 - t, 2);
                         fromX = prevAnim.fromX + (prevAnim.toX - prevAnim.fromX) * e;
                         fromY = prevAnim.fromY + (prevAnim.toY - prevAnim.fromY) * e;
                     }
 
                     remoteUserAnims.current.set(message.payload.userId, {
                         fromX, fromY, toX: newX, toY: newY,
-                        startTime: performance.now(), duration: 150,
+                        startTime: performance.now(), duration: 200,
                         facingCol, lastMoveTime: performance.now(),
                     });
 
@@ -2847,7 +2847,7 @@ const ArenaInner = () => {
             let rx = user.x, ry = user.y, facingCol = 0, isWalking = false, bob = 0;
             if (rAnim) {
                 const t = Math.min((performance.now() - rAnim.startTime) / rAnim.duration, 1);
-                const eased = t * (2 - t);
+                const eased = 1 - Math.pow(1 - t, 2);
                 rx = rAnim.fromX + (rAnim.toX - rAnim.fromX) * eased;
                 ry = rAnim.fromY + (rAnim.toY - rAnim.fromY) * eased;
                 facingCol = rAnim.facingCol;
