@@ -531,12 +531,13 @@ const ArenaInner = () => {
     const walkBobRef = useRef(0);
     const walkFrameRef = useRef(0);
     const bumpAnimRef = useRef<{ startTime: number; duration: number } | null>(null);
-    // Per-remote-user animation state. Never in React state — read every rAF tick.
+    // Per-remote-user animation state driven by exponential smoothing in the rAF tick.
+    // Never in React state — mutated directly each frame.
     const remoteUserAnims = useRef(new Map<string, {
-        fromX: number; fromY: number; toX: number; toY: number;
-        startTime: number; duration: number;
+        targetX: number; targetY: number;   // where the server says the player is
+        visualX: number; visualY: number;   // current rendered position, smoothed toward target
         facingCol: number; // 0=down 1=left 2=right 3=up  (matches local player's dirCol map)
-        lastMoveTime: number;
+        lastMoveTime: number;               // performance.now() of last move message
     }>());
     const lastMoveAttemptRef = useRef<number>(0);
     const pendingMoveRef = useRef<boolean>(false);
@@ -690,14 +691,19 @@ const ArenaInner = () => {
 
     useEffect(() => {
         let id: number;
-        function tick() {
+        let lastTickTime = performance.now();
+        function tick(now: number) {
+            // Delta time in seconds, capped to avoid spiral-of-death after tab backgrounding
+            const dt = Math.min((now - lastTickTime) / 1000, 0.1);
+            lastTickTime = now;
+
             const anim = moveAnimRef.current;
             if (anim) {
-                const t = Math.min((performance.now() - anim.startTime) / anim.duration, 1);
+                const t = Math.min((now - anim.startTime) / anim.duration, 1);
                 const eased = t * (2 - t);
                 animPosRef.current = { x: anim.fromX + (anim.toX - anim.fromX) * eased, y: anim.fromY + (anim.toY - anim.fromY) * eased };
                 walkBobRef.current = t < 1 ? Math.sin(t * Math.PI) * 3 : 0;
-                walkFrameRef.current = Math.floor((performance.now() - anim.startTime) / 75) % 2;
+                walkFrameRef.current = Math.floor((now - anim.startTime) / 75) % 2;
                 if (t >= 1) {
                     animPosRef.current = { x: anim.toX, y: anim.toY };
                     moveAnimRef.current = null;
@@ -717,13 +723,13 @@ const ArenaInner = () => {
                 walkBobRef.current = 0;
                 walkFrameRef.current = 0;
                 // Safety: if the queue has been stale for >500ms with no active animation, clear it
-                if (moveQueueRef.current.length > 0 && performance.now() - lastMoveAttemptRef.current > 500) {
+                if (moveQueueRef.current.length > 0 && now - lastMoveAttemptRef.current > 500) {
                     moveQueueRef.current = [];
                 }
             }
             const bump = bumpAnimRef.current;
             if (bump) {
-                const t = (performance.now() - bump.startTime) / bump.duration;
+                const t = (now - bump.startTime) / bump.duration;
                 if (t >= 1) { bumpAnimRef.current = null; }
                 rerender();
             }
@@ -731,10 +737,26 @@ const ArenaInner = () => {
             if (npcAnims.current.size > 0) {
                 let anyActive = false;
                 for (const [npcId, a] of npcAnims.current) {
-                    if ((performance.now() - a.startTime) < a.duration) { anyActive = true; break; }
+                    if ((now - a.startTime) < a.duration) { anyActive = true; break; }
                     npcAnims.current.delete(npcId);
                 }
                 if (anyActive) rerender();
+            }
+            // Exponential smoothing for remote user positions (k=15 → ~93% of distance
+            // covered in 200ms at 60fps, independent of server move cadence).
+            if (remoteUserAnims.current.size > 0) {
+                const alpha = 1 - Math.exp(-15 * dt);
+                let anyRemoteActive = false;
+                for (const [, r] of remoteUserAnims.current) {
+                    r.visualX += (r.targetX - r.visualX) * alpha;
+                    r.visualY += (r.targetY - r.visualY) * alpha;
+                    if (Math.abs(r.targetX - r.visualX) > 0.005 ||
+                        Math.abs(r.targetY - r.visualY) > 0.005 ||
+                        (now - r.lastMoveTime) < 300) {
+                        anyRemoteActive = true;
+                    }
+                }
+                if (anyRemoteActive) rerender();
             }
             // Portal edge pulse animation
             if (portalsRef.current.length > 0) rerender();
@@ -1615,7 +1637,16 @@ const ArenaInner = () => {
                 });
                 setUsers(userMap);
                 usersRef.current = userMap;
+                // Seed visual positions from the initial roster so smoothing starts
+                // at the correct tile rather than lerping from (0,0).
                 remoteUserAnims.current.clear();
+                userMap.forEach(u => {
+                    remoteUserAnims.current.set(u.userId, {
+                        targetX: u.x, targetY: u.y,
+                        visualX: u.x, visualY: u.y,
+                        facingCol: 0, lastMoveTime: 0,
+                    });
+                });
                 fetchSpace();
                 fetchInventory();
                 fetchNpcs();
@@ -1646,6 +1677,12 @@ const ArenaInner = () => {
                     next.set(message.payload.userId, joinedUser);
                     return next;
                 });
+                // Seed visual position at the join tile so the smoother starts correctly.
+                remoteUserAnims.current.set(message.payload.userId, {
+                    targetX: joinedUser.x, targetY: joinedUser.y,
+                    visualX: joinedUser.x, visualY: joinedUser.y,
+                    facingCol: 0, lastMoveTime: 0,
+                });
                 if (message.payload.userId !== currentUserRef.current?.userId) {
                     addToast(`${message.payload.username || 'Someone'} joined`, 'info');
                 }
@@ -1672,18 +1709,12 @@ const ArenaInner = () => {
                         else if (dy < 0) facingCol = 3;  // up
                     }
 
-                    // Lerp from current in-flight visual position to avoid snapping
-                    let fromX = existingUser.x, fromY = existingUser.y;
-                    if (prevAnim) {
-                        const t = Math.min((performance.now() - prevAnim.startTime) / prevAnim.duration, 1);
-                        const e = 1 - Math.pow(1 - t, 2);
-                        fromX = prevAnim.fromX + (prevAnim.toX - prevAnim.fromX) * e;
-                        fromY = prevAnim.fromY + (prevAnim.toY - prevAnim.fromY) * e;
-                    }
-
+                    // Preserve current visual position so the smoother continues from
+                    // wherever the sprite is right now — no teleport on message arrival.
                     remoteUserAnims.current.set(message.payload.userId, {
-                        fromX, fromY, toX: newX, toY: newY,
-                        startTime: performance.now(), duration: 200,
+                        targetX: newX, targetY: newY,
+                        visualX: prevAnim?.visualX ?? existingUser.x,
+                        visualY: prevAnim?.visualY ?? existingUser.y,
                         facingCol, lastMoveTime: performance.now(),
                     });
 
@@ -2842,16 +2873,14 @@ const ArenaInner = () => {
             const avatarUrl = `/avatars/${effectiveAvatarId}.png`;
             const img = imageCache.current.get(avatarUrl);
 
-            // Compute interpolated position + animation state from remoteUserAnims
+            // Visual position is already smoothed by the rAF tick — just read it.
             const rAnim = remoteUserAnims.current.get(user.userId);
-            let rx = user.x, ry = user.y, facingCol = 0, isWalking = false, bob = 0;
+            let facingCol = 0, isWalking = false, bob = 0;
+            const rx = rAnim?.visualX ?? user.x;
+            const ry = rAnim?.visualY ?? user.y;
             if (rAnim) {
-                const t = Math.min((performance.now() - rAnim.startTime) / rAnim.duration, 1);
-                const eased = 1 - Math.pow(1 - t, 2);
-                rx = rAnim.fromX + (rAnim.toX - rAnim.fromX) * eased;
-                ry = rAnim.fromY + (rAnim.toY - rAnim.fromY) * eased;
                 facingCol = rAnim.facingCol;
-                isWalking = (performance.now() - rAnim.lastMoveTime) < 200;
+                isWalking = (performance.now() - rAnim.lastMoveTime) < 300;
                 if (isWalking) bob = Math.sin(performance.now() / 80) * 2;
             }
             const walkFrame = isWalking ? Math.floor(performance.now() / 100) % 2 : 0;
