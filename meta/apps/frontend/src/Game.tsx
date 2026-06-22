@@ -537,7 +537,7 @@ const ArenaInner = () => {
         startTime: number; duration: number;
         facingCol: number; // 0=down 1=left 2=right 3=up  (matches local player's dirCol map)
         lastMoveTime: number;
-    }>();
+    }>());
     const lastMoveAttemptRef = useRef<number>(0);
     const pendingMoveRef = useRef<boolean>(false);
     const currentUserRef = useRef(currentUser);
