@@ -10,6 +10,9 @@ import { ProximityChatPanel } from './components/game/ProximityChatPanel';
 import { NotificationPanel } from './components/game/NotificationPanel';
 import { EMOTE_FRAMES, EMOTE_CROP, ALL_EMOTE_IDS, EMOTES } from './constants/emotes';
 import type { ProximityChatMessage, AppNotification, SpaceElement, PlacedItem, SpacePortal, NPC } from './types/game';
+import { PeerManager } from './webrtc/PeerManager';
+import { VOICE_RADIUS, VIDEO_RADIUS } from './webrtc/constants';
+import { VoiceToolbar } from './components/game/VoiceToolbar';
 
 // ── PixelAvatar — CSS pixel art character, ported from design system ──────────
 
@@ -203,6 +206,11 @@ const ArenaInner = () => {
 
     const [currentUser, setCurrentUser] = useState<{ x: number; y: number; userId: string; username: string; avatarId?: string } | null>(null);
     const [users, setUsers] = useState(new Map<string, { x: number; y: number; userId: string; username: string; avatarId?: string }>());
+    const usersRef = useRef(new Map<string, { x: number; y: number; userId: string; username: string; avatarId?: string }>());
+    const peerManagerRef = useRef<PeerManager | null>(null);
+    const [micEnabled, setMicEnabled] = useState(true);
+    const [cameraEnabled, setCameraEnabled] = useState(false);
+    const [connectedPeers, setConnectedPeers] = useState(0);
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState('');
 
@@ -489,6 +497,7 @@ const ArenaInner = () => {
     const pendingMoveRef = useRef<boolean>(false);
     const currentUserRef = useRef(currentUser);
     useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+    useEffect(() => { usersRef.current = users; }, [users]);
 
     // Only tiles (spaceElements) and furniture (placedItems) with blocking=true block movement.
     // Other players, NPCs, and temporary objects are intentionally excluded.
@@ -503,6 +512,27 @@ const ArenaInner = () => {
         }
         return false;
     }
+
+    const runProximityCheck = useCallback((myPos?: { x: number; y: number }) => {
+        const pm = peerManagerRef.current;
+        const pos = myPos ?? currentUserRef.current;
+        if (!pm || !pos) return;
+        const voicePeers: string[] = [];
+        const videoPeers: string[] = [];
+        for (const [peerId, peerPos] of usersRef.current.entries()) {
+            const dist = Math.hypot(peerPos.x - pos.x, peerPos.y - pos.y);
+            if (dist <= VOICE_RADIUS) voicePeers.push(peerId);
+            if (dist <= VIDEO_RADIUS) videoPeers.push(peerId);
+        }
+        pm.setProximity(voicePeers, videoPeers);
+        for (const [peerId, peerPos] of usersRef.current.entries()) {
+            pm.setVolume(peerId, Math.hypot(peerPos.x - pos.x, peerPos.y - pos.y));
+        }
+        setConnectedPeers(pm.getConnectedPeerCount());
+    }, []);
+
+    const runProximityCheckRef = useRef(runProximityCheck);
+    useEffect(() => { runProximityCheckRef.current = runProximityCheck; }, [runProximityCheck]);
 
     const doMove = useCallback((newX: number, newY: number) => {
         const user = currentUserRef.current;
@@ -582,6 +612,7 @@ const ArenaInner = () => {
                     setCurrentUser(prev => prev ? { ...prev, x: anim.toX, y: anim.toY } : prev);
                     pendingMoveRef.current = false;
                     processWalkQueue();
+                    runProximityCheckRef.current({ x: anim.toX, y: anim.toY });
                 }
                 rerender();
             }
@@ -958,6 +989,8 @@ const ArenaInner = () => {
             }
             wsRef.current?.close();
             wsRef.current = null;
+            peerManagerRef.current?.destroy();
+            peerManagerRef.current = null;
         };
     }, [connect]);
 
@@ -1483,32 +1516,49 @@ const ArenaInner = () => {
                     userMap.set(u.userId, { x: u.x, y: u.y, userId: u.userId, username: u.username || 'Unknown', avatarId: u.avatarId });
                 });
                 setUsers(userMap);
+                usersRef.current = userMap;
                 fetchSpace();
                 fetchInventory();
                 fetchNpcs();
                 useGameStore.getState().setMyActiveEmote(null);
                 useGameStore.getState().clearActiveEmote(message.payload.userId);
+                // Init PeerManager (destroy previous if reconnecting)
+                if (wsRef.current) {
+                    peerManagerRef.current?.destroy();
+                    const pm = new PeerManager(wsRef.current);
+                    peerManagerRef.current = pm;
+                    pm.init().catch(console.error);
+                }
                 break;
             }
 
-            case 'user-joined':
+            case 'user-joined': {
+                const joinedUser = {
+                    x: message.payload.x,
+                    y: message.payload.y,
+                    userId: message.payload.userId,
+                    username: message.payload.username || 'Unknown',
+                    avatarId: message.payload.avatarId,
+                };
+                usersRef.current = new Map(usersRef.current).set(message.payload.userId, joinedUser);
                 setUsers(prev => {
                     const next = new Map(prev);
-                    next.set(message.payload.userId, {
-                        x: message.payload.x,
-                        y: message.payload.y,
-                        userId: message.payload.userId,
-                        username: message.payload.username || 'Unknown',
-                        avatarId: message.payload.avatarId,
-                    });
+                    next.set(message.payload.userId, joinedUser);
                     return next;
                 });
                 if (message.payload.userId !== currentUserRef.current?.userId) {
                     addToast(`${message.payload.username || 'Someone'} joined`, 'info');
                 }
+                runProximityCheck();
                 break;
+            }
 
-            case 'movement':
+            case 'movement': {
+                const existingUser = usersRef.current.get(message.payload.userId);
+                if (existingUser) {
+                    const movedUser = { ...existingUser, x: message.payload.x, y: message.payload.y };
+                    usersRef.current = new Map(usersRef.current).set(message.payload.userId, movedUser);
+                }
                 setUsers(prev => {
                     const next = new Map(prev);
                     const u = next.get(message.payload.userId);
@@ -1519,7 +1569,9 @@ const ArenaInner = () => {
                     }
                     return next;
                 });
+                runProximityCheck();
                 break;
+            }
 
             case 'movement-rejected': {
                 const rx = message.payload.x;
@@ -1545,12 +1597,16 @@ const ArenaInner = () => {
 
             case 'user-left': {
                 const leftUser = users.get(message.payload.userId);
+                const nextUsersMap = new Map(usersRef.current);
+                nextUsersMap.delete(message.payload.userId);
+                usersRef.current = nextUsersMap;
                 setUsers(prev => {
                     const next = new Map(prev);
                     next.delete(message.payload.userId);
                     return next;
                 });
                 if (leftUser) addToast(`${leftUser.username} left`, 'warning');
+                runProximityCheck();
                 break;
             }
 
@@ -1752,6 +1808,30 @@ const ArenaInner = () => {
 
             case 'board-updated':
                 setBoardWsFlag(f => f + 1);
+                break;
+
+            case 'rtc:offer':
+                peerManagerRef.current?.handleOffer(message.from, message.sdp as RTCSessionDescriptionInit);
+                break;
+
+            case 'rtc:answer':
+                peerManagerRef.current?.handleAnswer(message.from, message.sdp as RTCSessionDescriptionInit);
+                break;
+
+            case 'rtc:ice':
+                peerManagerRef.current?.handleIce(message.from, message.candidate as RTCIceCandidateInit);
+                break;
+
+            case 'rtc:room-peers':
+                for (const peerId of (message.peers as string[])) {
+                    peerManagerRef.current?.joinConferencePeer(peerId);
+                }
+                setConnectedPeers(peerManagerRef.current?.getConnectedPeerCount() ?? 0);
+                break;
+
+            case 'rtc:peer-left':
+                peerManagerRef.current?.disconnect(message.peerId as string);
+                setConnectedPeers(peerManagerRef.current?.getConnectedPeerCount() ?? 0);
                 break;
 
             case 'pong':
@@ -4170,6 +4250,22 @@ const ArenaInner = () => {
                     onClose={() => useGameStore.getState().toggleNotifPanel()}
                     onDismissToast={(id) => useGameStore.getState().dismissToast(id)}
                     onDismissUrgentBanner={() => useGameStore.getState().setUrgentBanner(null)}
+                />
+
+                <VoiceToolbar
+                    micEnabled={micEnabled}
+                    cameraEnabled={cameraEnabled}
+                    connectedPeers={connectedPeers}
+                    onToggleMic={() => {
+                        const next = !micEnabled;
+                        setMicEnabled(next);
+                        peerManagerRef.current?.toggleMic(next);
+                    }}
+                    onToggleCamera={() => {
+                        const next = !cameraEnabled;
+                        setCameraEnabled(next);
+                        peerManagerRef.current?.toggleCamera(next);
+                    }}
                 />
 
                 <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes notifSlideIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }`}</style>

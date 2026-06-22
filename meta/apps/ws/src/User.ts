@@ -7,6 +7,24 @@ import { getBlockingCells, invalidateBlockingCache } from "./blockingCache";
 import { ProximityChatManager } from "./proximityChatManager";
 import { randomUUID } from "crypto";
 
+// Conference room state — in-memory, ephemeral
+const conferenceRooms = new Map<string, Set<string>>(); // roomId -> Set<userId>
+
+function joinRoom(userId: string, roomId: string): string[] {
+    if (!conferenceRooms.has(roomId)) conferenceRooms.set(roomId, new Set());
+    const room = conferenceRooms.get(roomId)!;
+    const existingPeers = [...room];
+    room.add(userId);
+    return existingPeers;
+}
+
+function leaveRoom(userId: string, roomId: string) {
+    const room = conferenceRooms.get(roomId);
+    if (!room) return;
+    room.delete(userId);
+    if (room.size === 0) conferenceRooms.delete(roomId);
+}
+
 async function findNearestWalkable(
     x: number, y: number,
     spaceId: string,
@@ -49,6 +67,7 @@ export class User {
     public y: number;
     public currentRoomKey: string | null = null;
     public currentEmote: string | null = null;
+    private currentConferenceRoomIds: Set<string> = new Set();
     public lastActivityAt: number = Date.now();
     private ws: WebSocket;
     private lastMove: Promise<void> = Promise.resolve();
@@ -359,6 +378,40 @@ export class User {
                     break;
                 }
 
+                case 'rtc:offer':
+                case 'rtc:answer':
+                case 'rtc:ice': {
+                    if (!this.spaceId || !this.userId) break;
+                    const targetUserId = parsedData.to;
+                    const spaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                    const targetUser = spaceUsers.find(u => (u.userId ?? u.id) === targetUserId);
+                    if (!targetUser) break;
+                    targetUser.send({
+                        type: parsedData.type,
+                        from: this.userId,
+                        sdp: (parsedData as { sdp?: unknown }).sdp,
+                        candidate: (parsedData as { candidate?: unknown }).candidate,
+                    });
+                    break;
+                }
+
+                case 'rtc:join-room': {
+                    if (!this.userId) break;
+                    const { roomId } = parsedData;
+                    const existingPeers = joinRoom(this.userId, roomId);
+                    this.currentConferenceRoomIds.add(roomId);
+                    this.send({ type: 'rtc:room-peers', roomId, peers: existingPeers });
+                    break;
+                }
+
+                case 'rtc:leave-room': {
+                    if (!this.userId) break;
+                    const { roomId: leaveRoomId } = parsedData;
+                    leaveRoom(this.userId, leaveRoomId);
+                    this.currentConferenceRoomIds.delete(leaveRoomId);
+                    break;
+                }
+
                 case "ping":
                     this.send({ type: "pong" });
                     break;
@@ -537,6 +590,34 @@ export class User {
 
     destroy() {
         if (!this.spaceId) return; // disconnected before completing join
+
+        // Clean up conference rooms and notify remaining members
+        if (this.userId) {
+            for (const roomId of this.currentConferenceRoomIds) {
+                const room = conferenceRooms.get(roomId);
+                if (!room) continue;
+                room.delete(this.userId);
+                if (room.size === 0) {
+                    conferenceRooms.delete(roomId);
+                } else {
+                    const spaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                    for (const memberId of room) {
+                        const memberUser = spaceUsers.find(u => (u.userId ?? u.id) === memberId);
+                        memberUser?.send({ type: 'rtc:peer-left', peerId: this.userId! });
+                    }
+                }
+            }
+            this.currentConferenceRoomIds.clear();
+
+            // Notify proximity peers that this user disconnected
+            const spaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+            for (const u of spaceUsers) {
+                if (u.id !== this.id) {
+                    u.send({ type: 'rtc:peer-left', peerId: this.userId! });
+                }
+            }
+        }
+
         getRoomManager().broadcast(
             { type: "user-left", payload: { userId: this.userId } },
             this,

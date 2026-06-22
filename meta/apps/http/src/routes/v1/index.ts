@@ -20,6 +20,7 @@ import { uploadRouter } from "./upload";
 import { economyRouter } from "./economy";
 import { boardRouter } from "./board";
 import { inviteRouter } from "./invite";
+import { turnRouter } from "./turn";
 import client from "@repo/db/client";
 
 export const router = Router();
@@ -71,3 +72,4 @@ router.use("/admin", adminBanRouter);
 router.use("/economy", economyRouter);
 router.use("/board", boardRouter);
 router.use("/invite", inviteRouter);
+router.use("/", turnRouter);

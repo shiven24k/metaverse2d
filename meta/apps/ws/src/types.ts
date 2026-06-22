@@ -74,6 +74,34 @@ type StatusEmoteIncoming = {
     payload: { emoteId: 'coffee' | 'tea' | 'yawn' | 'stretch' | 'afk' | 'brb' | '' };
 };
 
+type RtcOfferIncoming = {
+    type: 'rtc:offer';
+    to: string;
+    sdp: unknown;
+};
+
+type RtcAnswerIncoming = {
+    type: 'rtc:answer';
+    to: string;
+    sdp: unknown;
+};
+
+type RtcIceIncoming = {
+    type: 'rtc:ice';
+    to: string;
+    candidate: unknown;
+};
+
+type RtcJoinRoomIncoming = {
+    type: 'rtc:join-room';
+    roomId: string;
+};
+
+type RtcLeaveRoomIncoming = {
+    type: 'rtc:leave-room';
+    roomId: string;
+};
+
 export type IncomingMessage =
     | JoinMessage
     | MoveMessage
@@ -89,7 +117,12 @@ export type IncomingMessage =
     | AnnouncementMessage
     | PingUserMessage
     | NotificationReadMessage
-    | StatusEmoteIncoming;
+    | StatusEmoteIncoming
+    | RtcOfferIncoming
+    | RtcAnswerIncoming
+    | RtcIceIncoming
+    | RtcJoinRoomIncoming
+    | RtcLeaveRoomIncoming;
 
 // ─── Outgoing messages (server → client) ─────────────────────────────────────
 
@@ -229,6 +262,24 @@ type EmoteBroadcastMessage = {
     };
 };
 
+type RtcRelayOutgoing = {
+    type: 'rtc:offer' | 'rtc:answer' | 'rtc:ice';
+    from: string;
+    sdp?: unknown;
+    candidate?: unknown;
+};
+
+type RtcRoomPeersOutgoing = {
+    type: 'rtc:room-peers';
+    roomId: string;
+    peers: string[];
+};
+
+type RtcPeerLeftOutgoing = {
+    type: 'rtc:peer-left';
+    peerId: string;
+};
+
 export type OutgoingMessage =
     | SpaceJoinedMessage
     | UserJoinedMessage
@@ -248,4 +299,7 @@ export type OutgoingMessage =
     | ChatRoomUpdateMessage
     | ChatHistoryMessage
     | NotificationOutgoing
-    | EmoteBroadcastMessage;
+    | EmoteBroadcastMessage
+    | RtcRelayOutgoing
+    | RtcRoomPeersOutgoing
+    | RtcPeerLeftOutgoing;
