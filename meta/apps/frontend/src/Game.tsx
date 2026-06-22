@@ -531,6 +531,13 @@ const ArenaInner = () => {
     const walkBobRef = useRef(0);
     const walkFrameRef = useRef(0);
     const bumpAnimRef = useRef<{ startTime: number; duration: number } | null>(null);
+    // Per-remote-user animation state. Never in React state — read every rAF tick.
+    const remoteUserAnims = useRef(new Map<string, {
+        fromX: number; fromY: number; toX: number; toY: number;
+        startTime: number; duration: number;
+        facingCol: number; // 0=down 1=left 2=right 3=up  (matches local player's dirCol map)
+        lastMoveTime: number;
+    }>();
     const lastMoveAttemptRef = useRef<number>(0);
     const pendingMoveRef = useRef<boolean>(false);
     const currentUserRef = useRef(currentUser);
@@ -1608,6 +1615,7 @@ const ArenaInner = () => {
                 });
                 setUsers(userMap);
                 usersRef.current = userMap;
+                remoteUserAnims.current.clear();
                 fetchSpace();
                 fetchInventory();
                 fetchNpcs();
@@ -1648,7 +1656,38 @@ const ArenaInner = () => {
             case 'movement': {
                 const existingUser = usersRef.current.get(message.payload.userId);
                 if (existingUser) {
-                    const movedUser = { ...existingUser, x: message.payload.x, y: message.payload.y };
+                    const newX = message.payload.x as number;
+                    const newY = message.payload.y as number;
+                    const dx = newX - existingUser.x;
+                    const dy = newY - existingUser.y;
+
+                    // Derive facing from dominant axis of movement
+                    const prevAnim = remoteUserAnims.current.get(message.payload.userId);
+                    let facingCol = prevAnim?.facingCol ?? 0;
+                    if (Math.abs(dx) >= Math.abs(dy)) {
+                        if (dx > 0) facingCol = 2;       // right
+                        else if (dx < 0) facingCol = 1;  // left
+                    } else {
+                        if (dy > 0) facingCol = 0;       // down
+                        else if (dy < 0) facingCol = 3;  // up
+                    }
+
+                    // Lerp from current in-flight visual position to avoid snapping
+                    let fromX = existingUser.x, fromY = existingUser.y;
+                    if (prevAnim) {
+                        const t = Math.min((performance.now() - prevAnim.startTime) / prevAnim.duration, 1);
+                        const e = t * (2 - t);
+                        fromX = prevAnim.fromX + (prevAnim.toX - prevAnim.fromX) * e;
+                        fromY = prevAnim.fromY + (prevAnim.toY - prevAnim.fromY) * e;
+                    }
+
+                    remoteUserAnims.current.set(message.payload.userId, {
+                        fromX, fromY, toX: newX, toY: newY,
+                        startTime: performance.now(), duration: 150,
+                        facingCol, lastMoveTime: performance.now(),
+                    });
+
+                    const movedUser = { ...existingUser, x: newX, y: newY };
                     usersRef.current = new Map(usersRef.current).set(message.payload.userId, movedUser);
                 }
                 setUsers(prev => {
@@ -1692,6 +1731,7 @@ const ArenaInner = () => {
                 const nextUsersMap = new Map(usersRef.current);
                 nextUsersMap.delete(message.payload.userId);
                 usersRef.current = nextUsersMap;
+                remoteUserAnims.current.delete(message.payload.userId);
                 setUsers(prev => {
                     const next = new Map(prev);
                     next.delete(message.payload.userId);
@@ -2801,7 +2841,22 @@ const ArenaInner = () => {
             preloadAvatarImage(effectiveAvatarId);
             const avatarUrl = `/avatars/${effectiveAvatarId}.png`;
             const img = imageCache.current.get(avatarUrl);
-            const ux = user.x * 50, uy = user.y * 50;
+
+            // Compute interpolated position + animation state from remoteUserAnims
+            const rAnim = remoteUserAnims.current.get(user.userId);
+            let rx = user.x, ry = user.y, facingCol = 0, isWalking = false, bob = 0;
+            if (rAnim) {
+                const t = Math.min((performance.now() - rAnim.startTime) / rAnim.duration, 1);
+                const eased = t * (2 - t);
+                rx = rAnim.fromX + (rAnim.toX - rAnim.fromX) * eased;
+                ry = rAnim.fromY + (rAnim.toY - rAnim.fromY) * eased;
+                facingCol = rAnim.facingCol;
+                isWalking = (performance.now() - rAnim.lastMoveTime) < 200;
+                if (isWalking) bob = Math.sin(performance.now() / 80) * 2;
+            }
+            const walkFrame = isWalking ? Math.floor(performance.now() / 100) % 2 : 0;
+            const ux = rx * 50, uy = ry * 50;
+
             const userStatusEmote = activeEmotes.get(user.userId);
             const uEmoteId = userStatusEmote?.emoteId;
             const uEmoteUrl = uEmoteId ? `/emotes/${effectiveAvatarId.replace('avatar-', '')}/${uEmoteId}.png` : null;
@@ -2818,7 +2873,7 @@ const ArenaInner = () => {
                 ctx.imageSmoothingEnabled = true;
             } else if (img && img.complete && img.naturalWidth > 0) {
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(img, 0, 0, 32, 48, ux - 16, uy - 24, 32, 48);
+                ctx.drawImage(img, facingCol * 32, walkFrame * 48, 32, 48, ux - 16, uy - 24 - bob, 32, 48);
                 ctx.imageSmoothingEnabled = true;
             } else {
                 ctx.beginPath();
