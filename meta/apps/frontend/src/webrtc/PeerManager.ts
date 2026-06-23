@@ -276,9 +276,14 @@ export class PeerManager {
             // Impolite peer waits for the polite peer's knock to arrive.
         }
 
-        // Drop pending knocks for peers who left range.
+        // Cancel pending knocks for peers who left range, and clear the sender-side UI.
         for (const [peerId] of this.pendingKnocks) {
-            if (!voicePeers.includes(peerId)) this.pendingKnocks.delete(peerId);
+            if (!voicePeers.includes(peerId)) {
+                this.pendingKnocks.delete(peerId);
+                // Bug 3 fix: without this event the "Requesting to join" pill in Game.tsx
+                // would stay visible forever when B moves away before responding.
+                window.dispatchEvent(new CustomEvent('rtc:knockCancelled', { detail: { peerId } }));
+            }
         }
 
         // Disconnect peers no longer in any active set.
@@ -300,12 +305,14 @@ export class PeerManager {
     }
 
     // Called when we receive rtc:knock from a remote peer.
-    // Returns true if auto-accepted (no active proximity peers), false if the caller
+    // Returns true if auto-accepted (no active connections), false if the caller
     // should show a toast (peer is joining an existing active call).
     handleKnock(fromId: string): boolean {
-        // Auto-accept when we have no active proximity connections (first connection is seamless).
-        const hasActiveProximityConnections = [...this.proximityPeers].some(p => this.peers.has(p));
-        if (!hasActiveProximityConnections) {
+        // Bug 1 fix: was checking proximityPeers intersection with peers, which missed
+        // conference/broadcast peers (in peers but not proximityPeers) and could be stale
+        // when the local user hadn't moved. peers.size > 0 is the authoritative check.
+        console.log('[PeerManager] handleKnock from', fromId, '| peers.size=', this.peers.size);
+        if (this.peers.size === 0) {
             this.ws.send(JSON.stringify({ type: 'rtc:knock-accept', to: fromId }));
             return true;
         }
@@ -322,9 +329,12 @@ export class PeerManager {
 
     // Called when the peer we knocked accepted us.
     handleKnockAccepted(fromId: string) {
-        const mode = this.pendingKnocks.get(fromId);
-        if (!mode) return;
+        // Bug 2 fix: if setProximity cleaned up pendingKnocks while the accept was in-flight
+        // (B briefly fell out of voicePeers for one frame), mode would be undefined and the
+        // call would never start. Fall back to 'voice' so we always connect on accept.
+        const mode = this.pendingKnocks.get(fromId) ?? 'voice';
         this.pendingKnocks.delete(fromId);
+        console.log('[PeerManager] handleKnockAccepted from', fromId, '| connecting as', mode);
         // Defer so the accept message's WS callback stack clears first.
         setTimeout(() => this.connect(fromId, mode, true), 0);
     }

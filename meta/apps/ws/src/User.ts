@@ -422,6 +422,7 @@ export class User {
                     const knockTarget = parsedData.to;
                     const knockSpaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
                     const knockTargetUser = knockSpaceUsers.find(u => (u.userId ?? u.id) === knockTarget);
+                    console.log('[WS] rtc:knock from', this.userId, '→ target', knockTarget, '| found:', !!knockTargetUser);
                     if (!knockTargetUser) break;
                     knockTargetUser.send({ type: 'rtc:knock', from: this.userId, fromName: this.username });
                     break;
@@ -433,6 +434,7 @@ export class User {
                     const knockRespTarget = parsedData.to;
                     const knockRespSpaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
                     const knockRespTargetUser = knockRespSpaceUsers.find(u => (u.userId ?? u.id) === knockRespTarget);
+                    console.log('[WS]', parsedData.type, 'from', this.userId, '→ target', knockRespTarget, '| found:', !!knockRespTargetUser);
                     if (!knockRespTargetUser) break;
                     knockRespTargetUser.send({ type: parsedData.type, from: this.userId });
                     break;

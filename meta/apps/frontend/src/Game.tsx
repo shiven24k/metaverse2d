@@ -577,17 +577,25 @@ const ArenaInner = () => {
             setKnockPendingPeerIds(prev => { const next = new Set(prev); next.delete(peerId); return next; });
             addToast('Call request denied', 'warning');
         };
+        // Bug 3 fix: clear the "Requesting to join" pill when the target leaves proximity
+        // before responding. Without this, knockPendingPeerIds would never be cleaned up.
+        const onKnockCancelled = (e: Event) => {
+            const { peerId } = (e as CustomEvent<{ peerId: string }>).detail;
+            setKnockPendingPeerIds(prev => { const next = new Set(prev); next.delete(peerId); return next; });
+        };
         window.addEventListener('rtc:remoteVideo', onRemoteVideo);
         window.addEventListener('rtc:peerLeft', onPeerLeft);
         window.addEventListener('rtc:proximityGroup', onProximityGroup);
         window.addEventListener('rtc:knockSent', onKnockSent);
         window.addEventListener('rtc:knockDenied', onKnockDenied);
+        window.addEventListener('rtc:knockCancelled', onKnockCancelled);
         return () => {
             window.removeEventListener('rtc:remoteVideo', onRemoteVideo);
             window.removeEventListener('rtc:peerLeft', onPeerLeft);
             window.removeEventListener('rtc:proximityGroup', onProximityGroup);
             window.removeEventListener('rtc:knockSent', onKnockSent);
             window.removeEventListener('rtc:knockDenied', onKnockDenied);
+            window.removeEventListener('rtc:knockCancelled', onKnockCancelled);
         };
     }, [addToast]);
 
@@ -2056,8 +2064,9 @@ const ArenaInner = () => {
             case 'rtc:knock': {
                 const knockFromId = (message as { from: string; fromName: string }).from;
                 const knockFromName = (message as { from: string; fromName: string }).fromName;
+                console.log('[Game] rtc:knock received from', knockFromId, knockFromName);
                 const pm = peerManagerRef.current;
-                if (!pm) break;
+                if (!pm) { console.warn('[Game] rtc:knock: peerManagerRef is null'); break; }
                 const autoAccepted = pm.handleKnock(knockFromId);
                 if (!autoAccepted) {
                     // Show knock toast — auto-dismiss after 15 s (treated as deny)
@@ -2066,7 +2075,9 @@ const ArenaInner = () => {
                     setTimeout(() => {
                         setKnockRequests(prev => {
                             const still = prev.find(k => k.id === knockId);
-                            if (still) pm.denyIncomingKnock(knockFromId);
+                            // Bug 4 fix: use peerManagerRef.current, not the captured `pm` —
+                            // pm could be a stale instance if the WS reconnected in 15 s.
+                            if (still) peerManagerRef.current?.denyIncomingKnock(knockFromId);
                             return prev.filter(k => k.id !== knockId);
                         });
                     }, 15000);
