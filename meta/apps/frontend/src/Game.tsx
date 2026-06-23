@@ -305,9 +305,11 @@ const ArenaInner = () => {
     const [connectedPeers, setConnectedPeers] = useState(0);
     const [cameraError, setCameraError] = useState<string | null>(null);
     // Knock-to-join: incoming knock requests (other user wants to join our call)
-    const [knockRequests, setKnockRequests] = useState<{ id: string; fromId: string; fromName: string }[]>([]);
+    const [knockRequests, setKnockRequests] = useState<{ id: string; fromId: string; fromName: string; callType?: 'voice' | 'video' }[]>([]);
     // Proximity group: userIds of all currently connected proximity peers
     const [proximityGroup, setProximityGroup] = useState<string[]>([]);
+    // All peers currently in voice range (connected or not)
+    const [nearbyPeerIds, setNearbyPeerIds] = useState<string[]>([]);
     const [knockPendingPeerIds, setKnockPendingPeerIds] = useState<Set<string>>(new Set());
     // Live MediaStream objects must NOT live in React state — React can proxy/clone
     // objects during reconciliation, breaking the live stream reference.
@@ -626,8 +628,9 @@ const ArenaInner = () => {
             setRemotePeerIds([...remoteStreamsRef.current.keys()]);
         };
         const onProximityGroup = (e: Event) => {
-            const { members } = (e as CustomEvent<{ members: string[] }>).detail;
+            const { members, nearbyPeers } = (e as CustomEvent<{ members: string[]; nearbyPeers: string[] }>).detail;
             setProximityGroup(members);
+            setNearbyPeerIds(nearbyPeers ?? []);
         };
         const onKnockSent = (e: Event) => {
             const { peerId } = (e as CustomEvent<{ peerId: string }>).detail;
@@ -2123,8 +2126,10 @@ const ArenaInner = () => {
                 break;
 
             case 'rtc:knock': {
-                const knockFromId = (message as { from: string; fromName: string }).from;
-                const knockFromName = (message as { from: string; fromName: string }).fromName;
+                const knockMsg = message as { from: string; fromName: string; callType?: 'voice' | 'video' };
+                const knockFromId = knockMsg.from;
+                const knockFromName = knockMsg.fromName;
+                const knockCallType = knockMsg.callType;
                 console.log('[Game] rtc:knock received from', knockFromId, '— showing toast');
                 const pm = peerManagerRef.current;
                 if (!pm) { console.warn('[Game] rtc:knock: peerManagerRef is null'); break; }
@@ -2132,7 +2137,7 @@ const ArenaInner = () => {
                 // Always show knock toast — receiver must explicitly Accept or Deny.
                 // Auto-dismiss after 15 s (treated as deny).
                 const knockId = Math.random().toString(36).slice(2);
-                setKnockRequests(prev => [...prev, { id: knockId, fromId: knockFromId, fromName: knockFromName }]);
+                setKnockRequests(prev => [...prev, { id: knockId, fromId: knockFromId, fromName: knockFromName, callType: knockCallType }]);
                 setTimeout(() => {
                     setKnockRequests(prev => {
                         const still = prev.find(k => k.id === knockId);
@@ -3485,6 +3490,14 @@ const ArenaInner = () => {
                             isDesktop={isDesktop}
                             currentUserId={currentUser?.userId ?? ''}
                             onTypingChange={(isTyping) => useGameStore.getState().setProximityChatIsTyping(isTyping)}
+                            nearbyPeers={nearbyPeerIds.map(id => ({
+                                userId: id,
+                                username: usersRef.current.get(id)?.username ?? id.slice(0, 8),
+                            }))}
+                            pendingKnockPeerIds={knockPendingPeerIds}
+                            onCallVoice={(peerId) => peerManagerRef.current?.sendKnock(peerId, 'voice')}
+                            onCallVideo={(peerId) => peerManagerRef.current?.sendKnock(peerId, 'video')}
+                            onCancelCall={(peerId) => peerManagerRef.current?.cancelKnock(peerId)}
                         />
                     )}
 
@@ -3496,7 +3509,9 @@ const ArenaInner = () => {
                                     <span style={{ fontSize: 22 }}>🔔</span>
                                     <div style={{ flex: 1 }}>
                                         <div style={{ fontSize: 13, fontWeight: 700, color: '#191427' }}>{req.fromName}</div>
-                                        <div style={{ fontSize: 11, color: '#6f6b82' }}>wants to join your call</div>
+                                        <div style={{ fontSize: 11, color: '#6f6b82' }}>
+                                            {req.callType === 'video' ? 'wants to video call you' : 'wants to voice call you'}
+                                        </div>
                                     </div>
                                     <div style={{ display: 'flex', gap: 6 }}>
                                         <button

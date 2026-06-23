@@ -248,41 +248,14 @@ export class PeerManager {
     }
 
     // Called every animation frame with the current proximity peer lists.
-    // Uses knock-to-join: the polite peer (smaller userId) sends rtc:knock; the
-    // receiver auto-accepts if they have no active proximity connections, otherwise
-    // shows a toast. On accept, the knocker calls connect() normally.
-    setProximity(voicePeers: string[], videoPeers: string[]) {
-        const prevProximityPeers = this.proximityPeers;
+    // Walking into range no longer auto-initiates a call; use sendKnock() explicitly.
+    setProximity(voicePeers: string[], _videoPeers: string[]) {
         this.proximityPeers = new Set(voicePeers);
 
-        for (const peerId of voicePeers) {
-            if (this.peers.has(peerId) || this.pendingKnocks.has(peerId)) continue;
-
-            const justEnteredRange = !prevProximityPeers.has(peerId);
-            if (!justEnteredRange) continue;
-
-            const mode: PeerMode = videoPeers.includes(peerId) && this.cameraEnabled ? 'video' : 'voice';
-
-            // Only the polite peer (smaller userId) initiates the knock to avoid
-            // both sides knocking simultaneously.
-            if (this.myUserId < peerId) {
-                this.pendingKnocks.set(peerId, mode);
-                this.ws.send(JSON.stringify({
-                    type: 'rtc:knock',
-                    to: peerId,
-                    fromName: this.myUsername,
-                }));
-                window.dispatchEvent(new CustomEvent('rtc:knockSent', { detail: { peerId } }));
-            }
-            // Impolite peer waits for the polite peer's knock to arrive.
-        }
-
-        // Cancel pending knocks for peers who left range, and clear the sender-side UI.
+        // Cancel pending knocks for peers who left range.
         for (const [peerId] of this.pendingKnocks) {
             if (!voicePeers.includes(peerId)) {
                 this.pendingKnocks.delete(peerId);
-                // Bug 3 fix: without this event the "Requesting to join" pill in Game.tsx
-                // would stay visible forever when B moves away before responding.
                 window.dispatchEvent(new CustomEvent('rtc:knockCancelled', { detail: { peerId } }));
             }
         }
@@ -298,11 +271,30 @@ export class PeerManager {
             }
         }
 
-        // Emit the current group (connected proximity peers) so the UI can show it.
+        // Emit connected group + all nearby peers so the UI can render call buttons.
         const connectedGroup = voicePeers.filter(p => this.peers.has(p));
         window.dispatchEvent(new CustomEvent('rtc:proximityGroup', {
-            detail: { members: connectedGroup },
+            detail: { members: connectedGroup, nearbyPeers: voicePeers },
         }));
+    }
+
+    // Explicit call request — called by UI buttons, not proximity automation.
+    sendKnock(peerId: string, callType: 'voice' | 'video') {
+        const mode: PeerMode = callType === 'video' ? 'video' : 'voice';
+        this.pendingKnocks.set(peerId, mode);
+        this.ws.send(JSON.stringify({
+            type: 'rtc:knock',
+            to: peerId,
+            fromName: this.myUsername,
+            callType,
+        }));
+        window.dispatchEvent(new CustomEvent('rtc:knockSent', { detail: { peerId } }));
+    }
+
+    cancelKnock(peerId: string) {
+        if (!this.pendingKnocks.has(peerId)) return;
+        this.pendingKnocks.delete(peerId);
+        window.dispatchEvent(new CustomEvent('rtc:knockCancelled', { detail: { peerId } }));
     }
 
     // Called when we receive rtc:knock from a remote peer.

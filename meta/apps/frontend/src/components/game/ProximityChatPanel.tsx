@@ -11,10 +11,17 @@ interface ProximityChatPanelProps {
     isDesktop: boolean;
     currentUserId: string;
     onTypingChange?: (isTyping: boolean) => void;
+    // Call buttons
+    nearbyPeers: { userId: string; username: string }[];
+    pendingKnockPeerIds: Set<string>;
+    onCallVoice: (peerId: string) => void;
+    onCallVideo: (peerId: string) => void;
+    onCancelCall: (peerId: string) => void;
 }
 
 export function ProximityChatPanel({
     messages, roomId, members, onSend, onClose, isDesktop, currentUserId, onTypingChange,
+    nearbyPeers, pendingKnockPeerIds, onCallVoice, onCallVideo, onCancelCall,
 }: ProximityChatPanelProps) {
     const [inputValue, setInputValue] = useState('');
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -52,6 +59,18 @@ export function ProximityChatPanel({
         boxShadow: '0 -4px 20px rgba(0,0,0,0.08)',
     };
 
+    const miniBtn: React.CSSProperties = {
+        width: 26, height: 26, borderRadius: 7, border: '1px solid #e5e7eb',
+        background: '#f9fafb', color: '#374151', fontSize: 13, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        padding: 0,
+    };
+
+    // Peers in range who haven't been knocked yet (not in pendingKnocks, not already connected)
+    const callablePeers = nearbyPeers.filter(p => !pendingKnockPeerIds.has(p.userId));
+    const pendingPeers = nearbyPeers.filter(p => pendingKnockPeerIds.has(p.userId));
+    const solo = nearbyPeers.length === 1 ? nearbyPeers[0] : null;
+
     return (
         <div style={panelStyle}>
             {/* Mobile drag handle */}
@@ -63,20 +82,72 @@ export function ProximityChatPanel({
 
             {/* Header */}
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 15 }}>💬</span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#111', flex: 1 }}>Nearby Chat</span>
+
                     {roomId && members.length === 1 && (
-                        <span style={{ fontSize: 10, fontWeight: 700, background: '#ede9fe', color: '#6d28d9', borderRadius: 999, padding: '2px 8px' }}>Private</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, background: '#ede9fe', color: '#6d28d9', borderRadius: 999, padding: '2px 8px', flexShrink: 0 }}>Private</span>
                     )}
                     {roomId && members.length >= 2 && (
-                        <span style={{ fontSize: 10, fontWeight: 700, background: '#e0f2fe', color: '#0369a1', borderRadius: 999, padding: '2px 8px' }}>Group · {members.length + 1}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, background: '#e0f2fe', color: '#0369a1', borderRadius: 999, padding: '2px 8px', flexShrink: 0 }}>Group · {members.length + 1}</span>
                     )}
+
+                    {/* ── 1-on-1 call buttons ── */}
+                    {solo && !pendingKnockPeerIds.has(solo.userId) && (
+                        <>
+                            <button
+                                onClick={() => onCallVoice(solo.userId)}
+                                title={`Voice call ${solo.username}`}
+                                style={miniBtn}
+                            >🎙️</button>
+                            <button
+                                onClick={() => onCallVideo(solo.userId)}
+                                title={`Video call ${solo.username}`}
+                                style={miniBtn}
+                            >📹</button>
+                        </>
+                    )}
+                    {solo && pendingKnockPeerIds.has(solo.userId) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                            <span style={{ fontSize: 10, color: '#6d28d9', fontWeight: 600, whiteSpace: 'nowrap' }}>Calling…</span>
+                            <button
+                                onClick={() => onCancelCall(solo.userId)}
+                                title="Cancel call"
+                                style={{ ...miniBtn, color: '#ef4444', borderColor: '#fca5a5' }}
+                            >✕</button>
+                        </div>
+                    )}
+
+                    {/* ── Group call button (2+ nearby peers) ── */}
+                    {nearbyPeers.length > 1 && (
+                        pendingPeers.length === nearbyPeers.length ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                                <span style={{ fontSize: 10, color: '#6d28d9', fontWeight: 600, whiteSpace: 'nowrap' }}>Calling…</span>
+                                {pendingPeers.map(p => (
+                                    <button
+                                        key={p.userId}
+                                        onClick={() => onCancelCall(p.userId)}
+                                        title={`Cancel call to ${p.username}`}
+                                        style={{ ...miniBtn, color: '#ef4444', borderColor: '#fca5a5', fontSize: 10 }}
+                                    >✕</button>
+                                ))}
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => callablePeers.forEach(p => onCallVoice(p.userId))}
+                                title="Call everyone nearby"
+                                style={miniBtn}
+                            >📞</button>
+                        )
+                    )}
+
                     <button
                         onClick={onClose}
-                        style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: '#f3f4f6', color: '#6b7280', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                        style={{ ...miniBtn, marginLeft: 2 }}
                     >✕</button>
                 </div>
+
                 {roomId && members.length > 0 && (
                     <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {members.map((m) => m.username).join(', ')}
