@@ -2125,24 +2125,23 @@ const ArenaInner = () => {
             case 'rtc:knock': {
                 const knockFromId = (message as { from: string; fromName: string }).from;
                 const knockFromName = (message as { from: string; fromName: string }).fromName;
-                console.log('[Game] rtc:knock received from', knockFromId, knockFromName);
+                console.log('[Game] rtc:knock received from', knockFromId, '— showing toast');
                 const pm = peerManagerRef.current;
                 if (!pm) { console.warn('[Game] rtc:knock: peerManagerRef is null'); break; }
-                const autoAccepted = pm.handleKnock(knockFromId);
-                if (!autoAccepted) {
-                    // Show knock toast — auto-dismiss after 15 s (treated as deny)
-                    const knockId = Math.random().toString(36).slice(2);
-                    setKnockRequests(prev => [...prev, { id: knockId, fromId: knockFromId, fromName: knockFromName }]);
-                    setTimeout(() => {
-                        setKnockRequests(prev => {
-                            const still = prev.find(k => k.id === knockId);
-                            // Bug 4 fix: use peerManagerRef.current, not the captured `pm` —
-                            // pm could be a stale instance if the WS reconnected in 15 s.
-                            if (still) peerManagerRef.current?.denyIncomingKnock(knockFromId);
-                            return prev.filter(k => k.id !== knockId);
-                        });
-                    }, 15000);
-                }
+                pm.handleKnock(knockFromId);
+                // Always show knock toast — receiver must explicitly Accept or Deny.
+                // Auto-dismiss after 15 s (treated as deny).
+                const knockId = Math.random().toString(36).slice(2);
+                setKnockRequests(prev => [...prev, { id: knockId, fromId: knockFromId, fromName: knockFromName }]);
+                setTimeout(() => {
+                    setKnockRequests(prev => {
+                        const still = prev.find(k => k.id === knockId);
+                        // Use peerManagerRef.current, not the captured `pm` —
+                        // pm could be a stale instance if the WS reconnected in 15 s.
+                        if (still) peerManagerRef.current?.denyIncomingKnock(knockFromId);
+                        return prev.filter(k => k.id !== knockId);
+                    });
+                }, 15000);
                 break;
             }
 

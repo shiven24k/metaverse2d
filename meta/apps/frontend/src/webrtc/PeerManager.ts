@@ -306,17 +306,9 @@ export class PeerManager {
     }
 
     // Called when we receive rtc:knock from a remote peer.
-    // Returns true if auto-accepted (no active connections), false if the caller
-    // should show a toast (peer is joining an existing active call).
-    handleKnock(fromId: string): boolean {
-        // Bug 1 fix: was checking proximityPeers intersection with peers, which missed
-        // conference/broadcast peers (in peers but not proximityPeers) and could be stale
-        // when the local user hadn't moved. peers.size > 0 is the authoritative check.
-        console.log('[PeerManager] handleKnock from', fromId, '| peers.size=', this.peers.size);
-        if (this.peers.size === 0) {
-            this.ws.send(JSON.stringify({ type: 'rtc:knock-accept', to: fromId }));
-            return true;
-        }
+    // Always returns false — the receiver must explicitly Accept or Deny via the toast.
+    handleKnock(fromId: string): false {
+        console.log('[PeerManager] handleKnock from', fromId);
         return false;
     }
 
