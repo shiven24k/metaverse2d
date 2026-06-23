@@ -50,6 +50,7 @@ export class PeerManager {
     private audioCtx: AudioContext | null = null;
     private cameraEnabled = false;
     private micEnabled = true;
+    private deafened = false;
 
     constructor(
         private ws: WebSocket,
@@ -431,6 +432,20 @@ export class PeerManager {
         this.micEnabled = enabled;
         this.localStream?.getAudioTracks().forEach(t => { t.enabled = enabled; });
     }
+
+    setDeafen(deafened: boolean) {
+        this.deafened = deafened;
+        for (const peer of this.peers.values()) {
+            peer.gainNode.gain.setTargetAtTime(
+                deafened ? 0 : 1,
+                this.audioCtx!.currentTime,
+                0.1
+            );
+        }
+        if (deafened) this.toggleMic(false);
+    }
+
+    getDeafened() { return this.deafened; }
 
     // Returns true if this peer is a pending knock sender (shows "Requesting..." UI).
     isPendingKnock(peerId: string): boolean {

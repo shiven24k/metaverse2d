@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Settings, Bell } from 'lucide-react';
@@ -185,27 +185,85 @@ function RemoteVideoTile({ peerId, stream, username }: { peerId: string; stream:
     useEffect(() => {
         const el = videoRef.current;
         if (!el) return;
-        console.log('[RemoteVideoTile] attaching stream for', peerId, stream.getTracks().map(t => `${t.kind}:${t.readyState}`));
         el.srcObject = stream;
         el.play().catch(err => console.warn('[RemoteVideoTile] play() rejected:', err));
     }, [peerId, stream]);
 
     return (
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-            <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted={false}
-                style={{ width: 160, height: 120, borderRadius: 10, objectFit: 'cover', background: '#0f0a1e', display: 'block' }}
-            />
-            {username && (
-                <span style={{ position: 'absolute', bottom: 6, left: 8, fontSize: 11, color: '#fff', fontWeight: 700, textShadow: '0 1px 3px rgba(0,0,0,0.9)', pointerEvents: 'none' }}>
-                    {username}
-                </span>
-            )}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div style={{ position: 'relative' }}>
+                <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted={false}
+                    style={{
+                        width: 140, height: 105, borderRadius: 8,
+                        objectFit: 'cover', background: '#0f0a1e', display: 'block',
+                        border: '2px solid rgba(255,255,255,0.12)',
+                    }}
+                />
+                <div style={{
+                    position: 'absolute', bottom: 4, right: 4,
+                    width: 18, height: 18, borderRadius: '50%',
+                    background: 'rgba(0,0,0,0.65)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10,
+                }}>
+                    🎙️
+                </div>
+            </div>
+            <span style={{
+                fontSize: 11, color: '#e5e7eb', fontWeight: 600,
+                maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+                {username || peerId.slice(0, 8)}
+            </span>
         </div>
     );
+}
+
+function useDraggable(defaultRight: number, defaultBottom: number) {
+    const elRef = useRef<HTMLDivElement>(null);
+    const posRef = useRef({ x: 0, y: 0 });
+
+    useLayoutEffect(() => {
+        const el = elRef.current;
+        if (!el) return;
+        const x = Math.max(0, window.innerWidth - el.offsetWidth - defaultRight);
+        const y = Math.max(0, window.innerHeight - el.offsetHeight - defaultBottom);
+        posRef.current = { x, y };
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        const el = elRef.current;
+        if (!el) return;
+        e.preventDefault();
+        const rect = el.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left;
+        const offsetY = e.clientY - rect.top;
+        el.style.cursor = 'grabbing';
+
+        const onMove = (ev: PointerEvent) => {
+            const x = Math.max(0, Math.min(ev.clientX - offsetX, window.innerWidth - el.offsetWidth));
+            const y = Math.max(0, Math.min(ev.clientY - offsetY, window.innerHeight - el.offsetHeight));
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            posRef.current = { x, y };
+        };
+        const onUp = () => {
+            el.style.cursor = 'grab';
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+    }, []);
+
+    return { elRef, onPointerDown };
 }
 
 const ArenaInner = () => {
@@ -243,6 +301,7 @@ const ArenaInner = () => {
     const localVideoStreamRef = useRef<MediaStream | null>(null);
     const [micEnabled, setMicEnabled] = useState(true);
     const [cameraEnabled, setCameraEnabled] = useState(false);
+    const [deafened, setDeafened] = useState(false);
     const [connectedPeers, setConnectedPeers] = useState(0);
     const [cameraError, setCameraError] = useState<string | null>(null);
     // Knock-to-join: incoming knock requests (other user wants to join our call)
@@ -255,6 +314,7 @@ const ArenaInner = () => {
     // Instead, keep the Map in a ref and drive re-renders with a plain string[] of keys.
     const remoteStreamsRef = useRef(new Map<string, MediaStream>());
     const [remotePeerIds, setRemotePeerIds] = useState<string[]>([]);
+    const { elRef: videoPanelRef, onPointerDown: onVideoPointerDown } = useDraggable(16, 80);
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState('');
 
@@ -556,6 +616,7 @@ const ArenaInner = () => {
     useEffect(() => {
         const onRemoteVideo = (e: Event) => {
             const { peerId, stream } = (e as CustomEvent<{ peerId: string; stream: MediaStream }>).detail;
+            if (peerId === currentUserRef.current?.userId) return;
             remoteStreamsRef.current.set(peerId, stream);
             setRemotePeerIds([...remoteStreamsRef.current.keys()]);
         };
@@ -4665,41 +4726,101 @@ const ArenaInner = () => {
                     </div>
                 )}
 
-                {/* Remote peer video tiles — top-right HUD */}
-                {remotePeerIds.length > 0 && (
-                    <div style={{
-                        position: 'fixed',
-                        top: 16,
-                        right: 16,
-                        zIndex: 4000,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 8,
-                        pointerEvents: 'none',
-                    }}>
-                        {remotePeerIds.map(peerId => {
-                            const stream = remoteStreamsRef.current.get(peerId);
-                            if (!stream) return null;
-                            return (
-                                <RemoteVideoTile
-                                    key={peerId}
-                                    peerId={peerId}
-                                    stream={stream}
-                                    username={usersRef.current.get(peerId)?.username}
-                                />
-                            );
-                        })}
-                    </div>
-                )}
+                {/* Floating video panel — draggable, Discord-style */}
+                {(remotePeerIds.length > 0 || cameraEnabled) && (() => {
+                    const totalTiles = remotePeerIds.length + (cameraEnabled ? 1 : 0);
+                    const gridCols = totalTiles <= 2 ? 1 : 2;
+                    return (
+                        <div
+                            ref={videoPanelRef}
+                            onPointerDown={onVideoPointerDown}
+                            style={{
+                                position: 'fixed',
+                                zIndex: 4001,
+                                background: 'rgba(10,6,20,0.92)',
+                                border: '1px solid rgba(124,58,237,0.3)',
+                                borderRadius: 12,
+                                padding: 8,
+                                cursor: 'grab',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+                                userSelect: 'none',
+                            }}
+                        >
+                            <div style={{
+                                height: 4, width: 32,
+                                background: 'rgba(255,255,255,0.12)',
+                                borderRadius: 2,
+                                margin: '0 auto 6px',
+                            }} />
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: `repeat(${gridCols}, 140px)`,
+                                gap: 6,
+                                maxHeight: '60vh',
+                                overflowY: 'auto',
+                            }}>
+                                {cameraEnabled && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                        <div style={{ position: 'relative' }}>
+                                            <video
+                                                ref={selfVideoRef}
+                                                autoPlay
+                                                muted
+                                                playsInline
+                                                style={{
+                                                    width: 140, height: 105, borderRadius: 8,
+                                                    objectFit: 'cover', background: '#0f0a1e', display: 'block',
+                                                    border: '2px solid rgba(124,58,237,0.35)',
+                                                    opacity: 0.88,
+                                                    transform: 'scaleX(-1)',
+                                                }}
+                                            />
+                                            <div style={{
+                                                position: 'absolute', bottom: 4, right: 4,
+                                                width: 18, height: 18, borderRadius: '50%',
+                                                background: 'rgba(0,0,0,0.65)',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: 10,
+                                            }}>
+                                                {micEnabled ? '🎙️' : '🔇'}
+                                            </div>
+                                        </div>
+                                        <span style={{ fontSize: 11, color: '#a78bfa', fontWeight: 600 }}>You</span>
+                                    </div>
+                                )}
+                                {remotePeerIds.map(peerId => {
+                                    const stream = remoteStreamsRef.current.get(peerId);
+                                    if (!stream) return null;
+                                    return (
+                                        <RemoteVideoTile
+                                            key={peerId}
+                                            peerId={peerId}
+                                            stream={stream}
+                                            username={usersRef.current.get(peerId)?.username}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 <VoiceToolbar
                     micEnabled={micEnabled}
                     cameraEnabled={cameraEnabled}
+                    deafened={deafened}
                     connectedPeers={connectedPeers}
                     onToggleMic={() => {
                         const next = !micEnabled;
                         setMicEnabled(next);
                         peerManagerRef.current?.toggleMic(next);
+                    }}
+                    onToggleDeafen={() => {
+                        const next = !deafened;
+                        setDeafened(next);
+                        peerManagerRef.current?.setDeafen(next);
+                        if (next) setMicEnabled(false);
                     }}
                     onToggleCamera={async () => {
                         const next = !cameraEnabled;
@@ -4724,7 +4845,6 @@ const ArenaInner = () => {
                                     ? 'Camera permission denied'
                                     : 'Camera not supported on this device';
                                 setCameraError(msg);
-                                // Auto-dismiss after 5 s
                                 setTimeout(() => setCameraError(null), 5000);
                             }
                         } else {
@@ -4737,30 +4857,25 @@ const ArenaInner = () => {
                             setCameraEnabled(false);
                         }
                     }}
+                    onLeaveCall={() => {
+                        const pm = peerManagerRef.current;
+                        if (!pm) return;
+                        pm.destroy();
+                        localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
+                        localVideoStreamRef.current = null;
+                        setCameraEnabled(false);
+                        setMicEnabled(true);
+                        setDeafened(false);
+                        setConnectedPeers(0);
+                        // Re-init so proximity calls work again without a page refresh
+                        const user = currentUserRef.current;
+                        if (user && wsRef.current) {
+                            const newPm = new PeerManager(wsRef.current, user.userId, user.username);
+                            newPm.init().catch(() => {});
+                            peerManagerRef.current = newPm;
+                        }
+                    }}
                 />
-
-                {/* Self-view camera preview */}
-                {cameraEnabled && (
-                    <video
-                        ref={selfVideoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        style={{
-                            position: 'fixed',
-                            bottom: 120,
-                            right: 16,
-                            width: 160,
-                            height: 120,
-                            borderRadius: 10,
-                            border: '2px solid rgba(124,58,237,0.5)',
-                            objectFit: 'cover',
-                            zIndex: 4000,
-                            background: '#0f0a1e',
-                            transform: 'scaleX(-1)',
-                        }}
-                    />
-                )}
 
                 <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes notifSlideIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }`}</style>
         </div>
