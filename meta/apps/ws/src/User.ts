@@ -10,6 +10,9 @@ import { randomUUID } from "crypto";
 // Conference room state — in-memory, ephemeral
 const conferenceRooms = new Map<string, Set<string>>(); // roomId -> Set<userId>
 
+// Broadcast zone state — in-memory, ephemeral
+const broadcastZones = new Map<string, { speakerId: string | null; listeners: Set<string> }>();
+
 function joinRoom(userId: string, roomId: string): string[] {
     if (!conferenceRooms.has(roomId)) conferenceRooms.set(roomId, new Set());
     const room = conferenceRooms.get(roomId)!;
@@ -68,6 +71,8 @@ export class User {
     public currentRoomKey: string | null = null;
     public currentEmote: string | null = null;
     private currentConferenceRoomIds: Set<string> = new Set();
+    private currentBroadcastZoneIds: Set<string> = new Set();
+    private broadcastSpeakerInZones: Set<string> = new Set();
     public lastActivityAt: number = Date.now();
     private ws: WebSocket;
     private lastMove: Promise<void> = Promise.resolve();
@@ -412,6 +417,65 @@ export class User {
                     break;
                 }
 
+                case 'rtc:knock': {
+                    if (!this.spaceId || !this.userId) break;
+                    const knockTarget = parsedData.to;
+                    const knockSpaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                    const knockTargetUser = knockSpaceUsers.find(u => (u.userId ?? u.id) === knockTarget);
+                    if (!knockTargetUser) break;
+                    knockTargetUser.send({ type: 'rtc:knock', from: this.userId, fromName: this.username });
+                    break;
+                }
+
+                case 'rtc:knock-accept':
+                case 'rtc:knock-deny': {
+                    if (!this.spaceId || !this.userId) break;
+                    const knockRespTarget = parsedData.to;
+                    const knockRespSpaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                    const knockRespTargetUser = knockRespSpaceUsers.find(u => (u.userId ?? u.id) === knockRespTarget);
+                    if (!knockRespTargetUser) break;
+                    knockRespTargetUser.send({ type: parsedData.type, from: this.userId });
+                    break;
+                }
+
+                case 'rtc:broadcast-zone-join': {
+                    if (!this.userId || !this.spaceId) break;
+                    const { zoneId, isSpeaker } = parsedData;
+                    if (!broadcastZones.has(zoneId)) {
+                        broadcastZones.set(zoneId, { speakerId: null, listeners: new Set() });
+                    }
+                    const zone = broadcastZones.get(zoneId)!;
+                    const bzSpaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+
+                    if (isSpeaker) {
+                        zone.speakerId = this.userId;
+                        this.broadcastSpeakerInZones.add(zoneId);
+                        const listenerIds = [...zone.listeners];
+                        this.send({ type: 'rtc:broadcast-zone-state', zoneId, speakerId: this.userId, listenerIds });
+                        for (const listenerId of listenerIds) {
+                            const listenerUser = bzSpaceUsers.find(u => (u.userId ?? u.id) === listenerId);
+                            listenerUser?.send({ type: 'rtc:broadcast-zone-state', zoneId, speakerId: this.userId, listenerIds });
+                        }
+                    } else {
+                        zone.listeners.add(this.userId);
+                        this.currentBroadcastZoneIds.add(zoneId);
+                        const listenerIds = [...zone.listeners];
+                        this.send({ type: 'rtc:broadcast-zone-state', zoneId, speakerId: zone.speakerId, listenerIds });
+                        if (zone.speakerId) {
+                            const speakerUser = bzSpaceUsers.find(u => (u.userId ?? u.id) === zone.speakerId);
+                            speakerUser?.send({ type: 'rtc:broadcast-zone-state', zoneId, speakerId: zone.speakerId, listenerIds });
+                        }
+                    }
+                    break;
+                }
+
+                case 'rtc:broadcast-zone-leave': {
+                    if (!this.userId || !this.spaceId) break;
+                    const { zoneId: leaveZoneId } = parsedData;
+                    this.leaveBroadcastZone(leaveZoneId);
+                    break;
+                }
+
                 case "ping":
                     this.send({ type: "pong" });
                     break;
@@ -545,6 +609,33 @@ export class User {
         this.send({ type: "movement-rejected", payload: { x: this.x, y: this.y } });
     }
 
+    private leaveBroadcastZone(zoneId: string) {
+        if (!this.userId || !this.spaceId) return;
+        const zone = broadcastZones.get(zoneId);
+        if (!zone) return;
+        const bzSpaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+
+        if (zone.speakerId === this.userId) {
+            zone.speakerId = null;
+            this.broadcastSpeakerInZones.delete(zoneId);
+            const listenerIds = [...zone.listeners];
+            for (const listenerId of listenerIds) {
+                const listenerUser = bzSpaceUsers.find(u => (u.userId ?? u.id) === listenerId);
+                listenerUser?.send({ type: 'rtc:broadcast-zone-state', zoneId, speakerId: null, listenerIds });
+            }
+        } else {
+            zone.listeners.delete(this.userId);
+            this.currentBroadcastZoneIds.delete(zoneId);
+            const listenerIds = [...zone.listeners];
+            if (zone.speakerId) {
+                const speakerUser = bzSpaceUsers.find(u => (u.userId ?? u.id) === zone.speakerId);
+                speakerUser?.send({ type: 'rtc:broadcast-zone-state', zoneId, speakerId: zone.speakerId, listenerIds });
+            }
+        }
+
+        if (!zone.speakerId && zone.listeners.size === 0) broadcastZones.delete(zoneId);
+    }
+
     private broadcastRoomUpdates(spaceId: string): void {
         // Fire-and-forget the async work so callers don't need to await
         this._broadcastRoomUpdatesAsync(spaceId).catch(() => {});
@@ -615,6 +706,11 @@ export class User {
                 if (u.id !== this.id) {
                     u.send({ type: 'rtc:peer-left', peerId: this.userId! });
                 }
+            }
+
+            // Clean up broadcast zones
+            for (const zoneId of [...this.broadcastSpeakerInZones, ...this.currentBroadcastZoneIds]) {
+                this.leaveBroadcastZone(zoneId);
             }
         }
 

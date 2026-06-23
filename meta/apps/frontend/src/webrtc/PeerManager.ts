@@ -6,12 +6,21 @@ interface PeerState {
     connection: RTCPeerConnection;
     mode: PeerMode;
     gainNode: GainNode;
+    polite: boolean;
+    makingOffer: boolean;
 }
 
 export class PeerManager {
     private peers = new Map<string, PeerState>();
     private conferencePeers = new Set<string>();
     private proximityPeers = new Set<string>();
+    private broadcastPeers = new Set<string>();
+    private broadcastMode: 'speaker' | 'listener' | null = null;
+    private broadcastSpeakerId: string | null = null;
+    private currentBroadcastZoneId: string | null = null;
+    // Knocks sent by this peer, waiting for a response (peerId → desired mode)
+    private pendingKnocks = new Map<string, PeerMode>();
+
     private iceServers: RTCIceServer[] = [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun.relay.metered.ca:80' },
@@ -42,7 +51,11 @@ export class PeerManager {
     private cameraEnabled = false;
     private micEnabled = true;
 
-    constructor(private ws: WebSocket) {}
+    constructor(
+        private ws: WebSocket,
+        private myUserId: string,
+        private myUsername: string,
+    ) {}
 
     async init() {
         try {
@@ -65,22 +78,24 @@ export class PeerManager {
         }
     }
 
-    async connect(peerId: string, mode: PeerMode = 'voice', isInitiator = true) {
+    // receiveOnly=true is used for broadcast listeners: connection is created but no
+    // local tracks are added, so only the speaker's tracks flow in.
+    async connect(peerId: string, mode: PeerMode = 'voice', _isInitiator = true, receiveOnly = false) {
         if (this.peers.has(peerId)) return;
         if (!this.localStream || !this.audioCtx) return;
 
         const pc = new RTCPeerConnection({ iceServers: this.iceServers });
-
-        // Add audio tracks
-        this.localStream.getAudioTracks().forEach(t => pc.addTrack(t, this.localStream!));
-
-        // Add video tracks if camera is already on
-        if (this.localVideoStream) {
-            this.localVideoStream.getVideoTracks().forEach(t => pc.addTrack(t, this.localVideoStream!));
-        }
+        // The peer with the lexicographically smaller userId is the polite peer — it
+        // rolls back and defers when both sides send offers simultaneously.
+        const polite = this.myUserId < peerId;
 
         const gainNode = this.audioCtx.createGain();
         gainNode.connect(this.audioCtx.destination);
+
+        const peer: PeerState = { connection: pc, mode, gainNode, polite, makingOffer: false };
+
+        // Register early so a concurrent handleOffer doesn't create a duplicate PC.
+        this.peers.set(peerId, peer);
 
         pc.ontrack = (e) => {
             console.log('[PeerManager] ontrack from', peerId, '| kind:', e.track.kind, '| readyState:', e.track.readyState, '| streams:', e.streams.length);
@@ -108,50 +123,60 @@ export class PeerManager {
             if (pc.connectionState === 'failed') this.disconnect(peerId);
         };
 
-        this.peers.set(peerId, { connection: pc, mode, gainNode });
-
-        // onnegotiationneeded handles renegotiation when tracks are added later (e.g. camera on).
-        // We use a flag so it doesn't fire during the initial setup below.
-        let readyForRenegotiation = false;
+        // Perfect negotiation: this handler fires whenever renegotiation is needed
+        // (e.g. after addTrack). The makingOffer flag lets handleOffer detect collisions.
         pc.onnegotiationneeded = async () => {
-            if (!readyForRenegotiation) return;
-            if (pc.signalingState !== 'stable') return;
             try {
+                peer.makingOffer = true;
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
                 this.ws.send(JSON.stringify({ type: 'rtc:offer', to: peerId, sdp: offer }));
             } catch (err) {
-                // Likely a hardware encoder failure (SIGILL path, AVX/SSE4 unsupported).
-                // Disconnect cleanly so the broken connection doesn't hang.
-                console.warn('[PeerManager] renegotiation failed, disconnecting peer:', peerId, err);
-                this.disconnect(peerId);
+                console.warn('[PeerManager] onnegotiationneeded failed:', peerId, err);
+            } finally {
+                peer.makingOffer = false;
             }
         };
 
-        if (isInitiator) {
-            try {
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                this.ws.send(JSON.stringify({ type: 'rtc:offer', to: peerId, sdp: offer }));
-            } catch (err) {
-                console.warn('[PeerManager] initial offer failed, disconnecting peer:', peerId, err);
-                this.disconnect(peerId);
-                return;
+        if (!receiveOnly) {
+            // Adding tracks triggers onnegotiationneeded asynchronously.
+            // For the initiator this sends the first offer; for the non-initiator it
+            // may trigger a second offer later (handled by perfect negotiation).
+            this.localStream.getAudioTracks().forEach(t => pc.addTrack(t, this.localStream!));
+            if (this.localVideoStream) {
+                this.localVideoStream.getVideoTracks().forEach(t => pc.addTrack(t, this.localVideoStream!));
             }
         }
-
-        // Allow renegotiation after initial setup is done
-        readyForRenegotiation = true;
+        // receiveOnly (broadcast listener): no local tracks added; speaker sends the offer.
     }
 
+    // Perfect negotiation offer handler — handles collision via polite/impolite roles.
     async handleOffer(fromId: string, sdp: RTCSessionDescriptionInit) {
+        // If this offer comes from the broadcast speaker and we're a listener, don't add
+        // local tracks (receive-only connection).
+        const receiveOnly = this.broadcastMode === 'listener' && fromId === this.broadcastSpeakerId;
+
         if (!this.peers.has(fromId)) {
-            await this.connect(fromId, 'voice', false);
+            await this.connect(fromId, 'voice', false, receiveOnly);
         }
         const peer = this.peers.get(fromId);
         if (!peer) return;
+
+        const offerCollision = peer.makingOffer || peer.connection.signalingState !== 'stable';
+        // Impolite peer ignores colliding offers; polite peer rolls back and accepts.
+        const ignoreOffer = !peer.polite && offerCollision;
+        if (ignoreOffer) return;
+
         try {
-            await peer.connection.setRemoteDescription(sdp);
+            if (offerCollision) {
+                // Polite peer: rollback own pending offer, then accept the remote one.
+                await Promise.all([
+                    peer.connection.setLocalDescription({ type: 'rollback' }),
+                    peer.connection.setRemoteDescription(sdp),
+                ]);
+            } else {
+                await peer.connection.setRemoteDescription(sdp);
+            }
             const answer = await peer.connection.createAnswer();
             await peer.connection.setLocalDescription(answer);
             this.ws.send(JSON.stringify({ type: 'rtc:answer', to: fromId, sdp: answer }));
@@ -188,12 +213,10 @@ export class PeerManager {
         if (!peer) return;
         peer.connection.close();
         this.peers.delete(peerId);
+        this.pendingKnocks.delete(peerId);
         window.dispatchEvent(new CustomEvent('rtc:peerLeft', { detail: { peerId } }));
     }
 
-    // Called when camera is turned on — adds video track to all active connections.
-    // Each connection's onnegotiationneeded fires → new offer → answer cycle.
-    // Throws if the video track itself cannot be obtained (caller should surface this to the user).
     async enableCamera(videoStream: MediaStream) {
         const videoTrack = videoStream.getVideoTracks()[0];
         if (!videoTrack) throw new Error('No video track in stream');
@@ -204,17 +227,14 @@ export class PeerManager {
         for (const [peerId, peer] of this.peers.entries()) {
             try {
                 peer.connection.addTrack(videoTrack, videoStream);
-                // onnegotiationneeded fires automatically after addTrack
+                // onnegotiationneeded fires automatically — perfect negotiation handles any collision
             } catch (err) {
-                // addTrack can fail if the codec/encoder path is unsupported (SIGILL risk).
-                // Disconnect this peer cleanly rather than leaving the connection broken.
                 console.warn('[PeerManager] addTrack failed for peer', peerId, err);
                 this.disconnect(peerId);
             }
         }
     }
 
-    // Called when camera is turned off — removes video senders from all connections.
     disableCamera() {
         this.cameraEnabled = false;
         this.localVideoStream?.getTracks().forEach(t => t.stop());
@@ -226,22 +246,93 @@ export class PeerManager {
         }
     }
 
+    // Called every animation frame with the current proximity peer lists.
+    // Uses knock-to-join: the polite peer (smaller userId) sends rtc:knock; the
+    // receiver auto-accepts if they have no active proximity connections, otherwise
+    // shows a toast. On accept, the knocker calls connect() normally.
     setProximity(voicePeers: string[], videoPeers: string[]) {
+        const prevProximityPeers = this.proximityPeers;
         this.proximityPeers = new Set(voicePeers);
 
         for (const peerId of voicePeers) {
-            if (!this.peers.has(peerId)) {
-                const mode = videoPeers.includes(peerId) && this.cameraEnabled ? 'video' : 'voice';
-                // Defer so RTCPeerConnection setup doesn't block the animation frame
-                setTimeout(() => this.connect(peerId, mode, true), 0);
+            if (this.peers.has(peerId) || this.pendingKnocks.has(peerId)) continue;
+
+            const justEnteredRange = !prevProximityPeers.has(peerId);
+            if (!justEnteredRange) continue;
+
+            const mode: PeerMode = videoPeers.includes(peerId) && this.cameraEnabled ? 'video' : 'voice';
+
+            // Only the polite peer (smaller userId) initiates the knock to avoid
+            // both sides knocking simultaneously.
+            if (this.myUserId < peerId) {
+                this.pendingKnocks.set(peerId, mode);
+                this.ws.send(JSON.stringify({
+                    type: 'rtc:knock',
+                    to: peerId,
+                    fromName: this.myUsername,
+                }));
+                window.dispatchEvent(new CustomEvent('rtc:knockSent', { detail: { peerId } }));
             }
+            // Impolite peer waits for the polite peer's knock to arrive.
         }
 
+        // Drop pending knocks for peers who left range.
+        for (const [peerId] of this.pendingKnocks) {
+            if (!voicePeers.includes(peerId)) this.pendingKnocks.delete(peerId);
+        }
+
+        // Disconnect peers no longer in any active set.
         for (const peerId of [...this.peers.keys()]) {
-            if (!voicePeers.includes(peerId) && !this.conferencePeers.has(peerId)) {
+            if (
+                !voicePeers.includes(peerId) &&
+                !this.conferencePeers.has(peerId) &&
+                !this.broadcastPeers.has(peerId)
+            ) {
                 this.disconnect(peerId);
             }
         }
+
+        // Emit the current group (connected proximity peers) so the UI can show it.
+        const connectedGroup = voicePeers.filter(p => this.peers.has(p));
+        window.dispatchEvent(new CustomEvent('rtc:proximityGroup', {
+            detail: { members: connectedGroup },
+        }));
+    }
+
+    // Called when we receive rtc:knock from a remote peer.
+    // Returns true if auto-accepted (no active proximity peers), false if the caller
+    // should show a toast (peer is joining an existing active call).
+    handleKnock(fromId: string): boolean {
+        // Auto-accept when we have no active proximity connections (first connection is seamless).
+        const hasActiveProximityConnections = [...this.proximityPeers].some(p => this.peers.has(p));
+        if (!hasActiveProximityConnections) {
+            this.ws.send(JSON.stringify({ type: 'rtc:knock-accept', to: fromId }));
+            return true;
+        }
+        return false;
+    }
+
+    acceptIncomingKnock(fromId: string) {
+        this.ws.send(JSON.stringify({ type: 'rtc:knock-accept', to: fromId }));
+    }
+
+    denyIncomingKnock(fromId: string) {
+        this.ws.send(JSON.stringify({ type: 'rtc:knock-deny', to: fromId }));
+    }
+
+    // Called when the peer we knocked accepted us.
+    handleKnockAccepted(fromId: string) {
+        const mode = this.pendingKnocks.get(fromId);
+        if (!mode) return;
+        this.pendingKnocks.delete(fromId);
+        // Defer so the accept message's WS callback stack clears first.
+        setTimeout(() => this.connect(fromId, mode, true), 0);
+    }
+
+    // Called when the peer we knocked denied us.
+    handleKnockDenied(fromId: string) {
+        this.pendingKnocks.delete(fromId);
+        window.dispatchEvent(new CustomEvent('rtc:knockDenied', { detail: { peerId: fromId } }));
     }
 
     setVolume(peerId: string, distance: number) {
@@ -258,14 +349,87 @@ export class PeerManager {
 
     leaveConference() {
         for (const peerId of this.conferencePeers) {
-            if (!this.proximityPeers.has(peerId)) this.disconnect(peerId);
+            if (!this.proximityPeers.has(peerId) && !this.broadcastPeers.has(peerId)) {
+                this.disconnect(peerId);
+            }
         }
         this.conferencePeers.clear();
+    }
+
+    // Enters a broadcast zone.
+    // Speaker connects to all current listeners; listener waits for the speaker's offer
+    // (receive-only connection created proactively so handleOffer skips addTrack).
+    enterBroadcastZone(zoneId: string, isSpeaker: boolean) {
+        this.broadcastMode = isSpeaker ? 'speaker' : 'listener';
+        this.currentBroadcastZoneId = zoneId;
+        this.ws.send(JSON.stringify({ type: 'rtc:broadcast-zone-join', zoneId, isSpeaker }));
+    }
+
+    // Called when the server sends back the zone state (on join, or when membership changes).
+    handleBroadcastZoneState(_zoneId: string, speakerId: string | null, listenerIds: string[]) {
+        if (this.broadcastMode === 'speaker') {
+            // Connect to any new listeners.
+            for (const listenerId of listenerIds) {
+                if (!this.broadcastPeers.has(listenerId)) {
+                    this.broadcastPeers.add(listenerId);
+                    setTimeout(() => this.connect(listenerId, 'video', true, false), 0);
+                }
+            }
+            // Disconnect listeners who left the zone.
+            for (const peerId of [...this.broadcastPeers]) {
+                if (!listenerIds.includes(peerId)) {
+                    this.broadcastPeers.delete(peerId);
+                    if (!this.proximityPeers.has(peerId) && !this.conferencePeers.has(peerId)) {
+                        this.disconnect(peerId);
+                    }
+                }
+            }
+        } else if (this.broadcastMode === 'listener') {
+            if (speakerId && speakerId !== this.broadcastSpeakerId) {
+                this.broadcastSpeakerId = speakerId;
+                if (!this.broadcastPeers.has(speakerId)) {
+                    this.broadcastPeers.add(speakerId);
+                    // Pre-create receive-only connection so handleOffer skips addTrack.
+                    setTimeout(() => this.connect(speakerId, 'video', false, true), 0);
+                }
+            } else if (!speakerId && this.broadcastSpeakerId) {
+                const oldSpeakerId = this.broadcastSpeakerId;
+                this.broadcastSpeakerId = null;
+                this.broadcastPeers.delete(oldSpeakerId);
+                if (!this.proximityPeers.has(oldSpeakerId) && !this.conferencePeers.has(oldSpeakerId)) {
+                    this.disconnect(oldSpeakerId);
+                }
+            }
+        }
+    }
+
+    leaveBroadcastZone() {
+        if (!this.currentBroadcastZoneId) return;
+        this.ws.send(JSON.stringify({ type: 'rtc:broadcast-zone-leave', zoneId: this.currentBroadcastZoneId }));
+        for (const peerId of [...this.broadcastPeers]) {
+            this.broadcastPeers.delete(peerId);
+            if (!this.proximityPeers.has(peerId) && !this.conferencePeers.has(peerId)) {
+                this.disconnect(peerId);
+            }
+        }
+        this.broadcastMode = null;
+        this.broadcastSpeakerId = null;
+        this.currentBroadcastZoneId = null;
     }
 
     toggleMic(enabled: boolean) {
         this.micEnabled = enabled;
         this.localStream?.getAudioTracks().forEach(t => { t.enabled = enabled; });
+    }
+
+    // Returns true if this peer is a pending knock sender (shows "Requesting..." UI).
+    isPendingKnock(peerId: string): boolean {
+        return this.pendingKnocks.has(peerId);
+    }
+
+    // Number of proximity peers that have an active connection (for auto-accept logic).
+    getProximityConnectedCount(): number {
+        return [...this.proximityPeers].filter(p => this.peers.has(p)).length;
     }
 
     getMicEnabled() { return this.micEnabled; }

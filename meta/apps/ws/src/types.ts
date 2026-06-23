@@ -102,6 +102,33 @@ type RtcLeaveRoomIncoming = {
     roomId: string;
 };
 
+type RtcKnockIncoming = {
+    type: 'rtc:knock';
+    to: string;
+    fromName: string;
+};
+
+type RtcKnockAcceptIncoming = {
+    type: 'rtc:knock-accept';
+    to: string;
+};
+
+type RtcKnockDenyIncoming = {
+    type: 'rtc:knock-deny';
+    to: string;
+};
+
+type RtcBroadcastZoneJoinIncoming = {
+    type: 'rtc:broadcast-zone-join';
+    zoneId: string;
+    isSpeaker: boolean;
+};
+
+type RtcBroadcastZoneLeaveIncoming = {
+    type: 'rtc:broadcast-zone-leave';
+    zoneId: string;
+};
+
 export type IncomingMessage =
     | JoinMessage
     | MoveMessage
@@ -122,7 +149,12 @@ export type IncomingMessage =
     | RtcAnswerIncoming
     | RtcIceIncoming
     | RtcJoinRoomIncoming
-    | RtcLeaveRoomIncoming;
+    | RtcLeaveRoomIncoming
+    | RtcKnockIncoming
+    | RtcKnockAcceptIncoming
+    | RtcKnockDenyIncoming
+    | RtcBroadcastZoneJoinIncoming
+    | RtcBroadcastZoneLeaveIncoming;
 
 // ─── Outgoing messages (server → client) ─────────────────────────────────────
 
@@ -269,6 +301,24 @@ type RtcRelayOutgoing = {
     candidate?: unknown;
 };
 
+type RtcKnockRelayOutgoing = {
+    type: 'rtc:knock';
+    from: string;
+    fromName: string;
+};
+
+type RtcKnockResponseRelayOutgoing = {
+    type: 'rtc:knock-accept' | 'rtc:knock-deny';
+    from: string;
+};
+
+type RtcBroadcastZoneStateOutgoing = {
+    type: 'rtc:broadcast-zone-state';
+    zoneId: string;
+    speakerId: string | null;
+    listenerIds: string[];
+};
+
 type RtcRoomPeersOutgoing = {
     type: 'rtc:room-peers';
     roomId: string;
@@ -302,4 +352,7 @@ export type OutgoingMessage =
     | EmoteBroadcastMessage
     | RtcRelayOutgoing
     | RtcRoomPeersOutgoing
-    | RtcPeerLeftOutgoing;
+    | RtcPeerLeftOutgoing
+    | RtcKnockRelayOutgoing
+    | RtcKnockResponseRelayOutgoing
+    | RtcBroadcastZoneStateOutgoing;

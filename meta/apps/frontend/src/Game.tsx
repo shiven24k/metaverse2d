@@ -238,12 +238,18 @@ const ArenaInner = () => {
     const usersRef = useRef(new Map<string, { x: number; y: number; userId: string; username: string; avatarId?: string }>());
     const peerManagerRef = useRef<PeerManager | null>(null);
     const currentConferenceRoomRef = useRef<string | null>(null);
+    const currentBroadcastZoneRef = useRef<string | null>(null);
     const selfVideoRef = useRef<HTMLVideoElement | null>(null);
     const localVideoStreamRef = useRef<MediaStream | null>(null);
     const [micEnabled, setMicEnabled] = useState(true);
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [connectedPeers, setConnectedPeers] = useState(0);
     const [cameraError, setCameraError] = useState<string | null>(null);
+    // Knock-to-join: incoming knock requests (other user wants to join our call)
+    const [knockRequests, setKnockRequests] = useState<{ id: string; fromId: string; fromName: string }[]>([]);
+    // Proximity group: userIds of all currently connected proximity peers
+    const [proximityGroup, setProximityGroup] = useState<string[]>([]);
+    const [knockPendingPeerIds, setKnockPendingPeerIds] = useState<Set<string>>(new Set());
     // Live MediaStream objects must NOT live in React state — React can proxy/clone
     // objects during reconciliation, breaking the live stream reference.
     // Instead, keep the Map in a ref and drive re-renders with a plain string[] of keys.
@@ -271,6 +277,7 @@ const ArenaInner = () => {
     const [gbMessage, setGbMessage] = useState('');
     const [gbLoading, setGbLoading] = useState(false);
     const [spaceOwnerId, setSpaceOwnerId] = useState('');
+    const spaceOwnerIdRef = useRef('');
     const [showBoard, setShowBoard] = useState(false);
     const [boardWsFlag, setBoardWsFlag] = useState(0);
     const [emotes, setEmotes] = useState<EmoteBubble[]>([]);
@@ -557,13 +564,32 @@ const ArenaInner = () => {
             remoteStreamsRef.current.delete(peerId);
             setRemotePeerIds([...remoteStreamsRef.current.keys()]);
         };
+        const onProximityGroup = (e: Event) => {
+            const { members } = (e as CustomEvent<{ members: string[] }>).detail;
+            setProximityGroup(members);
+        };
+        const onKnockSent = (e: Event) => {
+            const { peerId } = (e as CustomEvent<{ peerId: string }>).detail;
+            setKnockPendingPeerIds(prev => new Set([...prev, peerId]));
+        };
+        const onKnockDenied = (e: Event) => {
+            const { peerId } = (e as CustomEvent<{ peerId: string }>).detail;
+            setKnockPendingPeerIds(prev => { const next = new Set(prev); next.delete(peerId); return next; });
+            addToast('Call request denied', 'warning');
+        };
         window.addEventListener('rtc:remoteVideo', onRemoteVideo);
         window.addEventListener('rtc:peerLeft', onPeerLeft);
+        window.addEventListener('rtc:proximityGroup', onProximityGroup);
+        window.addEventListener('rtc:knockSent', onKnockSent);
+        window.addEventListener('rtc:knockDenied', onKnockDenied);
         return () => {
             window.removeEventListener('rtc:remoteVideo', onRemoteVideo);
             window.removeEventListener('rtc:peerLeft', onPeerLeft);
+            window.removeEventListener('rtc:proximityGroup', onProximityGroup);
+            window.removeEventListener('rtc:knockSent', onKnockSent);
+            window.removeEventListener('rtc:knockDenied', onKnockDenied);
         };
-    }, []);
+    }, [addToast]);
 
     // Only tiles (spaceElements) and furniture (placedItems) with blocking=true block movement.
     // Other players, NPCs, and temporary objects are intentionally excluded.
@@ -629,6 +655,34 @@ const ArenaInner = () => {
 
     const checkConferenceRoomRef = useRef(checkConferenceRoom);
     useEffect(() => { checkConferenceRoomRef.current = checkConferenceRoom; }, [checkConferenceRoom]);
+
+    const checkBroadcastZone = useCallback((myPos: { x: number; y: number }) => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const zoneItem = placedItemsRef.current.find(p => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const zoneId = (p.metadata as any)?.broadcastZoneId as string | undefined;
+            if (!zoneId) return false;
+            return myPos.x >= p.x && myPos.x < p.x + p.item.width &&
+                   myPos.y >= p.y && myPos.y < p.y + p.item.height;
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const newZoneId = zoneItem ? (zoneItem.metadata as any).broadcastZoneId as string : null;
+        if (newZoneId !== currentBroadcastZoneRef.current) {
+            if (currentBroadcastZoneRef.current) {
+                peerManagerRef.current?.leaveBroadcastZone();
+            }
+            if (newZoneId) {
+                // Space owner is the speaker; everyone else is a listener
+                const isSpeaker = spaceOwnerIdRef.current === currentUserRef.current?.userId;
+                peerManagerRef.current?.enterBroadcastZone(newZoneId, isSpeaker);
+            }
+            currentBroadcastZoneRef.current = newZoneId;
+        }
+    }, []);
+
+    const checkBroadcastZoneRef = useRef(checkBroadcastZone);
+    useEffect(() => { checkBroadcastZoneRef.current = checkBroadcastZone; }, [checkBroadcastZone]);
 
     const doMove = useCallback((newX: number, newY: number) => {
         const user = currentUserRef.current;
@@ -715,6 +769,7 @@ const ArenaInner = () => {
                     processWalkQueue();
                     runProximityCheckRef.current({ x: anim.toX, y: anim.toY });
                     checkConferenceRoomRef.current({ x: anim.toX, y: anim.toY });
+                    checkBroadcastZoneRef.current({ x: anim.toX, y: anim.toY });
                 }
                 rerender();
             }
@@ -1339,7 +1394,7 @@ const ArenaInner = () => {
             setPlacedItems(data.placedItems || []);
             setPortals(data.portals || []);
             if (data.name) setSpaceName(data.name);
-            if (data.creatorId) setSpaceOwnerId(data.creatorId);
+            if (data.creatorId) { setSpaceOwnerId(data.creatorId); spaceOwnerIdRef.current = data.creatorId; }
             if (typeof data.isPrivate === 'boolean') setSpaceIsPrivate(data.isPrivate);
             if (data.dimensions) {
                 const parts = data.dimensions.split('x');
@@ -1654,9 +1709,10 @@ const ArenaInner = () => {
                 useGameStore.getState().clearActiveEmote(message.payload.userId);
                 // Init PeerManager (destroy previous if reconnecting)
                 currentConferenceRoomRef.current = null;
+                currentBroadcastZoneRef.current = null;
                 if (wsRef.current) {
                     peerManagerRef.current?.destroy();
-                    const pm = new PeerManager(wsRef.current);
+                    const pm = new PeerManager(wsRef.current, message.payload.userId, message.payload.username ?? 'Unknown');
                     peerManagerRef.current = pm;
                     pm.init().catch(console.error);
                 }
@@ -1996,6 +2052,47 @@ const ArenaInner = () => {
                 peerManagerRef.current?.disconnect(message.peerId as string);
                 setConnectedPeers(peerManagerRef.current?.getConnectedPeerCount() ?? 0);
                 break;
+
+            case 'rtc:knock': {
+                const knockFromId = (message as { from: string; fromName: string }).from;
+                const knockFromName = (message as { from: string; fromName: string }).fromName;
+                const pm = peerManagerRef.current;
+                if (!pm) break;
+                const autoAccepted = pm.handleKnock(knockFromId);
+                if (!autoAccepted) {
+                    // Show knock toast — auto-dismiss after 15 s (treated as deny)
+                    const knockId = Math.random().toString(36).slice(2);
+                    setKnockRequests(prev => [...prev, { id: knockId, fromId: knockFromId, fromName: knockFromName }]);
+                    setTimeout(() => {
+                        setKnockRequests(prev => {
+                            const still = prev.find(k => k.id === knockId);
+                            if (still) pm.denyIncomingKnock(knockFromId);
+                            return prev.filter(k => k.id !== knockId);
+                        });
+                    }, 15000);
+                }
+                break;
+            }
+
+            case 'rtc:knock-accept': {
+                const acceptFrom = (message as { from: string }).from;
+                setKnockPendingPeerIds(prev => { const next = new Set(prev); next.delete(acceptFrom); return next; });
+                peerManagerRef.current?.handleKnockAccepted(acceptFrom);
+                break;
+            }
+
+            case 'rtc:knock-deny': {
+                const denyFrom = (message as { from: string }).from;
+                setKnockPendingPeerIds(prev => { const next = new Set(prev); next.delete(denyFrom); return next; });
+                peerManagerRef.current?.handleKnockDenied(denyFrom);
+                break;
+            }
+
+            case 'rtc:broadcast-zone-state': {
+                const bzMsg = message as { zoneId: string; speakerId: string | null; listenerIds: string[] };
+                peerManagerRef.current?.handleBroadcastZoneState(bzMsg.zoneId, bzMsg.speakerId, bzMsg.listenerIds);
+                break;
+            }
 
             case 'pong':
                 break;
@@ -3320,6 +3417,63 @@ const ArenaInner = () => {
                         />
                     )}
 
+                    {/* ── Knock-to-join toast stack ── */}
+                    {knockRequests.length > 0 && (
+                        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 300, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {knockRequests.map(req => (
+                                <div key={req.id} style={{ background: '#fff', border: '1px solid #e3e1ee', borderRadius: 12, padding: '12px 16px', boxShadow: '0 8px 24px rgba(22,15,52,0.16)', minWidth: 260, display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <span style={{ fontSize: 22 }}>🔔</span>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 700, color: '#191427' }}>{req.fromName}</div>
+                                        <div style={{ fontSize: 11, color: '#6f6b82' }}>wants to join your call</div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                        <button
+                                            onClick={() => {
+                                                peerManagerRef.current?.acceptIncomingKnock(req.fromId);
+                                                setKnockRequests(prev => prev.filter(k => k.id !== req.id));
+                                            }}
+                                            style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                                        >Accept</button>
+                                        <button
+                                            onClick={() => {
+                                                peerManagerRef.current?.denyIncomingKnock(req.fromId);
+                                                setKnockRequests(prev => prev.filter(k => k.id !== req.id));
+                                            }}
+                                            style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid #e3e1ee', background: '#fff', color: '#6f6b82', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                                        >Deny</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* ── Requesting to join indicator ── */}
+                    {knockPendingPeerIds.size > 0 && (
+                        <div style={{ position: 'absolute', bottom: 100, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.72)', color: '#fff', borderRadius: 20, padding: '6px 16px', fontSize: 12, fontWeight: 600, zIndex: 100, display: 'flex', alignItems: 'center', gap: 6, backdropFilter: 'blur(4px)', pointerEvents: 'none' }}>
+                            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#facc15', flexShrink: 0 }} />
+                            Requesting to join call…
+                        </div>
+                    )}
+
+                    {/* ── Proximity group call overlay ── */}
+                    {!editMode && proximityGroup.length > 0 && (
+                        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 60, background: 'rgba(15,10,35,0.78)', borderRadius: 12, padding: '8px 14px', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Group Call</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                {proximityGroup.map(peerId => {
+                                    const peerUser = usersRef.current.get(peerId);
+                                    return (
+                                        <div key={peerId} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <PixelAvatar avatarId={peerUser?.avatarId} size={20} />
+                                            <span style={{ fontSize: 12, color: '#e2e0f0', fontWeight: 600 }}>{peerUser?.username ?? peerId.slice(0, 8)}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     {/* ── Floating chat bubble button (when panel is hidden) ── */}
                     {!editMode && !showProximityChat && (
                         <button
@@ -3900,24 +4054,45 @@ const ArenaInner = () => {
                                 const pi = placedItems.find(p => p.id === selectedPlaced.id);
                                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                 const roomId = (pi?.metadata as any)?.conferenceRoomId as string | undefined;
+                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                const bzId = (pi?.metadata as any)?.broadcastZoneId as string | undefined;
                                 return (
-                                    <button
-                                        onClick={async () => {
-                                            if (!pi) return;
-                                            const newMeta = roomId
-                                                ? { ...(pi.metadata as object), conferenceRoomId: null }
-                                                : { ...(pi.metadata as object ?? {}), conferenceRoomId: crypto.randomUUID() };
-                                            await fetch(`${API}/api/v1/space/placed/${pi.id}/metadata`, {
-                                                method: 'PUT', headers: authHeaders,
-                                                body: JSON.stringify({ metadata: newMeta }),
-                                            });
-                                            await fetchSpace();
-                                        }}
-                                        title={roomId ? `Room ID: ${roomId}` : 'Mark this item as a conference room zone'}
-                                        style={{ padding: '5px 10px', borderRadius: 5, border: 'none', background: roomId ? '#7c3aed' : '#ecebf3', color: roomId ? '#fff' : '#6f6b82', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
-                                    >
-                                        {roomId ? '📹 Conference Room' : '+ Conf Room'}
-                                    </button>
+                                    <>
+                                        <button
+                                            onClick={async () => {
+                                                if (!pi) return;
+                                                const newMeta = roomId
+                                                    ? { ...(pi.metadata as object), conferenceRoomId: null }
+                                                    : { ...(pi.metadata as object ?? {}), conferenceRoomId: crypto.randomUUID() };
+                                                await fetch(`${API}/api/v1/space/placed/${pi.id}/metadata`, {
+                                                    method: 'PUT', headers: authHeaders,
+                                                    body: JSON.stringify({ metadata: newMeta }),
+                                                });
+                                                await fetchSpace();
+                                            }}
+                                            title={roomId ? `Room ID: ${roomId}` : 'Mark this item as a conference room zone'}
+                                            style={{ padding: '5px 10px', borderRadius: 5, border: 'none', background: roomId ? '#7c3aed' : '#ecebf3', color: roomId ? '#fff' : '#6f6b82', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                        >
+                                            {roomId ? '📹 Conference Room' : '+ Conf Room'}
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                if (!pi) return;
+                                                const newMeta = bzId
+                                                    ? { ...(pi.metadata as object), broadcastZoneId: null }
+                                                    : { ...(pi.metadata as object ?? {}), broadcastZoneId: crypto.randomUUID() };
+                                                await fetch(`${API}/api/v1/space/placed/${pi.id}/metadata`, {
+                                                    method: 'PUT', headers: authHeaders,
+                                                    body: JSON.stringify({ metadata: newMeta }),
+                                                });
+                                                await fetchSpace();
+                                            }}
+                                            title={bzId ? `Broadcast Zone ID: ${bzId}` : 'Mark this item as a broadcast zone (owner speaks, others listen)'}
+                                            style={{ padding: '5px 10px', borderRadius: 5, border: 'none', background: bzId ? '#0369a1' : '#ecebf3', color: bzId ? '#fff' : '#6f6b82', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                        >
+                                            {bzId ? '📡 Broadcast Zone' : '+ Broadcast Zone'}
+                                        </button>
+                                    </>
                                 );
                             })()}
                         </div>
