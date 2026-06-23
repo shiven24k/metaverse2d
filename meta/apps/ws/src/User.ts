@@ -96,6 +96,8 @@ export class User {
                 return;
             }
 
+            console.log('[WS] incoming:', parsedData.type, 'from', this.userId ?? this.id);
+
             switch (parsedData.type) {
                 case "join": {
                     // Guard against re-join: clean up old room membership first
@@ -418,11 +420,20 @@ export class User {
                 }
 
                 case 'rtc:knock': {
-                    if (!this.spaceId || !this.userId) break;
+                    console.log('[WS] rtc:knock from', this.userId ?? this.id, '→ to', parsedData.to);
+                    if (!this.spaceId || !this.userId) {
+                        console.log('[WS] rtc:knock aborted — spaceId:', this.spaceId, 'userId:', this.userId);
+                        break;
+                    }
                     const knockTarget = parsedData.to;
                     const knockSpaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                    // Log every userId the server knows about in this space so we can
+                    // spot a key-format mismatch between what A sent and what B registered as.
+                    console.log('[WS] known userIds in space', this.spaceId, ':', knockSpaceUsers.map(u => u.userId ?? u.id));
                     const knockTargetUser = knockSpaceUsers.find(u => (u.userId ?? u.id) === knockTarget);
-                    console.log('[WS] rtc:knock from', this.userId, '→ target', knockTarget, '| found:', !!knockTargetUser);
+                    // Translate the spec's getUserSocket concept: the target's WS readyState.
+                    // ws is private but accessible within the same class body in TS.
+                    console.log('[WS] target socket found:', !!knockTargetUser, 'readyState:', knockTargetUser?.ws.readyState);
                     if (!knockTargetUser) break;
                     knockTargetUser.send({ type: 'rtc:knock', from: this.userId, fromName: this.username });
                     break;
@@ -430,11 +441,16 @@ export class User {
 
                 case 'rtc:knock-accept':
                 case 'rtc:knock-deny': {
-                    if (!this.spaceId || !this.userId) break;
+                    console.log('[WS]', parsedData.type, 'from', this.userId ?? this.id, '→ to', parsedData.to);
+                    if (!this.spaceId || !this.userId) {
+                        console.log('[WS]', parsedData.type, 'aborted — spaceId:', this.spaceId, 'userId:', this.userId);
+                        break;
+                    }
                     const knockRespTarget = parsedData.to;
                     const knockRespSpaceUsers = getRoomManager().rooms.get(this.spaceId) ?? [];
+                    console.log('[WS] known userIds for knock-resp:', knockRespSpaceUsers.map(u => u.userId ?? u.id));
                     const knockRespTargetUser = knockRespSpaceUsers.find(u => (u.userId ?? u.id) === knockRespTarget);
-                    console.log('[WS]', parsedData.type, 'from', this.userId, '→ target', knockRespTarget, '| found:', !!knockRespTargetUser);
+                    console.log('[WS] resp target found:', !!knockRespTargetUser, 'readyState:', knockRespTargetUser?.ws.readyState);
                     if (!knockRespTargetUser) break;
                     knockRespTargetUser.send({ type: parsedData.type, from: this.userId });
                     break;
