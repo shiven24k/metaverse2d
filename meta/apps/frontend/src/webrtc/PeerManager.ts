@@ -97,6 +97,7 @@ export class PeerManager {
 
         // Register early so a concurrent handleOffer doesn't create a duplicate PC.
         this.peers.set(peerId, peer);
+        console.log('[PeerManager] connect(): registered', peerId, '| mode:', mode, '| peers.size:', this.peers.size);
 
         pc.ontrack = (e) => {
             console.log('[PeerManager] ontrack from', peerId, '| kind:', e.track.kind, '| readyState:', e.track.readyState, '| streams:', e.streams.length);
@@ -304,7 +305,12 @@ export class PeerManager {
         return false;
     }
 
-    acceptIncomingKnock(fromId: string) {
+    async acceptIncomingKnock(fromId: string, callType: 'voice' | 'video' = 'voice') {
+        const mode: PeerMode = callType;
+        console.log('[PeerManager] acceptIncomingKnock from', fromId, '| mode:', mode);
+        // Connect as non-initiator before sending accept so our PC is ready when
+        // the initiator's offer arrives (or our own onnegotiationneeded fires first).
+        await this.connect(fromId, mode, false);
         this.ws.send(JSON.stringify({ type: 'rtc:knock-accept', to: fromId }));
     }
 

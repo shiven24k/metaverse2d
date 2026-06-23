@@ -3496,7 +3496,28 @@ const ArenaInner = () => {
                             }))}
                             pendingKnockPeerIds={knockPendingPeerIds}
                             onCallVoice={(peerId) => peerManagerRef.current?.sendKnock(peerId, 'voice')}
-                            onCallVideo={(peerId) => peerManagerRef.current?.sendKnock(peerId, 'video')}
+                            onCallVideo={async (peerId) => {
+                                const pm = peerManagerRef.current;
+                                if (!pm) return;
+                                // Enable camera before knocking so localVideoStream is ready
+                                // by the time the responder accepts and connect() runs.
+                                if (!cameraEnabled) {
+                                    let stream: MediaStream | null = null;
+                                    try {
+                                        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                                        localVideoStreamRef.current = stream;
+                                        if (selfVideoRef.current) selfVideoRef.current.srcObject = stream;
+                                        await pm.enableCamera(stream);
+                                        setCameraEnabled(true);
+                                    } catch (err) {
+                                        console.warn('[Video knock] camera failed, falling back to voice knock', err);
+                                        stream?.getTracks().forEach(t => t.stop());
+                                        pm.sendKnock(peerId, 'voice');
+                                        return;
+                                    }
+                                }
+                                pm.sendKnock(peerId, 'video');
+                            }}
                             onCancelCall={(peerId) => peerManagerRef.current?.cancelKnock(peerId)}
                         />
                     )}
@@ -3515,8 +3536,24 @@ const ArenaInner = () => {
                                     </div>
                                     <div style={{ display: 'flex', gap: 6 }}>
                                         <button
-                                            onClick={() => {
-                                                peerManagerRef.current?.acceptIncomingKnock(req.fromId);
+                                            onClick={async () => {
+                                                const pm = peerManagerRef.current;
+                                                if (!pm) return;
+                                                // For video calls, ensure camera is on before accepting
+                                                if (req.callType === 'video' && !cameraEnabled) {
+                                                    let stream: MediaStream | null = null;
+                                                    try {
+                                                        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                                                        localVideoStreamRef.current = stream;
+                                                        if (selfVideoRef.current) selfVideoRef.current.srcObject = stream;
+                                                        await pm.enableCamera(stream);
+                                                        setCameraEnabled(true);
+                                                    } catch (err) {
+                                                        console.warn('[Accept knock] camera failed, accepting as voice', err);
+                                                        stream?.getTracks().forEach(t => t.stop());
+                                                    }
+                                                }
+                                                await pm.acceptIncomingKnock(req.fromId, req.callType ?? 'voice');
                                                 setKnockRequests(prev => prev.filter(k => k.id !== req.id));
                                             }}
                                             style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
