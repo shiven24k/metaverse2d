@@ -272,10 +272,18 @@ export class PeerManager {
             }
         }
 
-        // Emit connected group + all nearby peers so the UI can render call buttons.
+        // Emit connected group. nearbyPeers must exclude already-connected and
+        // pending-knock peers so the UI never shows call buttons for them — showing
+        // those buttons is what triggers re-knocking and the infinite-loop pattern.
         const connectedGroup = voicePeers.filter(p => this.peers.has(p));
+        const nearbyCallable: string[] = [];
+        for (const peerId of voicePeers) {
+            if (this.peers.has(peerId)) continue;
+            if (this.pendingKnocks.has(peerId)) continue;
+            nearbyCallable.push(peerId);
+        }
         window.dispatchEvent(new CustomEvent('rtc:proximityGroup', {
-            detail: { members: connectedGroup, nearbyPeers: voicePeers },
+            detail: { members: connectedGroup, nearbyPeers: nearbyCallable },
         }));
     }
 
@@ -306,6 +314,8 @@ export class PeerManager {
     }
 
     async acceptIncomingKnock(fromId: string, callType: 'voice' | 'video' = 'voice') {
+        // IMPORTANT: this method must NOT call sendKnock() or modify pendingKnocks in
+        // any way — doing so is what caused the knock→accept→knock infinite loop.
         const mode: PeerMode = callType;
         console.log('[PeerManager] acceptIncomingKnock from', fromId, '| mode:', mode);
         // Connect as non-initiator before sending accept so our PC is ready when
