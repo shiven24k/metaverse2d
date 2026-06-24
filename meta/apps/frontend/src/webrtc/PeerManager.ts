@@ -63,12 +63,8 @@ export class PeerManager {
     ) {}
 
     async init() {
-        console.log('[PM] init() starting...');
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            console.log('[PM] init() audio tracks:',
-                this.localStream.getAudioTracks().map(t =>
-                    `${t.label} enabled:${t.enabled} readyState:${t.readyState}`));
         } catch (err) {
             console.error('[PM] init() mic failed:', err);
         }
@@ -90,8 +86,6 @@ export class PeerManager {
     // local tracks are added, so only the speaker's tracks flow in.
     async connect(peerId: string, mode: PeerMode = 'voice', isInitiator = true, receiveOnly = false) {
         if (this.peers.has(peerId)) return;
-        console.log('[PM] connect() micEnabled:', this.micEnabled,
-            'audio track enabled:', this.localStream?.getAudioTracks()[0]?.enabled);
 
         const pc = new RTCPeerConnection({ iceServers: this.iceServers });
         // The peer with the lexicographically smaller userId is the polite peer — it
@@ -100,36 +94,43 @@ export class PeerManager {
 
         // HTMLAudioElement for direct playback — no AudioContext in the path so there
         // is nothing to suspend and no user-gesture requirement for audio output.
+        // Appended to a hidden DOM container so browsers don't GC or suspend detached elements.
         const audioEl = new Audio();
         audioEl.autoplay = true;
         audioEl.volume = 1;
+        document.getElementById('rtc-audio-container')?.appendChild(audioEl);
 
         const peer: PeerState = { connection: pc, mode, audioEl, polite, makingOffer: false, connectionState: 'new' };
 
         // Register early so a concurrent handleOffer doesn't create a duplicate PC.
         this.peers.set(peerId, peer);
         window.dispatchEvent(new CustomEvent('rtc:peersChanged', { detail: { count: this.peers.size } }));
-        console.log('[PM] connect() done peerId:', peerId, 'mode:', mode,
-            'isInitiator:', isInitiator, 'peers.size:', this.peers.size,
-            'localVideoTracks:', this.localVideoStream?.getVideoTracks().length ?? 0);
 
         pc.ontrack = (e) => {
-            console.log('[PM] ontrack from', peerId,
-                'kind:', e.track.kind,
-                'readyState:', e.track.readyState,
-                'streams:', e.streams.length,
-                'stream active:', e.streams[0]?.active);
             if (e.track.kind === 'audio') {
-                console.log('[PM] ontrack AUDIO from', peerId,
-                    'readyState:', e.track.readyState,
-                    'enabled:', e.track.enabled,
-                    'streams:', e.streams.length);
+                if (!e.streams[0]) return;
                 const p = this.peers.get(peerId);
                 if (!p) return;
                 p.audioEl.srcObject = e.streams[0];
                 p.audioEl.muted = this.deafened;
                 p.audioEl.play().catch(err => console.warn('[PM] audio play failed:', err));
-                console.log('[PM] audio attached to element for', peerId);
+                // Speaking detection via a separate AnalyserNode — never touches the playback path.
+                try {
+                    if (!this.analyserCtx) this.analyserCtx = new AudioContext();
+                    if (this.analyserCtx.state === 'suspended') this.analyserCtx.resume();
+                    const analyser = this.analyserCtx.createAnalyser();
+                    analyser.fftSize = 256;
+                    this.analyserCtx.createMediaStreamSource(e.streams[0]).connect(analyser);
+                    const data = new Uint8Array(analyser.frequencyBinCount);
+                    const speakingCheck = setInterval(() => {
+                        if (!this.peers.has(peerId)) { clearInterval(speakingCheck); return; }
+                        analyser.getByteFrequencyData(data);
+                        const avg = data.reduce((a, b) => a + b, 0) / data.length;
+                        window.dispatchEvent(new CustomEvent('rtc:speakingState', {
+                            detail: { peerId, speaking: avg > 15 },
+                        }));
+                    }, 100);
+                } catch { /* speaking detection is non-critical */ }
             } else {
                 const stream = e.streams[0];
                 if (!stream) {
@@ -149,7 +150,6 @@ export class PeerManager {
         };
 
         pc.onconnectionstatechange = () => {
-            console.log('[PM] connectionState for', peerId, ':', pc.connectionState);
             const p = this.peers.get(peerId);
             if (p) p.connectionState = pc.connectionState;
             window.dispatchEvent(new CustomEvent('rtc:connectionStateChanged', {
@@ -157,25 +157,20 @@ export class PeerManager {
             }));
             if (pc.connectionState === 'failed') {
                 console.warn('[PM] connection failed for', peerId, '— retrying in 1s');
+                // Read mode before disconnect() removes the peer entry.
+                const retryMode = this.peers.get(peerId)?.mode ?? 'voice';
                 this.disconnect(peerId);
                 setTimeout(() => {
                     if (this.proximityPeers.has(peerId) || this.conferencePeers.has(peerId)) {
-                        this.connect(peerId, mode, true);
+                        this.connect(peerId, retryMode, true);
                     }
                 }, 1000);
             }
         };
 
-        pc.oniceconnectionstatechange = () => {
-            console.log('[PM] iceConnectionState for', peerId, ':', pc.iceConnectionState);
-        };
-
         // Perfect negotiation: this handler fires whenever renegotiation is needed
         // (e.g. after addTrack). The makingOffer flag lets handleOffer detect collisions.
         pc.onnegotiationneeded = async () => {
-            console.log('[PM] onnegotiationneeded for', peerId,
-                'signalingState:', pc.signalingState,
-                'makingOffer:', peer.makingOffer);
             try {
                 peer.makingOffer = true;
                 const offer = await pc.createOffer();
@@ -193,8 +188,6 @@ export class PeerManager {
             // Adding tracks triggers onnegotiationneeded asynchronously.
             // localStream may be null if mic permission was denied — skip audio tracks gracefully.
             this.localStream?.getAudioTracks().forEach(t => pc.addTrack(t, this.localStream!));
-            console.log('[PM] connect() added audio tracks:',
-                this.localStream?.getAudioTracks().length ?? 0, 'to peer:', peerId);
             if (this.localVideoStream) {
                 this.localVideoStream.getVideoTracks().forEach(t => pc.addTrack(t, this.localVideoStream!));
             }
@@ -215,9 +208,6 @@ export class PeerManager {
         }
         const peer = this.peers.get(fromId);
         if (!peer) return;
-
-        console.log('[PM] handleOffer from', fromId,
-            'signalingState:', peer.connection.signalingState);
 
         const offerCollision = peer.makingOffer || peer.connection.signalingState !== 'stable';
         // Impolite peer ignores colliding offers; polite peer rolls back and accepts.
@@ -286,6 +276,7 @@ export class PeerManager {
         if (!peer) return;
         peer.audioEl.srcObject = null;
         peer.audioEl.pause();
+        peer.audioEl.remove();
         peer.connection.close();
         this.peers.delete(peerId);
         this.pendingKnocks.delete(peerId);
@@ -298,15 +289,12 @@ export class PeerManager {
         const videoTrack = videoStream.getVideoTracks()[0];
         if (!videoTrack) throw new Error('No video track in stream');
 
-        console.log('[PM] enableCamera called, tracks:', videoStream.getVideoTracks().length);
-
         this.localVideoStream = videoStream;
         this.cameraEnabled = true;
 
         for (const [peerId, peer] of this.peers.entries()) {
             try {
                 peer.connection.addTrack(videoTrack, videoStream);
-                console.log('[PM] addTrack called on peer', peerId, 'track id:', videoTrack.id);
             } catch (err) {
                 console.warn('[PeerManager] addTrack failed for peer', peerId, err);
                 this.disconnect(peerId);
@@ -385,15 +373,13 @@ export class PeerManager {
 
     // Called when we receive rtc:knock from a remote peer.
     // Always returns false — the receiver must explicitly Accept or Deny via the toast.
-    handleKnock(fromId: string): false {
-        console.log('[PeerManager] handleKnock from', fromId);
+    handleKnock(_fromId: string): false {
         return false;
     }
 
     async acceptIncomingKnock(fromId: string, callType: 'voice' | 'video' = 'voice') {
         // IMPORTANT: this method must NOT call sendKnock() or modify pendingKnocks in
         // any way — doing so is what caused the knock→accept→knock infinite loop.
-        console.log('[PM] acceptIncomingKnock fromId:', fromId, 'callType:', callType);
         try {
             const mode: PeerMode = callType;
 
@@ -401,11 +387,8 @@ export class PeerManager {
                 if (!this.localVideoStream ||
                         this.localVideoStream.getVideoTracks()[0]?.readyState === 'ended') {
                     try {
-                        console.log('[PM] before getUserMedia (video)');
                         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                        console.log('[PM] before enableCamera');
                         await this.enableCamera(stream);
-                        console.log('[PM] after enableCamera');
                     } catch (err) {
                         console.warn('[PM] camera failed, continuing as video without local cam:', err);
                         // Don't fall back to voice — still connect as video so we can
@@ -419,9 +402,7 @@ export class PeerManager {
 
             // Connect as non-initiator before sending accept so our PC is ready when
             // the initiator's offer arrives (or our own onnegotiationneeded fires first).
-            console.log('[PM] before connect — localStream:', !!this.localStream);
             await this.connect(fromId, mode, false);
-            console.log('[PM] after connect');
             this.ws.send(JSON.stringify({ type: 'rtc:knock-accept', to: fromId }));
         } catch (err) {
             console.error('[PM] acceptIncomingKnock FATAL:', err);
@@ -436,7 +417,6 @@ export class PeerManager {
     async handleKnockAccepted(fromId: string) {
         const mode = this.pendingKnocks.get(fromId) ?? 'voice';
         this.pendingKnocks.delete(fromId);
-        console.log('[PeerManager] handleKnockAccepted from', fromId, '| connecting as', mode);
 
         const existingPeer = this.peers.get(fromId);
         if (existingPeer) {
@@ -466,9 +446,7 @@ export class PeerManager {
     setVolume(peerId: string, distance: number) {
         const peer = this.peers.get(peerId);
         if (!peer) return;
-        const vol = Math.max(0, 1 - distance / VOICE_RADIUS);
-        console.log('[PM] setVolume', peerId, 'distance:', distance, 'vol:', vol);
-        peer.audioEl.volume = vol;
+        peer.audioEl.volume = Math.max(0, 1 - distance / VOICE_RADIUS);
     }
 
     joinConferencePeer(peerId: string) {

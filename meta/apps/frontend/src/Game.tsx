@@ -191,14 +191,11 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
 
     useEffect(() => {
         const el = videoRef.current;
-        if (!el) return;
-        console.log('[VideoTile] attaching stream for', peerId,
-            'video tracks:', stream.getVideoTracks().length,
-            'track readyState:', stream.getVideoTracks()[0]?.readyState,
-            'track enabled:', stream.getVideoTracks()[0]?.enabled);
+        if (!el || !stream) return;
         el.srcObject = stream;
         el.play().catch(err => console.warn('[RemoteVideoTile] play() rejected:', err));
-    }, [peerId, stream]);
+        return () => { el.srcObject = null; };
+    }, [stream]);
 
     useEffect(() => {
         if (connectionState === 'connected') {
@@ -325,6 +322,8 @@ const ArenaInner = () => {
     const knockPendingPeerIdsRef = useRef<Set<string>>(new Set());
     const peerConnectionStatesRef = useRef(new Map<string, RTCPeerConnectionState>());
     const [peerConnectionStates, setPeerConnectionStates] = useState(new Map<string, RTCPeerConnectionState>());
+    const speakingPeerIdsRef = useRef<Set<string>>(new Set());
+    const [speakingPeerIds, setSpeakingPeerIds] = useState<Set<string>>(new Set());
     const videoPanelRef = useRef<HTMLDivElement>(null);
     const [videoPanelHeight, setVideoPanelHeight] = useState(0);
     const [connected, setConnected] = useState(false);
@@ -624,6 +623,7 @@ const ArenaInner = () => {
     useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
     useEffect(() => { usersRef.current = users; }, [users]);
     useEffect(() => { knockPendingPeerIdsRef.current = knockPendingPeerIds; }, [knockPendingPeerIds]);
+    useEffect(() => { speakingPeerIdsRef.current = speakingPeerIds; }, [speakingPeerIds]);
 
     // Sync the local camera stream to the self-view <video> element.
     // The element only exists in the DOM when cameraEnabled is true, so we key on
@@ -672,7 +672,7 @@ const ArenaInner = () => {
                 if (prevTrack) prevTrack.onended = null;
             }
             remoteStreamsRef.current.set(peerId, stream);
-            setRemotePeerIds(prev => prev.includes(peerId) ? prev : [...prev, peerId]);
+            setRemotePeerIds([...remoteStreamsRef.current.keys()]);
             videoTracks[0].onended = () => {
                 remoteStreamsRef.current.delete(peerId);
                 setRemotePeerIds([...remoteStreamsRef.current.keys()]);
@@ -719,6 +719,14 @@ const ArenaInner = () => {
                 setRemotePeerIds([...remoteStreamsRef.current.keys()]);
             }
         };
+        const onSpeakingState = (e: Event) => {
+            const { peerId, speaking } = (e as CustomEvent<{ peerId: string; speaking: boolean }>).detail;
+            setSpeakingPeerIds(prev => {
+                const next = new Set(prev);
+                if (speaking) next.add(peerId); else next.delete(peerId);
+                return next;
+            });
+        };
         window.addEventListener('rtc:remoteVideo', onRemoteVideo);
         window.addEventListener('rtc:peerLeft', onPeerLeft);
         window.addEventListener('rtc:proximityGroup', onProximityGroup);
@@ -727,6 +735,7 @@ const ArenaInner = () => {
         window.addEventListener('rtc:knockCancelled', onKnockCancelled);
         window.addEventListener('rtc:peersChanged', onPeersChanged);
         window.addEventListener('rtc:connectionStateChanged', onConnectionStateChanged);
+        window.addEventListener('rtc:speakingState', onSpeakingState);
         return () => {
             window.removeEventListener('rtc:remoteVideo', onRemoteVideo);
             window.removeEventListener('rtc:peerLeft', onPeerLeft);
@@ -736,6 +745,7 @@ const ArenaInner = () => {
             window.removeEventListener('rtc:knockCancelled', onKnockCancelled);
             window.removeEventListener('rtc:peersChanged', onPeersChanged);
             window.removeEventListener('rtc:connectionStateChanged', onConnectionStateChanged);
+            window.removeEventListener('rtc:speakingState', onSpeakingState);
         };
     }, [addToast]);
 
@@ -962,6 +972,8 @@ const ArenaInner = () => {
             if (portalsRef.current.length > 0) rerender();
             // Knock pending pulse animation
             if (knockPendingPeerIdsRef.current.size > 0) rerender();
+            // Speaking ring pulse animation
+            if (speakingPeerIdsRef.current.size > 0) rerender();
             id = requestAnimationFrame(tick);
         }
         id = requestAnimationFrame(tick);
@@ -3151,6 +3163,14 @@ const ArenaInner = () => {
             if (uEmoteId) preloadEmoteImage(effectiveAvatarId, uEmoteId);
             const uEmoteImg = uEmoteUrl ? imageCache.current.get(uEmoteUrl) : null;
             const uEmoteReady = !!(uEmoteImg && uEmoteImg.complete && uEmoteImg.naturalWidth > 0);
+            // Speaking ring — pulsing purple arc drawn behind the avatar
+            if (speakingPeerIdsRef.current.has(user.userId)) {
+                ctx.beginPath();
+                ctx.arc(ux, uy, 20, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(139,92,246,${0.45 + 0.45 * Math.sin(Date.now() / 200)})`;
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+            }
             if (uEmoteId === 'afk') ctx.globalAlpha = 0.6;
             if (uEmoteReady && uEmoteId) {
                 const frames = EMOTE_FRAMES[uEmoteId] ?? 1;
@@ -5061,6 +5081,10 @@ const ArenaInner = () => {
                         }
                     }}
                 />
+
+                {/* Hidden container for HTMLAudioElement nodes — keeps them in the DOM so
+                    browsers don't GC or suspend detached audio elements mid-call. */}
+                <div id="rtc-audio-container" style={{ display: 'none' }} />
 
                 <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes notifSlideIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }`}</style>
         </div>
