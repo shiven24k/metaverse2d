@@ -45,7 +45,7 @@ export function ProximityChatPanel({
     };
 
     const panelStyle: React.CSSProperties = isDesktop ? {
-        position: 'fixed', top: 56 + topOffset, left: 12, width: 320,
+        position: 'fixed', top: 56 + topOffset, left: 12, width: 280,
         height: `calc(100vh - ${80 + topOffset}px)`, zIndex: 50,
         display: 'flex', flexDirection: 'column',
         background: '#ffffff', borderRadius: 16,
