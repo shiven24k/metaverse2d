@@ -84,7 +84,7 @@ export class PeerManager {
 
     // receiveOnly=true is used for broadcast listeners: connection is created but no
     // local tracks are added, so only the speaker's tracks flow in.
-    async connect(peerId: string, mode: PeerMode = 'voice', isInitiator = true, receiveOnly = false) {
+    async connect(peerId: string, mode: PeerMode = 'voice', _isInitiator = true, receiveOnly = false) {
         if (this.peers.has(peerId)) return;
 
         const pc = new RTCPeerConnection({ iceServers: this.iceServers });
