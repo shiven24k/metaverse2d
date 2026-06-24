@@ -221,6 +221,7 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
             position: 'relative',
             width: '100%',
             aspectRatio: '16/9',
+            minHeight: 120,
             borderRadius: 8,
             overflow: 'hidden',
             background: '#111',
@@ -4948,8 +4949,8 @@ const ArenaInner = () => {
                 )}
 
                 {/* Video panel — fixed left column, above chat panel */}
-                {(remotePeerIds.length > 0 || cameraEnabled) && (() => {
-                    const totalTiles = remotePeerIds.length + (cameraEnabled ? 1 : 0);
+                {(remotePeerIds.length > 0 || (cameraEnabled && connectedPeers > 0)) && (() => {
+                    const totalTiles = remotePeerIds.length + (cameraEnabled && connectedPeers > 0 ? 1 : 0);
                     const gridCols = totalTiles <= 1 ? 1 : 2;
                     return (
                         <div
@@ -4958,7 +4959,7 @@ const ArenaInner = () => {
                                 position: 'fixed',
                                 top: 56,
                                 left: 12,
-                                width: 280,
+                                width: 320,
                                 zIndex: 4001,
                                 padding: 8,
                             }}
@@ -4968,11 +4969,12 @@ const ArenaInner = () => {
                                 gridTemplateColumns: gridCols === 1 ? '1fr' : '1fr 1fr',
                                 gap: 4,
                             }}>
-                                {cameraEnabled && (
+                                {cameraEnabled && connectedPeers > 0 && (
                                     <div style={{
                                         position: 'relative',
                                         width: '100%',
                                         aspectRatio: '16/9',
+                                        minHeight: 120,
                                         borderRadius: 8,
                                         overflow: 'hidden',
                                         background: '#111',
