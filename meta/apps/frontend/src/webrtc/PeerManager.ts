@@ -339,6 +339,24 @@ export class PeerManager {
         // any way — doing so is what caused the knock→accept→knock infinite loop.
         console.log('[PM] acceptIncomingKnock fromId:', fromId, 'callType:', callType);
         const mode: PeerMode = callType;
+
+        if (mode === 'video') {
+            if (!this.localVideoStream ||
+                    this.localVideoStream.getVideoTracks()[0]?.readyState === 'ended') {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    await this.enableCamera(stream);
+                } catch (err) {
+                    console.warn('[PM] camera failed, continuing as video without local cam:', err);
+                    // Don't fall back to voice — still connect as video so we can
+                    // RECEIVE the other person's video even without sending ours.
+                }
+            } else {
+                // Stream already active — connect() will add the track from localVideoStream.
+                this.cameraEnabled = true;
+            }
+        }
+
         // Connect as non-initiator before sending accept so our PC is ready when
         // the initiator's offer arrives (or our own onnegotiationneeded fires first).
         await this.connect(fromId, mode, false);

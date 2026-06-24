@@ -3556,7 +3556,7 @@ const ArenaInner = () => {
                                                         await pm.enableCamera(stream);
                                                         setCameraEnabled(true);
                                                     } catch (err) {
-                                                        console.warn('[Accept knock] camera failed, accepting as voice', err);
+                                                        console.warn('[Accept knock] camera failed, continuing as video without local cam', err);
                                                         stream?.getTracks().forEach(t => t.stop());
                                                     }
                                                 }
