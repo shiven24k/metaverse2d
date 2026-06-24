@@ -654,10 +654,10 @@ const ArenaInner = () => {
                 if (prevTrack) prevTrack.onended = null;
             }
             remoteStreamsRef.current.set(peerId, stream);
-            setRemotePeerIds([...remoteStreamsRef.current.keys()]);
+            setRemotePeerIds(prev => prev.includes(peerId) ? prev : [...prev, peerId]);
             videoTracks[0].onended = () => {
                 remoteStreamsRef.current.delete(peerId);
-                setRemotePeerIds([...remoteStreamsRef.current.keys()]);
+                setRemotePeerIds(prev => prev.filter(id => id !== peerId));
             };
         };
         const onPeerLeft = (e: Event) => {
@@ -685,12 +685,17 @@ const ArenaInner = () => {
             const { peerId } = (e as CustomEvent<{ peerId: string }>).detail;
             setKnockPendingPeerIds(prev => { const next = new Set(prev); next.delete(peerId); return next; });
         };
+        const onPeersChanged = (e: Event) => {
+            const { count } = (e as CustomEvent<{ count: number }>).detail;
+            setConnectedPeers(count);
+        };
         window.addEventListener('rtc:remoteVideo', onRemoteVideo);
         window.addEventListener('rtc:peerLeft', onPeerLeft);
         window.addEventListener('rtc:proximityGroup', onProximityGroup);
         window.addEventListener('rtc:knockSent', onKnockSent);
         window.addEventListener('rtc:knockDenied', onKnockDenied);
         window.addEventListener('rtc:knockCancelled', onKnockCancelled);
+        window.addEventListener('rtc:peersChanged', onPeersChanged);
         return () => {
             window.removeEventListener('rtc:remoteVideo', onRemoteVideo);
             window.removeEventListener('rtc:peerLeft', onPeerLeft);
@@ -698,6 +703,7 @@ const ArenaInner = () => {
             window.removeEventListener('rtc:knockSent', onKnockSent);
             window.removeEventListener('rtc:knockDenied', onKnockDenied);
             window.removeEventListener('rtc:knockCancelled', onKnockCancelled);
+            window.removeEventListener('rtc:peersChanged', onPeersChanged);
         };
     }, [addToast]);
 
@@ -730,9 +736,6 @@ const ArenaInner = () => {
         for (const [peerId, peerPos] of usersRef.current.entries()) {
             pm.setVolume(peerId, Math.hypot(peerPos.x - pos.x, peerPos.y - pos.y));
         }
-        // Only re-render when count changes to avoid mid-animation jitter
-        const newCount = pm.getConnectedPeerCount();
-        setConnectedPeers(prev => prev !== newCount ? newCount : prev);
     }, []);
 
     const runProximityCheckRef = useRef(runProximityCheck);
@@ -2166,12 +2169,10 @@ const ArenaInner = () => {
                 for (const peerId of (message.peers as string[])) {
                     peerManagerRef.current?.joinConferencePeer(peerId);
                 }
-                setConnectedPeers(peerManagerRef.current?.getConnectedPeerCount() ?? 0);
                 break;
 
             case 'rtc:peer-left':
                 peerManagerRef.current?.disconnect(message.peerId as string);
-                setConnectedPeers(peerManagerRef.current?.getConnectedPeerCount() ?? 0);
                 break;
 
             case 'rtc:knock': {
@@ -3544,10 +3545,14 @@ const ArenaInner = () => {
                                 username: usersRef.current.get(id)?.username ?? id.slice(0, 8),
                             }))}
                             pendingKnockPeerIds={knockPendingPeerIds}
-                            onCallVoice={(peerId) => peerManagerRef.current?.sendKnock(peerId, 'voice')}
+                            onCallVoice={async (peerId) => {
+                                await peerManagerRef.current?.resumeAudio();
+                                peerManagerRef.current?.sendKnock(peerId, 'voice');
+                            }}
                             onCallVideo={async (peerId) => {
                                 const pm = peerManagerRef.current;
                                 if (!pm) return;
+                                await pm.resumeAudio();
                                 // Enable camera before knocking so localVideoStream is ready
                                 // by the time the responder accepts and connect() runs.
                                 if (!cameraEnabled) {
@@ -3588,6 +3593,7 @@ const ArenaInner = () => {
                                             onClick={async () => {
                                                 const pm = peerManagerRef.current;
                                                 if (!pm) return;
+                                                await pm.resumeAudio();
                                                 // For video calls, ensure camera is on before accepting
                                                 if (req.callType === 'video' && !cameraEnabled) {
                                                     let stream: MediaStream | null = null;

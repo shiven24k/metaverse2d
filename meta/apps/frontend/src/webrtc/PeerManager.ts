@@ -8,6 +8,7 @@ interface PeerState {
     gainNode: GainNode;
     polite: boolean;
     makingOffer: boolean;
+    audioConnected: boolean;
 }
 
 export class PeerManager {
@@ -121,12 +122,14 @@ export class PeerManager {
         const polite = this.myUserId < peerId;
 
         const gainNode = this.audioCtx.createGain();
+        gainNode.gain.setValueAtTime(1, this.audioCtx.currentTime);
         gainNode.connect(this.audioCtx.destination);
 
-        const peer: PeerState = { connection: pc, mode, gainNode, polite, makingOffer: false };
+        const peer: PeerState = { connection: pc, mode, gainNode, polite, makingOffer: false, audioConnected: false };
 
         // Register early so a concurrent handleOffer doesn't create a duplicate PC.
         this.peers.set(peerId, peer);
+        window.dispatchEvent(new CustomEvent('rtc:peersChanged', { detail: { count: this.peers.size } }));
         console.log('[PM] connect() done peerId:', peerId, 'mode:', mode,
             'isInitiator:', isInitiator, 'peers.size:', this.peers.size,
             'localVideoTracks:', this.localVideoStream?.getVideoTracks().length ?? 0);
@@ -150,6 +153,7 @@ export class PeerManager {
                 const resumeAndConnect = async () => {
                     if (this.audioCtx?.state === 'suspended') await this.audioCtx.resume();
                     this.audioCtx!.createMediaStreamSource(e.streams[0]).connect(gainNode);
+                    peer.audioConnected = true;
                     console.log('[PM] audio pipeline connected for', peerId,
                         'gainNode gain:', gainNode.gain.value,
                         'audioCtx state:', this.audioCtx?.state);
@@ -301,6 +305,7 @@ export class PeerManager {
         this.pendingKnocks.delete(peerId);
         this.pendingCandidates.delete(peerId);
         window.dispatchEvent(new CustomEvent('rtc:peerLeft', { detail: { peerId } }));
+        window.dispatchEvent(new CustomEvent('rtc:peersChanged', { detail: { count: this.peers.size } }));
     }
 
     async enableCamera(videoStream: MediaStream) {
@@ -474,7 +479,7 @@ export class PeerManager {
 
     setVolume(peerId: string, distance: number) {
         const peer = this.peers.get(peerId);
-        if (!peer || !this.audioCtx) return;
+        if (!peer || !peer.audioConnected || !this.audioCtx) return;
         const gain = Math.max(0, 1 - distance / VOICE_RADIUS);
         console.log('[PM] setVolume', peerId, 'distance:', distance, 'gain:', gain);
         peer.gainNode.gain.setTargetAtTime(gain, this.audioCtx.currentTime, 0.1);
@@ -582,6 +587,13 @@ export class PeerManager {
     // Number of proximity peers that have an active connection (for auto-accept logic).
     getProximityConnectedCount(): number {
         return [...this.proximityPeers].filter(p => this.peers.has(p)).length;
+    }
+
+    async resumeAudio() {
+        if (this.audioCtx?.state === 'suspended') {
+            await this.audioCtx.resume();
+            console.log('[PM] AudioContext resumed, state:', this.audioCtx.state);
+        }
     }
 
     getMicEnabled() { return this.micEnabled; }
