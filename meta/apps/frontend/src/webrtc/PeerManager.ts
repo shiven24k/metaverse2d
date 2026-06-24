@@ -156,14 +156,14 @@ export class PeerManager {
         };
 
         pc.onconnectionstatechange = () => {
+            const state = pc.connectionState;
             const p = this.peers.get(peerId);
-            if (p) p.connectionState = pc.connectionState;
+            if (p) p.connectionState = state;
             window.dispatchEvent(new CustomEvent('rtc:connectionStateChanged', {
-                detail: { peerId, state: pc.connectionState },
+                detail: { peerId, state },
             }));
-            if (pc.connectionState === 'failed') {
-                console.warn('[PM] connection failed for', peerId, '— retrying in 1s');
-                // Read mode before disconnect() removes the peer entry.
+            console.warn('[PM] connectionState for', peerId, ':', state);
+            if (state === 'failed') {
                 const retryMode = this.peers.get(peerId)?.mode ?? 'voice';
                 this.disconnect(peerId);
                 setTimeout(() => {
@@ -171,6 +171,9 @@ export class PeerManager {
                         this.connect(peerId, retryMode, true);
                     }
                 }, 1000);
+            }
+            if (state === 'disconnected' || state === 'closed') {
+                this.disconnect(peerId);
             }
         };
 
