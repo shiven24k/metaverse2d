@@ -194,35 +194,36 @@ function RemoteVideoTile({ peerId, stream, username }: { peerId: string; stream:
     }, [peerId, stream]);
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <div style={{ position: 'relative' }}>
-                <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted={false}
-                    style={{
-                        width: 140, height: 105, borderRadius: 8,
-                        objectFit: 'cover', background: '#0f0a1e', display: 'block',
-                        border: '2px solid rgba(255,255,255,0.12)',
-                    }}
-                />
-                <div style={{
-                    position: 'absolute', bottom: 4, right: 4,
-                    width: 18, height: 18, borderRadius: '50%',
-                    background: 'rgba(0,0,0,0.65)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10,
-                }}>
-                    🎙️
-                </div>
-            </div>
-            <span style={{
-                fontSize: 11, color: '#e5e7eb', fontWeight: 600,
-                maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        <div style={{
+            position: 'relative', width: 160, height: 120,
+            borderRadius: 12, overflow: 'hidden',
+            background: '#0c0818',
+            border: '1.5px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+            flexShrink: 0,
+        }}>
+            <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted={false}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+            <div style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0,
+                padding: '20px 8px 6px',
+                background: 'linear-gradient(transparent, rgba(0,0,0,0.72))',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
-                {username || peerId.slice(0, 8)}
-            </span>
+                <span style={{
+                    fontSize: 11, fontWeight: 600, color: '#fff',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+                }}>
+                    {username || peerId.slice(0, 8)}
+                </span>
+                <span style={{ fontSize: 10, lineHeight: 1 }}>🎙️</span>
+            </div>
         </div>
     );
 }
@@ -638,11 +639,26 @@ const ArenaInner = () => {
         const onRemoteVideo = (e: Event) => {
             const { peerId, stream } = (e as CustomEvent<{ peerId: string; stream: MediaStream }>).detail;
             if (peerId === currentUserRef.current?.userId) return;
+            const videoTracks = stream.getVideoTracks();
             console.log('[Game] rtc:remoteVideo for', peerId,
                 'stream id:', stream.id,
-                'video tracks:', stream.getVideoTracks().length);
+                'video tracks:', videoTracks.length,
+                'readyState:', videoTracks[0]?.readyState);
+            if (videoTracks.length === 0 || videoTracks[0].readyState !== 'live') return;
+            // Clear the onended handler on the previous stream for this peer (if any) so
+            // a renegotiation-induced track-end doesn't remove the peer after the new
+            // stream has already been installed.
+            const prevStream = remoteStreamsRef.current.get(peerId);
+            if (prevStream) {
+                const prevTrack = prevStream.getVideoTracks()[0];
+                if (prevTrack) prevTrack.onended = null;
+            }
             remoteStreamsRef.current.set(peerId, stream);
             setRemotePeerIds([...remoteStreamsRef.current.keys()]);
+            videoTracks[0].onended = () => {
+                remoteStreamsRef.current.delete(peerId);
+                setRemotePeerIds([...remoteStreamsRef.current.keys()]);
+            };
         };
         const onPeerLeft = (e: Event) => {
             const { peerId } = (e as CustomEvent<{ peerId: string }>).detail;
@@ -4839,26 +4855,41 @@ const ArenaInner = () => {
                             }} />
                             <div style={{
                                 display: 'grid',
-                                gridTemplateColumns: `repeat(${gridCols}, 140px)`,
+                                gridTemplateColumns: `repeat(${gridCols}, 160px)`,
                                 gap: 6,
                                 maxHeight: '60vh',
                                 overflowY: 'auto',
                             }}>
                                 {cameraEnabled && (
-                                    <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden',
-                                        border: '2px solid rgba(139, 92, 246, 0.4)' }}>
+                                    <div style={{
+                                        position: 'relative', width: 160, height: 120,
+                                        borderRadius: 12, overflow: 'hidden',
+                                        background: '#0c0818',
+                                        border: '1.5px solid rgba(139,92,246,0.5)',
+                                        boxShadow: '0 4px 16px rgba(124,58,237,0.25)',
+                                        flexShrink: 0,
+                                    }}>
                                         <video
                                             ref={selfVideoRef}
                                             autoPlay
                                             playsInline
                                             muted
                                             style={{ width: '100%', height: '100%', objectFit: 'cover',
-                                                transform: 'scaleX(-1)' }}
+                                                display: 'block', transform: 'scaleX(-1)' }}
                                         />
-                                        <div style={{ position: 'absolute', bottom: 4, left: 0, right: 0,
-                                            textAlign: 'center', fontSize: 11, color: 'white',
-                                            textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
-                                            You
+                                        <div style={{
+                                            position: 'absolute', bottom: 0, left: 0, right: 0,
+                                            padding: '20px 8px 6px',
+                                            background: 'linear-gradient(transparent, rgba(0,0,0,0.72))',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        }}>
+                                            <span style={{
+                                                fontSize: 11, fontWeight: 600, color: '#c4b5fd',
+                                                textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+                                            }}>You</span>
+                                            <span style={{ fontSize: 10, lineHeight: 1 }}>
+                                                {micEnabled ? '🎙️' : '🔇'}
+                                            </span>
                                         </div>
                                     </div>
                                 )}
