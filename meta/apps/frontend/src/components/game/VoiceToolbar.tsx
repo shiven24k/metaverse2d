@@ -33,7 +33,7 @@ export function VoiceToolbar({
             backdropFilter: 'blur(10px)',
         }}>
             <span style={{ fontSize: 11, color: '#a78bfa', fontWeight: 700, marginRight: 6, whiteSpace: 'nowrap' }}>
-                {connectedPeers} nearby
+                {connectedPeers} in call
             </span>
 
             <ToolbarBtn

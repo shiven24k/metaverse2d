@@ -9,6 +9,7 @@ interface PeerState {
     polite: boolean;
     makingOffer: boolean;
     connectionState: RTCPeerConnectionState;
+    wasSpeaking: boolean;
 }
 
 export class PeerManager {
@@ -100,13 +101,13 @@ export class PeerManager {
         audioEl.volume = 1;
         document.getElementById('rtc-audio-container')?.appendChild(audioEl);
 
-        const peer: PeerState = { connection: pc, mode, audioEl, polite, makingOffer: false, connectionState: 'new' };
+        const peer: PeerState = { connection: pc, mode, audioEl, polite, makingOffer: false, connectionState: 'new', wasSpeaking: false };
 
         // Register early so a concurrent handleOffer doesn't create a duplicate PC.
         this.peers.set(peerId, peer);
         window.dispatchEvent(new CustomEvent('rtc:peersChanged', { detail: { count: this.peers.size } }));
 
-        pc.ontrack = (e) => {
+        pc.ontrack = async (e) => {
             if (e.track.kind === 'audio') {
                 if (!e.streams[0]) return;
                 const p = this.peers.get(peerId);
@@ -117,7 +118,7 @@ export class PeerManager {
                 // Speaking detection via a separate AnalyserNode — never touches the playback path.
                 try {
                     if (!this.analyserCtx) this.analyserCtx = new AudioContext();
-                    if (this.analyserCtx.state === 'suspended') this.analyserCtx.resume();
+                    if (this.analyserCtx.state === 'suspended') await this.analyserCtx.resume();
                     const analyser = this.analyserCtx.createAnalyser();
                     analyser.fftSize = 256;
                     this.analyserCtx.createMediaStreamSource(e.streams[0]).connect(analyser);
@@ -126,9 +127,14 @@ export class PeerManager {
                         if (!this.peers.has(peerId)) { clearInterval(speakingCheck); return; }
                         analyser.getByteFrequencyData(data);
                         const avg = data.reduce((a, b) => a + b, 0) / data.length;
-                        window.dispatchEvent(new CustomEvent('rtc:speakingState', {
-                            detail: { peerId, speaking: avg > 15 },
-                        }));
+                        const speaking = avg > 15;
+                        const p = this.peers.get(peerId);
+                        if (p && speaking !== p.wasSpeaking) {
+                            p.wasSpeaking = speaking;
+                            window.dispatchEvent(new CustomEvent('rtc:speakingState', {
+                                detail: { peerId, speaking },
+                            }));
+                        }
                     }, 100);
                 } catch { /* speaking detection is non-critical */ }
             } else {

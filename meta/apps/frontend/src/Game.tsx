@@ -322,6 +322,7 @@ const ArenaInner = () => {
     const knockPendingPeerIdsRef = useRef<Set<string>>(new Set());
     const peerConnectionStatesRef = useRef(new Map<string, RTCPeerConnectionState>());
     const [peerConnectionStates, setPeerConnectionStates] = useState(new Map<string, RTCPeerConnectionState>());
+    const rtcBufferRef = useRef<Array<{ type: string; data: unknown }>>([]);
     const speakingPeerIdsRef = useRef<Set<string>>(new Set());
     const [speakingPeerIds, setSpeakingPeerIds] = useState<Set<string>>(new Set());
     const videoPanelRef = useRef<HTMLDivElement>(null);
@@ -1323,6 +1324,7 @@ const ArenaInner = () => {
             wsRef.current = null;
             peerManagerRef.current?.destroy();
             peerManagerRef.current = null;
+            rtcBufferRef.current = [];
             localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
             localVideoStreamRef.current = null;
         };
@@ -1886,6 +1888,19 @@ const ArenaInner = () => {
                             console.log('[Game] PeerManager ready, localStream:', hasMic);
                             setMicPermission(hasMic ? 'granted' : 'denied');
                             peerManagerRef.current = pm;
+                            const buffered = rtcBufferRef.current.splice(0);
+                            for (const item of buffered) {
+                                const curPm = peerManagerRef.current;
+                                if (!curPm) break;
+                                const m = item.data as Record<string, unknown>;
+                                switch (item.type) {
+                                    case 'rtc:offer': curPm.handleOffer(m.from as string, m.sdp as RTCSessionDescriptionInit); break;
+                                    case 'rtc:answer': curPm.handleAnswer(m.from as string, m.sdp as RTCSessionDescriptionInit); break;
+                                    case 'rtc:ice': curPm.handleIce(m.from as string, m.candidate as RTCIceCandidateInit); break;
+                                    case 'rtc:knock-accept': curPm.handleKnockAccepted(m.from as string); break;
+                                    case 'rtc:knock-deny': curPm.handleKnockDenied(m.from as string); break;
+                                }
+                            }
                         });
                 }
                 break;
@@ -2202,15 +2217,18 @@ const ArenaInner = () => {
                 break;
 
             case 'rtc:offer':
-                peerManagerRef.current?.handleOffer(message.from, message.sdp as RTCSessionDescriptionInit);
+                if (!peerManagerRef.current) { rtcBufferRef.current.push({ type: 'rtc:offer', data: message }); break; }
+                peerManagerRef.current.handleOffer(message.from, message.sdp as RTCSessionDescriptionInit);
                 break;
 
             case 'rtc:answer':
-                peerManagerRef.current?.handleAnswer(message.from, message.sdp as RTCSessionDescriptionInit);
+                if (!peerManagerRef.current) { rtcBufferRef.current.push({ type: 'rtc:answer', data: message }); break; }
+                peerManagerRef.current.handleAnswer(message.from, message.sdp as RTCSessionDescriptionInit);
                 break;
 
             case 'rtc:ice':
-                peerManagerRef.current?.handleIce(message.from, message.candidate as RTCIceCandidateInit);
+                if (!peerManagerRef.current) { rtcBufferRef.current.push({ type: 'rtc:ice', data: message }); break; }
+                peerManagerRef.current.handleIce(message.from, message.candidate as RTCIceCandidateInit);
                 break;
 
             case 'rtc:room-peers':
@@ -2251,14 +2269,16 @@ const ArenaInner = () => {
             case 'rtc:knock-accept': {
                 const acceptFrom = (message as { from: string }).from;
                 setKnockPendingPeerIds(prev => { const next = new Set(prev); next.delete(acceptFrom); return next; });
-                peerManagerRef.current?.handleKnockAccepted(acceptFrom);
+                if (!peerManagerRef.current) { rtcBufferRef.current.push({ type: 'rtc:knock-accept', data: message }); break; }
+                peerManagerRef.current.handleKnockAccepted(acceptFrom);
                 break;
             }
 
             case 'rtc:knock-deny': {
                 const denyFrom = (message as { from: string }).from;
                 setKnockPendingPeerIds(prev => { const next = new Set(prev); next.delete(denyFrom); return next; });
-                peerManagerRef.current?.handleKnockDenied(denyFrom);
+                if (!peerManagerRef.current) { rtcBufferRef.current.push({ type: 'rtc:knock-deny', data: message }); break; }
+                peerManagerRef.current.handleKnockDenied(denyFrom);
                 break;
             }
 
@@ -5065,6 +5085,7 @@ const ArenaInner = () => {
                         const user = currentUserRef.current;
                         if (user && wsRef.current) {
                             peerManagerRef.current = null; // clear stale ref while re-init runs
+                            rtcBufferRef.current = [];
                             const newPm = new PeerManager(wsRef.current, user.userId, user.username);
                             const reInitWithTimeout = Promise.race([
                                 newPm.init(),
@@ -5077,6 +5098,19 @@ const ArenaInner = () => {
                                 .finally(() => {
                                     console.log('[Game] PeerManager re-init ready, localStream:', !!newPm.getLocalStream());
                                     peerManagerRef.current = newPm;
+                                    const buffered = rtcBufferRef.current.splice(0);
+                                    for (const item of buffered) {
+                                        const curPm = peerManagerRef.current;
+                                        if (!curPm) break;
+                                        const m = item.data as Record<string, unknown>;
+                                        switch (item.type) {
+                                            case 'rtc:offer': curPm.handleOffer(m.from as string, m.sdp as RTCSessionDescriptionInit); break;
+                                            case 'rtc:answer': curPm.handleAnswer(m.from as string, m.sdp as RTCSessionDescriptionInit); break;
+                                            case 'rtc:ice': curPm.handleIce(m.from as string, m.candidate as RTCIceCandidateInit); break;
+                                            case 'rtc:knock-accept': curPm.handleKnockAccepted(m.from as string); break;
+                                            case 'rtc:knock-deny': curPm.handleKnockDenied(m.from as string); break;
+                                        }
+                                    }
                                 });
                         }
                     }}
