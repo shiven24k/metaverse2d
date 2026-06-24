@@ -106,6 +106,7 @@ type RtcKnockIncoming = {
     type: 'rtc:knock';
     to: string;
     fromName: string;
+    callType?: 'voice' | 'video';
 };
 
 type RtcKnockAcceptIncoming = {
@@ -305,6 +306,7 @@ type RtcKnockRelayOutgoing = {
     type: 'rtc:knock';
     from: string;
     fromName: string;
+    callType?: 'voice' | 'video';
 };
 
 type RtcKnockResponseRelayOutgoing = {
