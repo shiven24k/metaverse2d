@@ -64,7 +64,9 @@ export class PeerManager {
         console.log('[PM] init() starting...');
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            console.log('[PM] init() mic acquired, audio tracks:', this.localStream.getAudioTracks().length);
+            console.log('[PM] init() audio tracks:',
+                this.localStream.getAudioTracks().map(t =>
+                    `${t.label} enabled:${t.enabled} readyState:${t.readyState}`));
         } catch (err) {
             console.error('[PM] init() mic failed:', err);
         }
@@ -102,6 +104,15 @@ export class PeerManager {
             console.error('[PM] connect() no audioCtx, aborting');
             return;
         }
+        // Mobile browsers suspend AudioContext until a user gesture. Resume here so
+        // gainNode processing and createMediaStreamSource work correctly.
+        if (this.audioCtx.state === 'suspended') {
+            console.warn('[PM] AudioContext suspended — resuming...');
+            await this.audioCtx.resume();
+        }
+        console.log('[PM] audioCtx state after resume check:', this.audioCtx.state);
+        console.log('[PM] connect() micEnabled:', this.micEnabled,
+            'audio track enabled:', this.localStream?.getAudioTracks()[0]?.enabled);
         // localStream null is fine — just means we send no audio; skip addTrack below.
 
         const pc = new RTCPeerConnection({ iceServers: this.iceServers });
@@ -127,7 +138,23 @@ export class PeerManager {
                 'streams:', e.streams.length,
                 'stream active:', e.streams[0]?.active);
             if (e.track.kind === 'audio') {
-                this.audioCtx!.createMediaStreamSource(e.streams[0]).connect(gainNode);
+                console.log('[PM] ontrack AUDIO from', peerId,
+                    'readyState:', e.track.readyState,
+                    'enabled:', e.track.enabled,
+                    'streams:', e.streams.length);
+                console.log('[PM] gainNode exists:', !!gainNode,
+                    'audioCtx state:', this.audioCtx?.state);
+                // Resume AudioContext before creating the source — on mobile it may still
+                // be suspended here even if we resumed in connect(), e.g. if ontrack fires
+                // before the resume() promise resolved or after a page-visibility change.
+                const resumeAndConnect = async () => {
+                    if (this.audioCtx?.state === 'suspended') await this.audioCtx.resume();
+                    this.audioCtx!.createMediaStreamSource(e.streams[0]).connect(gainNode);
+                    console.log('[PM] audio pipeline connected for', peerId,
+                        'gainNode gain:', gainNode.gain.value,
+                        'audioCtx state:', this.audioCtx?.state);
+                };
+                resumeAndConnect();
             } else {
                 const stream = e.streams[0];
                 if (!stream) {
@@ -178,6 +205,8 @@ export class PeerManager {
             // Adding tracks triggers onnegotiationneeded asynchronously.
             // localStream may be null if mic permission was denied — skip audio tracks gracefully.
             this.localStream?.getAudioTracks().forEach(t => pc.addTrack(t, this.localStream!));
+            console.log('[PM] connect() added audio tracks:',
+                this.localStream?.getAudioTracks().length ?? 0, 'to peer:', peerId);
             if (this.localVideoStream) {
                 this.localVideoStream.getVideoTracks().forEach(t => pc.addTrack(t, this.localVideoStream!));
             }
@@ -447,6 +476,7 @@ export class PeerManager {
         const peer = this.peers.get(peerId);
         if (!peer || !this.audioCtx) return;
         const gain = Math.max(0, 1 - distance / VOICE_RADIUS);
+        console.log('[PM] setVolume', peerId, 'distance:', distance, 'gain:', gain);
         peer.gainNode.gain.setTargetAtTime(gain, this.audioCtx.currentTime, 0.1);
     }
 
