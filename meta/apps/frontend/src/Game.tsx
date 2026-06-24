@@ -1791,9 +1791,12 @@ const ArenaInner = () => {
                 currentBroadcastZoneRef.current = null;
                 if (wsRef.current) {
                     peerManagerRef.current?.destroy();
+                    peerManagerRef.current = null; // clear stale ref while init() runs
                     const pm = new PeerManager(wsRef.current, message.payload.userId, message.payload.username ?? 'Unknown');
-                    peerManagerRef.current = pm;
-                    pm.init().catch(console.error);
+                    pm.init().then(() => {
+                        console.log('[Game] PeerManager init complete, localStream:', !!pm.getLocalStream());
+                        peerManagerRef.current = pm;
+                    }).catch(console.error);
                 }
                 break;
             }
@@ -4928,9 +4931,12 @@ const ArenaInner = () => {
                         // Re-init so proximity calls work again without a page refresh
                         const user = currentUserRef.current;
                         if (user && wsRef.current) {
+                            peerManagerRef.current = null; // clear stale ref while re-init runs
                             const newPm = new PeerManager(wsRef.current, user.userId, user.username);
-                            newPm.init().catch(() => {});
-                            peerManagerRef.current = newPm;
+                            newPm.init().then(() => {
+                                console.log('[Game] PeerManager re-init complete, localStream:', !!newPm.getLocalStream());
+                                peerManagerRef.current = newPm;
+                            }).catch(console.error);
                         }
                     }}
                 />

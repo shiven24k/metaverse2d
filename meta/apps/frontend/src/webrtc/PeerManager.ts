@@ -62,8 +62,9 @@ export class PeerManager {
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             this.audioCtx = new AudioContext();
+            console.log('[PM] init() localStream acquired, audio tracks:', this.localStream.getAudioTracks().length);
         } catch (err) {
-            console.warn('[PeerManager] getUserMedia failed — voice disabled:', err);
+            console.warn('[PM] init() getUserMedia failed — voice/video disabled:', err);
         }
 
         try {
