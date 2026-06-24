@@ -618,6 +618,21 @@ const ArenaInner = () => {
     useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
     useEffect(() => { usersRef.current = users; }, [users]);
 
+    // Sync the local camera stream to the self-view <video> element.
+    // The element only exists in the DOM when cameraEnabled is true, so we key on
+    // that — by the time this effect fires the element is mounted and the ref is set.
+    useEffect(() => {
+        const el = selfVideoRef.current;
+        if (!el) return;
+        const stream = localVideoStreamRef.current;
+        if (stream) {
+            el.srcObject = stream;
+            el.play().catch(() => {});
+        } else {
+            el.srcObject = null;
+        }
+    }, [cameraEnabled]);
+
     // Listen for remote video tracks arriving from PeerManager
     useEffect(() => {
         const onRemoteVideo = (e: Event) => {
@@ -4796,8 +4811,9 @@ const ArenaInner = () => {
                 )}
 
                 {/* Floating video panel — draggable, Discord-style */}
-                {remotePeerIds.length > 0 && (() => {
-                    const gridCols = remotePeerIds.length <= 1 ? 1 : 2;
+                {(remotePeerIds.length > 0 || cameraEnabled) && (() => {
+                    const totalTiles = remotePeerIds.length + (cameraEnabled ? 1 : 0);
+                    const gridCols = totalTiles <= 2 ? 1 : 2;
                     return (
                         <div
                             ref={videoPanelRef}
@@ -4828,6 +4844,24 @@ const ArenaInner = () => {
                                 maxHeight: '60vh',
                                 overflowY: 'auto',
                             }}>
+                                {cameraEnabled && (
+                                    <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden',
+                                        border: '2px solid rgba(139, 92, 246, 0.4)' }}>
+                                        <video
+                                            ref={selfVideoRef}
+                                            autoPlay
+                                            playsInline
+                                            muted
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover',
+                                                transform: 'scaleX(-1)' }}
+                                        />
+                                        <div style={{ position: 'absolute', bottom: 4, left: 0, right: 0,
+                                            textAlign: 'center', fontSize: 11, color: 'white',
+                                            textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+                                            You
+                                        </div>
+                                    </div>
+                                )}
                                 {remotePeerIds.map(peerId => {
                                     const stream = remoteStreamsRef.current.get(peerId);
                                     if (!stream) return null;
