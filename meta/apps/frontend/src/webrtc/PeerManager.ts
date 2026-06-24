@@ -173,7 +173,9 @@ export class PeerManager {
         const receiveOnly = this.broadcastMode === 'listener' && fromId === this.broadcastSpeakerId;
 
         if (!this.peers.has(fromId)) {
-            await this.connect(fromId, 'voice', false, receiveOnly);
+            // Read stored callType so a video knock auto-connects with video tracks, not voice-only.
+            const mode = this.pendingKnocks.get(fromId) ?? 'voice';
+            await this.connect(fromId, mode, false, receiveOnly);
         }
         const peer = this.peers.get(fromId);
         if (!peer) return;
@@ -335,8 +337,8 @@ export class PeerManager {
     async acceptIncomingKnock(fromId: string, callType: 'voice' | 'video' = 'voice') {
         // IMPORTANT: this method must NOT call sendKnock() or modify pendingKnocks in
         // any way — doing so is what caused the knock→accept→knock infinite loop.
+        console.log('[PM] acceptIncomingKnock fromId:', fromId, 'callType:', callType);
         const mode: PeerMode = callType;
-        console.log('[PeerManager] acceptIncomingKnock from', fromId, '| mode:', mode);
         // Connect as non-initiator before sending accept so our PC is ready when
         // the initiator's offer arrives (or our own onnegotiationneeded fires first).
         await this.connect(fromId, mode, false);
@@ -348,16 +350,27 @@ export class PeerManager {
     }
 
     // Called when the peer we knocked accepted us.
-    handleKnockAccepted(fromId: string) {
-        // Bug 2 fix: if setProximity cleaned up pendingKnocks while the accept was in-flight
-        // (B briefly fell out of voicePeers for one frame), mode would be undefined and the
-        // call would never start. Fall back to 'voice' so we always connect on accept.
+    async handleKnockAccepted(fromId: string) {
         const mode = this.pendingKnocks.get(fromId) ?? 'voice';
         this.pendingKnocks.delete(fromId);
         console.log('[PeerManager] handleKnockAccepted from', fromId, '| connecting as', mode);
+
+        const existingPeer = this.peers.get(fromId);
+        if (existingPeer) {
+            // handleOffer's fallback already claimed the peer slot (responder sent its offer
+            // before rtc:knock-accept reached us). Don't call connect() — it would bail.
+            // Instead add video tracks directly so onnegotiationneeded sends the upgrade offer.
+            if (mode === 'video' && this.localVideoStream) {
+                this.localVideoStream.getVideoTracks().forEach(t =>
+                    existingPeer.connection.addTrack(t, this.localVideoStream!)
+                );
+            }
+            return;
+        }
+
+        // No existing peer — claim the slot as initiator.
         // Call connect() immediately (no setTimeout) so peers.set() claims the slot
-        // synchronously. A deferred call lets handleOffer's auto-connect() grab the slot
-        // first — always as voice-only, which loses the video mode from pendingKnocks.
+        // synchronously before any concurrent handleOffer can grab it first.
         this.connect(fromId, mode, true);
     }
 
