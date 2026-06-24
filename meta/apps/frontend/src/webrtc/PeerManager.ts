@@ -20,6 +20,8 @@ export class PeerManager {
     private currentBroadcastZoneId: string | null = null;
     // Knocks sent by this peer, waiting for a response (peerId → desired mode)
     private pendingKnocks = new Map<string, PeerMode>();
+    // ICE candidates that arrived before remoteDescription was set (peerId → queue)
+    private pendingCandidates = new Map<string, RTCIceCandidateInit[]>();
 
     private iceServers: RTCIceServer[] = [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -215,6 +217,7 @@ export class PeerManager {
             } else {
                 await peer.connection.setRemoteDescription(sdp);
             }
+            await this.flushPendingCandidates(fromId, peer);
             const answer = await peer.connection.createAnswer();
             await peer.connection.setLocalDescription(answer);
             this.ws.send(JSON.stringify({ type: 'rtc:answer', to: fromId, sdp: answer }));
@@ -229,20 +232,35 @@ export class PeerManager {
         if (!peer) return;
         try {
             await peer.connection.setRemoteDescription(sdp);
+            await this.flushPendingCandidates(fromId, peer);
         } catch (err) {
             console.warn('[PeerManager] handleAnswer failed, disconnecting peer:', fromId, err);
             this.disconnect(fromId);
         }
     }
 
+    private async flushPendingCandidates(fromId: string, peer: PeerState) {
+        const pending = this.pendingCandidates.get(fromId);
+        if (!pending) return;
+        this.pendingCandidates.delete(fromId);
+        for (const c of pending) {
+            await peer.connection.addIceCandidate(c).catch(() => {});
+        }
+    }
+
     async handleIce(fromId: string, candidate: RTCIceCandidateInit) {
         const peer = this.peers.get(fromId);
-        if (peer) {
-            try {
-                await peer.connection.addIceCandidate(candidate);
-            } catch (err) {
-                console.warn('[PeerManager] addIceCandidate failed:', err);
-            }
+        if (!peer) return;
+        if (peer.connection.remoteDescription === null) {
+            // remoteDescription not yet set — queue until handleOffer/handleAnswer flushes it.
+            if (!this.pendingCandidates.has(fromId)) this.pendingCandidates.set(fromId, []);
+            this.pendingCandidates.get(fromId)!.push(candidate);
+            return;
+        }
+        try {
+            await peer.connection.addIceCandidate(candidate);
+        } catch (err) {
+            console.warn('[PM] addIceCandidate failed:', err);
         }
     }
 
@@ -252,6 +270,7 @@ export class PeerManager {
         peer.connection.close();
         this.peers.delete(peerId);
         this.pendingKnocks.delete(peerId);
+        this.pendingCandidates.delete(peerId);
         window.dispatchEvent(new CustomEvent('rtc:peerLeft', { detail: { peerId } }));
     }
 

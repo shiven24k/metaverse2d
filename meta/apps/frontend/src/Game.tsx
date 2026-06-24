@@ -4796,9 +4796,8 @@ const ArenaInner = () => {
                 )}
 
                 {/* Floating video panel — draggable, Discord-style */}
-                {(remotePeerIds.length > 0 || cameraEnabled) && (() => {
-                    const totalTiles = remotePeerIds.length + (cameraEnabled ? 1 : 0);
-                    const gridCols = totalTiles <= 2 ? 1 : 2;
+                {remotePeerIds.length > 0 && (() => {
+                    const gridCols = remotePeerIds.length <= 1 ? 1 : 2;
                     return (
                         <div
                             ref={videoPanelRef}
@@ -4829,35 +4828,6 @@ const ArenaInner = () => {
                                 maxHeight: '60vh',
                                 overflowY: 'auto',
                             }}>
-                                {cameraEnabled && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                                        <div style={{ position: 'relative' }}>
-                                            <video
-                                                ref={selfVideoRef}
-                                                autoPlay
-                                                muted
-                                                playsInline
-                                                style={{
-                                                    width: 140, height: 105, borderRadius: 8,
-                                                    objectFit: 'cover', background: '#0f0a1e', display: 'block',
-                                                    border: '2px solid rgba(124,58,237,0.35)',
-                                                    opacity: 0.88,
-                                                    transform: 'scaleX(-1)',
-                                                }}
-                                            />
-                                            <div style={{
-                                                position: 'absolute', bottom: 4, right: 4,
-                                                width: 18, height: 18, borderRadius: '50%',
-                                                background: 'rgba(0,0,0,0.65)',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                fontSize: 10,
-                                            }}>
-                                                {micEnabled ? '🎙️' : '🔇'}
-                                            </div>
-                                        </div>
-                                        <span style={{ fontSize: 11, color: '#a78bfa', fontWeight: 600 }}>You</span>
-                                    </div>
-                                )}
                                 {remotePeerIds.map(peerId => {
                                     const stream = remoteStreamsRef.current.get(peerId);
                                     if (!stream) return null;
