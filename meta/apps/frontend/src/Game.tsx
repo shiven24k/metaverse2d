@@ -1793,10 +1793,18 @@ const ArenaInner = () => {
                     peerManagerRef.current?.destroy();
                     peerManagerRef.current = null; // clear stale ref while init() runs
                     const pm = new PeerManager(wsRef.current, message.payload.userId, message.payload.username ?? 'Unknown');
-                    pm.init().then(() => {
-                        console.log('[Game] PeerManager init complete, localStream:', !!pm.getLocalStream());
-                        peerManagerRef.current = pm;
-                    }).catch(console.error);
+                    const initWithTimeout = Promise.race([
+                        pm.init(),
+                        new Promise<void>((_, reject) =>
+                            setTimeout(() => reject(new Error('PeerManager init timeout')), 8000)
+                        ),
+                    ]);
+                    initWithTimeout
+                        .catch((err) => { console.error('[Game] PeerManager init failed or timed out:', err); })
+                        .finally(() => {
+                            console.log('[Game] PeerManager ready, localStream:', !!pm.getLocalStream());
+                            peerManagerRef.current = pm;
+                        });
                 }
                 break;
             }
@@ -4933,10 +4941,18 @@ const ArenaInner = () => {
                         if (user && wsRef.current) {
                             peerManagerRef.current = null; // clear stale ref while re-init runs
                             const newPm = new PeerManager(wsRef.current, user.userId, user.username);
-                            newPm.init().then(() => {
-                                console.log('[Game] PeerManager re-init complete, localStream:', !!newPm.getLocalStream());
-                                peerManagerRef.current = newPm;
-                            }).catch(console.error);
+                            const reInitWithTimeout = Promise.race([
+                                newPm.init(),
+                                new Promise<void>((_, reject) =>
+                                    setTimeout(() => reject(new Error('PeerManager re-init timeout')), 8000)
+                                ),
+                            ]);
+                            reInitWithTimeout
+                                .catch((err) => { console.error('[Game] PeerManager re-init failed or timed out:', err); })
+                                .finally(() => {
+                                    console.log('[Game] PeerManager re-init ready, localStream:', !!newPm.getLocalStream());
+                                    peerManagerRef.current = newPm;
+                                });
                         }
                     }}
                 />

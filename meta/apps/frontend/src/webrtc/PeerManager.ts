@@ -59,12 +59,19 @@ export class PeerManager {
     ) {}
 
     async init() {
+        console.log('[PM] init() starting...');
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            this.audioCtx = new AudioContext();
-            console.log('[PM] init() localStream acquired, audio tracks:', this.localStream.getAudioTracks().length);
+            console.log('[PM] init() mic acquired, audio tracks:', this.localStream.getAudioTracks().length);
         } catch (err) {
-            console.warn('[PM] init() getUserMedia failed — voice/video disabled:', err);
+            console.error('[PM] init() mic failed:', err);
+        }
+        // Always create AudioContext regardless of mic result — it's needed for gain nodes.
+        try {
+            this.audioCtx = new AudioContext();
+            console.log('[PM] init() audioCtx created');
+        } catch (err) {
+            console.error('[PM] init() audioCtx failed:', err);
         }
 
         try {
@@ -84,7 +91,16 @@ export class PeerManager {
     // local tracks are added, so only the speaker's tracks flow in.
     async connect(peerId: string, mode: PeerMode = 'voice', isInitiator = true, receiveOnly = false) {
         if (this.peers.has(peerId)) return;
-        if (!this.localStream || !this.audioCtx) return;
+        // AudioContext may be missing if init() failed (e.g. strict mobile autoplay policy).
+        // Recreate it inline so a mic-less device can still receive video/audio tracks.
+        if (!this.audioCtx) {
+            try { this.audioCtx = new AudioContext(); } catch { /* ignore */ }
+        }
+        if (!this.audioCtx) {
+            console.error('[PM] connect() no audioCtx, aborting');
+            return;
+        }
+        // localStream null is fine — just means we send no audio; skip addTrack below.
 
         const pc = new RTCPeerConnection({ iceServers: this.iceServers });
         // The peer with the lexicographically smaller userId is the polite peer — it
@@ -158,9 +174,8 @@ export class PeerManager {
 
         if (!receiveOnly) {
             // Adding tracks triggers onnegotiationneeded asynchronously.
-            // For the initiator this sends the first offer; for the non-initiator it
-            // may trigger a second offer later (handled by perfect negotiation).
-            this.localStream.getAudioTracks().forEach(t => pc.addTrack(t, this.localStream!));
+            // localStream may be null if mic permission was denied — skip audio tracks gracefully.
+            this.localStream?.getAudioTracks().forEach(t => pc.addTrack(t, this.localStream!));
             if (this.localVideoStream) {
                 this.localVideoStream.getVideoTracks().forEach(t => pc.addTrack(t, this.localVideoStream!));
             }
