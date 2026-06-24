@@ -179,8 +179,15 @@ interface EmoteBubble {
 
 
 
-function RemoteVideoTile({ peerId, stream, username }: { peerId: string; stream: MediaStream; username?: string }) {
+function RemoteVideoTile({ peerId, stream, username, connectionState }: {
+    peerId: string;
+    stream: MediaStream;
+    username?: string;
+    connectionState?: RTCPeerConnectionState;
+}) {
     const videoRef = useRef<HTMLVideoElement>(null);
+    const [overlayVisible, setOverlayVisible] = useState(true);
+    const [overlayFading, setOverlayFading] = useState(false);
 
     useEffect(() => {
         const el = videoRef.current;
@@ -192,6 +199,25 @@ function RemoteVideoTile({ peerId, stream, username }: { peerId: string; stream:
         el.srcObject = stream;
         el.play().catch(err => console.warn('[RemoteVideoTile] play() rejected:', err));
     }, [peerId, stream]);
+
+    useEffect(() => {
+        if (connectionState === 'connected') {
+            setOverlayFading(false);
+            setOverlayVisible(true);
+            const fadeTimer = setTimeout(() => setOverlayFading(true), 1200);
+            const hideTimer = setTimeout(() => setOverlayVisible(false), 1800);
+            return () => { clearTimeout(fadeTimer); clearTimeout(hideTimer); };
+        } else if (connectionState === 'failed' || connectionState === 'disconnected') {
+            setOverlayFading(false);
+            setOverlayVisible(true);
+        }
+    }, [connectionState]);
+
+    const overlayLabel =
+        connectionState === 'connected' ? '✓ Connected' :
+        connectionState === 'failed' ? '✗ Failed' :
+        connectionState === 'disconnected' ? 'Disconnected' :
+        'Connecting…';
 
     return (
         <div style={{
@@ -209,6 +235,22 @@ function RemoteVideoTile({ peerId, stream, username }: { peerId: string; stream:
                 muted={false}
                 style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
+            {overlayVisible && connectionState && connectionState !== 'closed' && (
+                <div style={{
+                    position: 'absolute', inset: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: connectionState === 'failed' || connectionState === 'disconnected'
+                        ? 'rgba(185,28,28,0.6)' : 'rgba(0,0,0,0.55)',
+                    opacity: overlayFading ? 0 : 1,
+                    transition: 'opacity 0.6s ease',
+                    pointerEvents: 'none',
+                }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#fff',
+                        textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+                        {overlayLabel}
+                    </span>
+                </div>
+            )}
             <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
                 padding: '20px 8px 6px',
@@ -309,6 +351,7 @@ const ArenaInner = () => {
     const [deafened, setDeafened] = useState(false);
     const [connectedPeers, setConnectedPeers] = useState(0);
     const [cameraError, setCameraError] = useState<string | null>(null);
+    const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'unknown'>('unknown');
     // Knock-to-join: incoming knock requests (other user wants to join our call)
     const [knockRequests, setKnockRequests] = useState<{ id: string; fromId: string; fromName: string; callType?: 'voice' | 'video' }[]>([]);
     // Proximity group: userIds of all currently connected proximity peers
@@ -321,6 +364,9 @@ const ArenaInner = () => {
     // Instead, keep the Map in a ref and drive re-renders with a plain string[] of keys.
     const remoteStreamsRef = useRef(new Map<string, MediaStream>());
     const [remotePeerIds, setRemotePeerIds] = useState<string[]>([]);
+    const knockPendingPeerIdsRef = useRef<Set<string>>(new Set());
+    const peerConnectionStatesRef = useRef(new Map<string, RTCPeerConnectionState>());
+    const [peerConnectionStates, setPeerConnectionStates] = useState(new Map<string, RTCPeerConnectionState>());
     const { elRef: videoPanelRef, onPointerDown: onVideoPointerDown } = useDraggable(16, 80);
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState('');
@@ -618,6 +664,7 @@ const ArenaInner = () => {
     const currentUserRef = useRef(currentUser);
     useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
     useEffect(() => { usersRef.current = users; }, [users]);
+    useEffect(() => { knockPendingPeerIdsRef.current = knockPendingPeerIds; }, [knockPendingPeerIds]);
 
     // Sync the local camera stream to the self-view <video> element.
     // The element only exists in the DOM when cameraEnabled is true, so we key on
@@ -664,6 +711,8 @@ const ArenaInner = () => {
             const { peerId } = (e as CustomEvent<{ peerId: string }>).detail;
             remoteStreamsRef.current.delete(peerId);
             setRemotePeerIds([...remoteStreamsRef.current.keys()]);
+            peerConnectionStatesRef.current.delete(peerId);
+            setPeerConnectionStates(new Map(peerConnectionStatesRef.current));
         };
         const onProximityGroup = (e: Event) => {
             const { members, nearbyPeers } = (e as CustomEvent<{ members: string[]; nearbyPeers: string[] }>).detail;
@@ -689,6 +738,11 @@ const ArenaInner = () => {
             const { count } = (e as CustomEvent<{ count: number }>).detail;
             setConnectedPeers(count);
         };
+        const onConnectionStateChanged = (e: Event) => {
+            const { peerId, state } = (e as CustomEvent<{ peerId: string; state: RTCPeerConnectionState }>).detail;
+            peerConnectionStatesRef.current.set(peerId, state);
+            setPeerConnectionStates(new Map(peerConnectionStatesRef.current));
+        };
         window.addEventListener('rtc:remoteVideo', onRemoteVideo);
         window.addEventListener('rtc:peerLeft', onPeerLeft);
         window.addEventListener('rtc:proximityGroup', onProximityGroup);
@@ -696,6 +750,7 @@ const ArenaInner = () => {
         window.addEventListener('rtc:knockDenied', onKnockDenied);
         window.addEventListener('rtc:knockCancelled', onKnockCancelled);
         window.addEventListener('rtc:peersChanged', onPeersChanged);
+        window.addEventListener('rtc:connectionStateChanged', onConnectionStateChanged);
         return () => {
             window.removeEventListener('rtc:remoteVideo', onRemoteVideo);
             window.removeEventListener('rtc:peerLeft', onPeerLeft);
@@ -704,6 +759,7 @@ const ArenaInner = () => {
             window.removeEventListener('rtc:knockDenied', onKnockDenied);
             window.removeEventListener('rtc:knockCancelled', onKnockCancelled);
             window.removeEventListener('rtc:peersChanged', onPeersChanged);
+            window.removeEventListener('rtc:connectionStateChanged', onConnectionStateChanged);
         };
     }, [addToast]);
 
@@ -928,6 +984,8 @@ const ArenaInner = () => {
             }
             // Portal edge pulse animation
             if (portalsRef.current.length > 0) rerender();
+            // Knock pending pulse animation
+            if (knockPendingPeerIdsRef.current.size > 0) rerender();
             id = requestAnimationFrame(tick);
         }
         id = requestAnimationFrame(tick);
@@ -1836,7 +1894,9 @@ const ArenaInner = () => {
                     initWithTimeout
                         .catch((err) => { console.error('[Game] PeerManager init failed or timed out:', err); })
                         .finally(() => {
-                            console.log('[Game] PeerManager ready, localStream:', !!pm.getLocalStream());
+                            const hasMic = pm.hasMic();
+                            console.log('[Game] PeerManager ready, localStream:', hasMic);
+                            setMicPermission(hasMic ? 'granted' : 'denied');
                             peerManagerRef.current = pm;
                         });
                 }
@@ -3159,6 +3219,13 @@ const ArenaInner = () => {
                     ctx.fillText('👂', ux, uy - 68);
                 }
             }
+            // 📞 pulsing indicator above avatar while a knock is pending for this peer
+            if (knockPendingPeerIdsRef.current.has(user.userId)) {
+                ctx.font = '16px sans-serif';
+                ctx.globalAlpha = 0.5 + 0.5 * Math.sin(Date.now() / 300);
+                ctx.fillText('📞', ux, uy - 52);
+                ctx.globalAlpha = 1;
+            }
         });
 
         // Wall-layer items render after players so they appear in front
@@ -3545,14 +3612,10 @@ const ArenaInner = () => {
                                 username: usersRef.current.get(id)?.username ?? id.slice(0, 8),
                             }))}
                             pendingKnockPeerIds={knockPendingPeerIds}
-                            onCallVoice={async (peerId) => {
-                                await peerManagerRef.current?.resumeAudio();
-                                peerManagerRef.current?.sendKnock(peerId, 'voice');
-                            }}
+                            onCallVoice={(peerId) => peerManagerRef.current?.sendKnock(peerId, 'voice')}
                             onCallVideo={async (peerId) => {
                                 const pm = peerManagerRef.current;
                                 if (!pm) return;
-                                await pm.resumeAudio();
                                 // Enable camera before knocking so localVideoStream is ready
                                 // by the time the responder accepts and connect() runs.
                                 if (!cameraEnabled) {
@@ -3593,7 +3656,6 @@ const ArenaInner = () => {
                                             onClick={async () => {
                                                 const pm = peerManagerRef.current;
                                                 if (!pm) return;
-                                                await pm.resumeAudio();
                                                 // For video calls, ensure camera is on before accepting
                                                 if (req.callType === 'video' && !cameraEnabled) {
                                                     let stream: MediaStream | null = null;
@@ -4806,6 +4868,42 @@ const ArenaInner = () => {
                 />
 
                 {/* Camera error toast */}
+                {micPermission === 'denied' && (
+                    <div
+                        onClick={async () => {
+                            const pm = peerManagerRef.current;
+                            if (!pm) return;
+                            try {
+                                await pm.init();
+                                setMicPermission(pm.hasMic() ? 'granted' : 'denied');
+                            } catch {
+                                // retry failed silently
+                            }
+                        }}
+                        style={{
+                            position: 'fixed',
+                            bottom: 160,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            zIndex: 5000,
+                            background: 'rgba(120,53,15,0.92)',
+                            border: '1px solid rgba(217,119,6,0.6)',
+                            borderRadius: 10,
+                            padding: '10px 18px',
+                            color: '#fef3c7',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                            userSelect: 'none',
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        🎤 Microphone access denied — voice calls unavailable. Tap to retry.
+                    </div>
+                )}
+
                 {cameraError && (
                     <div
                         onClick={() => setCameraError(null)}
@@ -4908,6 +5006,7 @@ const ArenaInner = () => {
                                             peerId={peerId}
                                             stream={stream}
                                             username={usersRef.current.get(peerId)?.username}
+                                            connectionState={peerConnectionStates.get(peerId)}
                                         />
                                     );
                                 })}

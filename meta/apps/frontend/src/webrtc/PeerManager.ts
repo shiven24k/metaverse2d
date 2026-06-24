@@ -5,10 +5,10 @@ type PeerMode = 'voice' | 'video';
 interface PeerState {
     connection: RTCPeerConnection;
     mode: PeerMode;
-    gainNode: GainNode;
+    audioEl: HTMLAudioElement;
     polite: boolean;
     makingOffer: boolean;
-    audioConnected: boolean;
+    connectionState: RTCPeerConnectionState;
 }
 
 export class PeerManager {
@@ -50,7 +50,8 @@ export class PeerManager {
     ];
     private localStream: MediaStream | null = null;
     private localVideoStream: MediaStream | null = null;
-    private audioCtx: AudioContext | null = null;
+    // Separate AudioContext used only for speaking detection — never in the audio playback path.
+    private analyserCtx: AudioContext | null = null;
     private cameraEnabled = false;
     private micEnabled = true;
     private deafened = false;
@@ -71,13 +72,6 @@ export class PeerManager {
         } catch (err) {
             console.error('[PM] init() mic failed:', err);
         }
-        // Always create AudioContext regardless of mic result — it's needed for gain nodes.
-        try {
-            this.audioCtx = new AudioContext();
-            console.log('[PM] init() audioCtx created');
-        } catch (err) {
-            console.error('[PM] init() audioCtx failed:', err);
-        }
 
         try {
             const res = await fetch('/api/v1/turn-credentials');
@@ -96,36 +90,21 @@ export class PeerManager {
     // local tracks are added, so only the speaker's tracks flow in.
     async connect(peerId: string, mode: PeerMode = 'voice', isInitiator = true, receiveOnly = false) {
         if (this.peers.has(peerId)) return;
-        // AudioContext may be missing if init() failed (e.g. strict mobile autoplay policy).
-        // Recreate it inline so a mic-less device can still receive video/audio tracks.
-        if (!this.audioCtx) {
-            try { this.audioCtx = new AudioContext(); } catch { /* ignore */ }
-        }
-        if (!this.audioCtx) {
-            console.error('[PM] connect() no audioCtx, aborting');
-            return;
-        }
-        // Mobile browsers suspend AudioContext until a user gesture. Resume here so
-        // gainNode processing and createMediaStreamSource work correctly.
-        if (this.audioCtx.state === 'suspended') {
-            console.warn('[PM] AudioContext suspended — resuming...');
-            await this.audioCtx.resume();
-        }
-        console.log('[PM] audioCtx state after resume check:', this.audioCtx.state);
         console.log('[PM] connect() micEnabled:', this.micEnabled,
             'audio track enabled:', this.localStream?.getAudioTracks()[0]?.enabled);
-        // localStream null is fine — just means we send no audio; skip addTrack below.
 
         const pc = new RTCPeerConnection({ iceServers: this.iceServers });
         // The peer with the lexicographically smaller userId is the polite peer — it
         // rolls back and defers when both sides send offers simultaneously.
         const polite = this.myUserId < peerId;
 
-        const gainNode = this.audioCtx.createGain();
-        gainNode.gain.setValueAtTime(1, this.audioCtx.currentTime);
-        gainNode.connect(this.audioCtx.destination);
+        // HTMLAudioElement for direct playback — no AudioContext in the path so there
+        // is nothing to suspend and no user-gesture requirement for audio output.
+        const audioEl = new Audio();
+        audioEl.autoplay = true;
+        audioEl.volume = 1;
 
-        const peer: PeerState = { connection: pc, mode, gainNode, polite, makingOffer: false, audioConnected: false };
+        const peer: PeerState = { connection: pc, mode, audioEl, polite, makingOffer: false, connectionState: 'new' };
 
         // Register early so a concurrent handleOffer doesn't create a duplicate PC.
         this.peers.set(peerId, peer);
@@ -145,20 +124,12 @@ export class PeerManager {
                     'readyState:', e.track.readyState,
                     'enabled:', e.track.enabled,
                     'streams:', e.streams.length);
-                console.log('[PM] gainNode exists:', !!gainNode,
-                    'audioCtx state:', this.audioCtx?.state);
-                // Resume AudioContext before creating the source — on mobile it may still
-                // be suspended here even if we resumed in connect(), e.g. if ontrack fires
-                // before the resume() promise resolved or after a page-visibility change.
-                const resumeAndConnect = async () => {
-                    if (this.audioCtx?.state === 'suspended') await this.audioCtx.resume();
-                    this.audioCtx!.createMediaStreamSource(e.streams[0]).connect(gainNode);
-                    peer.audioConnected = true;
-                    console.log('[PM] audio pipeline connected for', peerId,
-                        'gainNode gain:', gainNode.gain.value,
-                        'audioCtx state:', this.audioCtx?.state);
-                };
-                resumeAndConnect();
+                const p = this.peers.get(peerId);
+                if (!p) return;
+                p.audioEl.srcObject = e.streams[0];
+                p.audioEl.muted = this.deafened;
+                p.audioEl.play().catch(err => console.warn('[PM] audio play failed:', err));
+                console.log('[PM] audio attached to element for', peerId);
             } else {
                 const stream = e.streams[0];
                 if (!stream) {
@@ -179,7 +150,20 @@ export class PeerManager {
 
         pc.onconnectionstatechange = () => {
             console.log('[PM] connectionState for', peerId, ':', pc.connectionState);
-            if (pc.connectionState === 'failed') this.disconnect(peerId);
+            const p = this.peers.get(peerId);
+            if (p) p.connectionState = pc.connectionState;
+            window.dispatchEvent(new CustomEvent('rtc:connectionStateChanged', {
+                detail: { peerId, state: pc.connectionState },
+            }));
+            if (pc.connectionState === 'failed') {
+                console.warn('[PM] connection failed for', peerId, '— retrying in 1s');
+                this.disconnect(peerId);
+                setTimeout(() => {
+                    if (this.proximityPeers.has(peerId) || this.conferencePeers.has(peerId)) {
+                        this.connect(peerId, mode, true);
+                    }
+                }, 1000);
+            }
         };
 
         pc.oniceconnectionstatechange = () => {
@@ -300,6 +284,8 @@ export class PeerManager {
     disconnect(peerId: string) {
         const peer = this.peers.get(peerId);
         if (!peer) return;
+        peer.audioEl.srcObject = null;
+        peer.audioEl.pause();
         peer.connection.close();
         this.peers.delete(peerId);
         this.pendingKnocks.delete(peerId);
@@ -433,7 +419,7 @@ export class PeerManager {
 
             // Connect as non-initiator before sending accept so our PC is ready when
             // the initiator's offer arrives (or our own onnegotiationneeded fires first).
-            console.log('[PM] before connect — localStream:', !!this.localStream, 'audioCtx:', !!this.audioCtx);
+            console.log('[PM] before connect — localStream:', !!this.localStream);
             await this.connect(fromId, mode, false);
             console.log('[PM] after connect');
             this.ws.send(JSON.stringify({ type: 'rtc:knock-accept', to: fromId }));
@@ -479,10 +465,10 @@ export class PeerManager {
 
     setVolume(peerId: string, distance: number) {
         const peer = this.peers.get(peerId);
-        if (!peer || !peer.audioConnected || !this.audioCtx) return;
-        const gain = Math.max(0, 1 - distance / VOICE_RADIUS);
-        console.log('[PM] setVolume', peerId, 'distance:', distance, 'gain:', gain);
-        peer.gainNode.gain.setTargetAtTime(gain, this.audioCtx.currentTime, 0.1);
+        if (!peer) return;
+        const vol = Math.max(0, 1 - distance / VOICE_RADIUS);
+        console.log('[PM] setVolume', peerId, 'distance:', distance, 'vol:', vol);
+        peer.audioEl.volume = vol;
     }
 
     joinConferencePeer(peerId: string) {
@@ -568,11 +554,7 @@ export class PeerManager {
     setDeafen(deafened: boolean) {
         this.deafened = deafened;
         for (const peer of this.peers.values()) {
-            peer.gainNode.gain.setTargetAtTime(
-                deafened ? 0 : 1,
-                this.audioCtx!.currentTime,
-                0.1
-            );
+            peer.audioEl.muted = deafened;
         }
         if (deafened) this.toggleMic(false);
     }
@@ -589,13 +571,11 @@ export class PeerManager {
         return [...this.proximityPeers].filter(p => this.peers.has(p)).length;
     }
 
-    async resumeAudio() {
-        if (this.audioCtx?.state === 'suspended') {
-            await this.audioCtx.resume();
-            console.log('[PM] AudioContext resumed, state:', this.audioCtx.state);
-        }
+    getPeerConnectionState(peerId: string): RTCPeerConnectionState | null {
+        return this.peers.get(peerId)?.connectionState ?? null;
     }
 
+    hasMic(): boolean { return !!this.localStream; }
     getMicEnabled() { return this.micEnabled; }
     getCameraEnabled() { return this.cameraEnabled; }
     getLocalStream() { return this.localStream; }
@@ -607,7 +587,7 @@ export class PeerManager {
         this.localVideoStream?.getTracks().forEach(t => t.stop());
         this.localStream = null;
         this.localVideoStream = null;
-        this.audioCtx?.close();
-        this.audioCtx = null;
+        this.analyserCtx?.close();
+        this.analyserCtx = null;
     }
 }
