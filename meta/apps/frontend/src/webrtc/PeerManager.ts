@@ -81,7 +81,7 @@ export class PeerManager {
 
     // receiveOnly=true is used for broadcast listeners: connection is created but no
     // local tracks are added, so only the speaker's tracks flow in.
-    async connect(peerId: string, mode: PeerMode = 'voice', _isInitiator = true, receiveOnly = false) {
+    async connect(peerId: string, mode: PeerMode = 'voice', isInitiator = true, receiveOnly = false) {
         if (this.peers.has(peerId)) return;
         if (!this.localStream || !this.audioCtx) return;
 
@@ -97,10 +97,16 @@ export class PeerManager {
 
         // Register early so a concurrent handleOffer doesn't create a duplicate PC.
         this.peers.set(peerId, peer);
-        console.log('[PeerManager] connect(): registered', peerId, '| mode:', mode, '| peers.size:', this.peers.size);
+        console.log('[PM] connect() done peerId:', peerId, 'mode:', mode,
+            'isInitiator:', isInitiator, 'peers.size:', this.peers.size,
+            'localVideoTracks:', this.localVideoStream?.getVideoTracks().length ?? 0);
 
         pc.ontrack = (e) => {
-            console.log('[PeerManager] ontrack from', peerId, '| kind:', e.track.kind, '| readyState:', e.track.readyState, '| streams:', e.streams.length);
+            console.log('[PM] ontrack from', peerId,
+                'kind:', e.track.kind,
+                'readyState:', e.track.readyState,
+                'streams:', e.streams.length,
+                'stream active:', e.streams[0]?.active);
             if (e.track.kind === 'audio') {
                 this.audioCtx!.createMediaStreamSource(e.streams[0]).connect(gainNode);
             } else {
@@ -122,12 +128,20 @@ export class PeerManager {
         };
 
         pc.onconnectionstatechange = () => {
+            console.log('[PM] connectionState for', peerId, ':', pc.connectionState);
             if (pc.connectionState === 'failed') this.disconnect(peerId);
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            console.log('[PM] iceConnectionState for', peerId, ':', pc.iceConnectionState);
         };
 
         // Perfect negotiation: this handler fires whenever renegotiation is needed
         // (e.g. after addTrack). The makingOffer flag lets handleOffer detect collisions.
         pc.onnegotiationneeded = async () => {
+            console.log('[PM] onnegotiationneeded for', peerId,
+                'signalingState:', pc.signalingState,
+                'makingOffer:', peer.makingOffer);
             try {
                 peer.makingOffer = true;
                 const offer = await pc.createOffer();
@@ -163,6 +177,9 @@ export class PeerManager {
         }
         const peer = this.peers.get(fromId);
         if (!peer) return;
+
+        console.log('[PM] handleOffer from', fromId,
+            'signalingState:', peer.connection.signalingState);
 
         const offerCollision = peer.makingOffer || peer.connection.signalingState !== 'stable';
         // Impolite peer ignores colliding offers; polite peer rolls back and accepts.
@@ -223,13 +240,15 @@ export class PeerManager {
         const videoTrack = videoStream.getVideoTracks()[0];
         if (!videoTrack) throw new Error('No video track in stream');
 
+        console.log('[PM] enableCamera called, tracks:', videoStream.getVideoTracks().length);
+
         this.localVideoStream = videoStream;
         this.cameraEnabled = true;
 
         for (const [peerId, peer] of this.peers.entries()) {
             try {
                 peer.connection.addTrack(videoTrack, videoStream);
-                // onnegotiationneeded fires automatically — perfect negotiation handles any collision
+                console.log('[PM] addTrack called on peer', peerId, 'track id:', videoTrack.id);
             } catch (err) {
                 console.warn('[PeerManager] addTrack failed for peer', peerId, err);
                 this.disconnect(peerId);
@@ -336,8 +355,10 @@ export class PeerManager {
         const mode = this.pendingKnocks.get(fromId) ?? 'voice';
         this.pendingKnocks.delete(fromId);
         console.log('[PeerManager] handleKnockAccepted from', fromId, '| connecting as', mode);
-        // Defer so the accept message's WS callback stack clears first.
-        setTimeout(() => this.connect(fromId, mode, true), 0);
+        // Call connect() immediately (no setTimeout) so peers.set() claims the slot
+        // synchronously. A deferred call lets handleOffer's auto-connect() grab the slot
+        // first — always as voice-only, which loses the video mode from pendingKnocks.
+        this.connect(fromId, mode, true);
     }
 
     // Called when the peer we knocked denied us.

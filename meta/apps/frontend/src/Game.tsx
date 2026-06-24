@@ -185,6 +185,10 @@ function RemoteVideoTile({ peerId, stream, username }: { peerId: string; stream:
     useEffect(() => {
         const el = videoRef.current;
         if (!el) return;
+        console.log('[VideoTile] attaching stream for', peerId,
+            'video tracks:', stream.getVideoTracks().length,
+            'track readyState:', stream.getVideoTracks()[0]?.readyState,
+            'track enabled:', stream.getVideoTracks()[0]?.enabled);
         el.srcObject = stream;
         el.play().catch(err => console.warn('[RemoteVideoTile] play() rejected:', err));
     }, [peerId, stream]);
@@ -619,6 +623,9 @@ const ArenaInner = () => {
         const onRemoteVideo = (e: Event) => {
             const { peerId, stream } = (e as CustomEvent<{ peerId: string; stream: MediaStream }>).detail;
             if (peerId === currentUserRef.current?.userId) return;
+            console.log('[Game] rtc:remoteVideo for', peerId,
+                'stream id:', stream.id,
+                'video tracks:', stream.getVideoTracks().length);
             remoteStreamsRef.current.set(peerId, stream);
             setRemotePeerIds([...remoteStreamsRef.current.keys()]);
         };
