@@ -435,7 +435,7 @@ export class User {
                     // ws is private but accessible within the same class body in TS.
                     console.log('[WS] target socket found:', !!knockTargetUser, 'readyState:', knockTargetUser?.ws.readyState);
                     if (!knockTargetUser) break;
-                    knockTargetUser.send({ type: 'rtc:knock', from: this.userId, fromName: this.username });
+                    knockTargetUser.send({ type: 'rtc:knock', from: this.userId, fromName: this.username, callType: parsedData.callType });
                     break;
                 }
 
