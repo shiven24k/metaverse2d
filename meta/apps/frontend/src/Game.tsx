@@ -192,8 +192,18 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
     useEffect(() => {
         const el = videoRef.current;
         if (!el || !stream) return;
-        el.srcObject = stream;
-        el.play().catch(err => console.warn('[RemoteVideoTile] play() rejected:', err));
+        const videoTrack = stream.getVideoTracks()[0];
+        const attach = () => {
+            el.srcObject = stream;
+            el.play().catch(err => console.warn('[VideoTile] play failed:', err));
+        };
+        if (videoTrack && videoTrack.readyState === 'live') {
+            attach();
+        } else if (videoTrack) {
+            videoTrack.addEventListener('unmute', attach, { once: true });
+        } else {
+            attach();
+        }
         return () => { el.srcObject = null; };
     }, [stream]);
 
@@ -627,19 +637,18 @@ const ArenaInner = () => {
     useEffect(() => { speakingPeerIdsRef.current = speakingPeerIds; }, [speakingPeerIds]);
 
     // Sync the local camera stream to the self-view <video> element.
-    // The element only exists in the DOM when cameraEnabled is true, so we key on
-    // that — by the time this effect fires the element is mounted and the ref is set.
+    // The element only exists in the DOM when cameraEnabled && connectedPeers > 0, so we
+    // key on both — by the time this effect fires the element is mounted and the ref is set.
     useEffect(() => {
         const el = selfVideoRef.current;
         if (!el) return;
-        const stream = localVideoStreamRef.current;
-        if (stream) {
-            el.srcObject = stream;
+        if (cameraEnabled && localVideoStreamRef.current) {
+            el.srcObject = localVideoStreamRef.current;
             el.play().catch(() => {});
         } else {
             el.srcObject = null;
         }
-    }, [cameraEnabled]);
+    }, [cameraEnabled, connectedPeers]);
 
     // Track video panel height so the chat panel can shift down to make room.
     useEffect(() => {
@@ -715,7 +724,7 @@ const ArenaInner = () => {
             const { peerId, state } = (e as CustomEvent<{ peerId: string; state: RTCPeerConnectionState }>).detail;
             peerConnectionStatesRef.current.set(peerId, state);
             setPeerConnectionStates(new Map(peerConnectionStatesRef.current));
-            if (state === 'closed') {
+            if (state === 'closed' || state === 'disconnected' || state === 'failed') {
                 remoteStreamsRef.current.delete(peerId);
                 setRemotePeerIds([...remoteStreamsRef.current.keys()]);
             }
@@ -5059,8 +5068,7 @@ const ArenaInner = () => {
                                 setTimeout(() => setCameraError(null), 5000);
                             }
                         } else {
-                            // Remove video senders from all connections + stop stream
-                            peerManagerRef.current?.disableCamera();
+                            peerManagerRef.current?.toggleCamera(false);
                             localVideoStreamRef.current = null;
                             if (selfVideoRef.current) selfVideoRef.current.srcObject = null;
                             remoteStreamsRef.current.clear();
@@ -5071,11 +5079,11 @@ const ArenaInner = () => {
                     onLeaveCall={() => {
                         const pm = peerManagerRef.current;
                         if (!pm) return;
+                        remoteStreamsRef.current.clear();
+                        setRemotePeerIds([]);
                         pm.destroy();
                         localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
                         localVideoStreamRef.current = null;
-                        remoteStreamsRef.current.clear();
-                        setRemotePeerIds([]);
                         setKnockPendingPeerIds(new Set());
                         setCameraEnabled(false);
                         setMicEnabled(true);

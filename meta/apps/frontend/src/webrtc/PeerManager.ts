@@ -180,14 +180,22 @@ export class PeerManager {
         // Perfect negotiation: this handler fires whenever renegotiation is needed
         // (e.g. after addTrack). The makingOffer flag lets handleOffer detect collisions.
         pc.onnegotiationneeded = async () => {
+            const peer = this.peers.get(peerId);
+            if (!peer) return;
+            console.log('[PM] onnegotiationneeded for', peerId,
+                'signalingState:', pc.signalingState,
+                'makingOffer:', peer.makingOffer);
+            if (peer.makingOffer) return;
             try {
                 peer.makingOffer = true;
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                this.ws.send(JSON.stringify({ type: 'rtc:offer', to: peerId, sdp: offer }));
+                await pc.setLocalDescription();
+                this.ws.send(JSON.stringify({
+                    type: 'rtc:offer',
+                    to: peerId,
+                    sdp: pc.localDescription,
+                }));
             } catch (err) {
-                console.error('[PM] onnegotiationneeded error:', peerId, err);
-                peer.makingOffer = false;
+                console.error('[PM] onnegotiationneeded error:', err);
             } finally {
                 peer.makingOffer = false;
             }
@@ -283,9 +291,14 @@ export class PeerManager {
     disconnect(peerId: string) {
         const peer = this.peers.get(peerId);
         if (!peer) return;
-        peer.audioEl.srcObject = null;
         peer.audioEl.pause();
+        peer.audioEl.srcObject = null;
         peer.audioEl.remove();
+        peer.connection.ontrack = null;
+        peer.connection.onicecandidate = null;
+        peer.connection.onnegotiationneeded = null;
+        peer.connection.onconnectionstatechange = null;
+        peer.connection.oniceconnectionstatechange = null;
         peer.connection.close();
         this.peers.delete(peerId);
         this.pendingKnocks.delete(peerId);
@@ -294,32 +307,40 @@ export class PeerManager {
         window.dispatchEvent(new CustomEvent('rtc:peersChanged', { detail: { count: this.peers.size } }));
     }
 
-    async enableCamera(videoStream: MediaStream) {
-        const videoTrack = videoStream.getVideoTracks()[0];
-        if (!videoTrack) throw new Error('No video track in stream');
-
-        this.localVideoStream = videoStream;
+    async enableCamera(stream: MediaStream) {
+        this.localVideoStream?.getVideoTracks().forEach(t => t.stop());
+        this.localVideoStream = stream;
         this.cameraEnabled = true;
 
         for (const [peerId, peer] of this.peers.entries()) {
+            const senders = peer.connection.getSenders();
+            const videoSender = senders.find(s => s.track?.kind === 'video');
+            const newTrack = stream.getVideoTracks()[0];
+            if (!newTrack) continue;
+
             try {
-                peer.connection.addTrack(videoTrack, videoStream);
+                if (videoSender) {
+                    await videoSender.replaceTrack(newTrack);
+                    console.log('[PM] replaceTrack video for', peerId);
+                } else {
+                    peer.connection.addTrack(newTrack, stream);
+                    console.log('[PM] addTrack video for', peerId);
+                }
             } catch (err) {
-                console.warn('[PeerManager] addTrack failed for peer', peerId, err);
+                console.warn('[PeerManager] enableCamera failed for peer', peerId, err);
                 this.disconnect(peerId);
             }
         }
     }
 
+    toggleCamera(enabled: boolean) {
+        this.cameraEnabled = enabled;
+        this.localVideoStream?.getVideoTracks().forEach(t => { t.enabled = enabled; });
+    }
+
     disableCamera() {
         this.cameraEnabled = false;
-        this.localVideoStream?.getTracks().forEach(t => t.stop());
-        this.localVideoStream = null;
-        for (const [, peer] of this.peers.entries()) {
-            const senders = peer.connection.getSenders();
-            const videoSender = senders.find(s => s.track?.kind === 'video');
-            if (videoSender) peer.connection.removeTrack(videoSender);
-        }
+        this.localVideoStream?.getVideoTracks().forEach(t => { t.enabled = false; });
     }
 
     // Called every animation frame with the current proximity peer lists.
@@ -427,15 +448,22 @@ export class PeerManager {
         const mode = this.pendingKnocks.get(fromId) ?? 'voice';
         this.pendingKnocks.delete(fromId);
 
+        console.log('[PM] handleKnockAccepted from', fromId, '| mode:', mode);
+
         const existingPeer = this.peers.get(fromId);
         if (existingPeer) {
             // handleOffer's fallback already claimed the peer slot (responder sent its offer
             // before rtc:knock-accept reached us). Don't call connect() — it would bail.
             // Instead add video tracks directly so onnegotiationneeded sends the upgrade offer.
+            console.log('[PM] peer already exists, adding tracks if needed');
             if (mode === 'video' && this.localVideoStream) {
-                this.localVideoStream.getVideoTracks().forEach(t =>
-                    existingPeer.connection.addTrack(t, this.localVideoStream!)
-                );
+                const senders = existingPeer.connection.getSenders();
+                const hasVideo = senders.some(s => s.track?.kind === 'video');
+                if (!hasVideo) {
+                    this.localVideoStream.getVideoTracks().forEach(t =>
+                        existingPeer.connection.addTrack(t, this.localVideoStream!)
+                    );
+                }
             }
             return;
         }
@@ -443,7 +471,7 @@ export class PeerManager {
         // No existing peer — claim the slot as initiator.
         // Call connect() immediately (no setTimeout) so peers.set() claims the slot
         // synchronously before any concurrent handleOffer can grab it first.
-        this.connect(fromId, mode, true);
+        await this.connect(fromId, mode, true);
     }
 
     // Called when the peer we knocked denied us.
