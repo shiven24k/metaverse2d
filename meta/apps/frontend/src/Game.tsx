@@ -1858,7 +1858,6 @@ const ArenaInner = () => {
                 const userMap = new Map<string, { x: number; y: number; userId: string; username: string; avatarId?: string }>();
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 message.payload.users.forEach((u: any) => {
-                    if (u.userId === message.payload.userId) return; // never add self
                     userMap.set(u.userId, { x: u.x, y: u.y, userId: u.userId, username: u.username || 'Unknown', avatarId: u.avatarId });
                 });
                 setUsers(userMap);
@@ -1917,7 +1916,6 @@ const ArenaInner = () => {
             }
 
             case 'user-joined': {
-                if (message.payload.userId === currentUserRef.current?.userId) break;
                 const joinedUser = {
                     x: message.payload.x,
                     y: message.payload.y,
@@ -2012,7 +2010,6 @@ const ArenaInner = () => {
             }
 
             case 'user-left': {
-                if (message.payload.userId === currentUserRef.current?.userId) break;
                 const leftUser = usersRef.current.get(message.payload.userId);
                 const nextUsersMap = new Map(usersRef.current);
                 nextUsersMap.delete(message.payload.userId);

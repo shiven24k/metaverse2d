@@ -410,24 +410,33 @@ export class PeerManager {
     async acceptIncomingKnock(fromId: string, callType: 'voice' | 'video' = 'voice') {
         // IMPORTANT: this method must NOT call sendKnock() or modify pendingKnocks in
         // any way — doing so is what caused the knock→accept→knock infinite loop.
+        try {
+            const mode: PeerMode = callType;
 
-        // Only acquire camera for video calls and only if Game.tsx hasn't already done it.
-        // For voice calls — never touch the camera.
-        if (callType === 'video' && !this.localVideoStream) {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                await this.enableCamera(stream);
-            } catch (err) {
-                console.warn('[PM] camera failed, continuing without video:', err);
-                // Don't fall back to voice — still connect as video so we can
-                // RECEIVE the other person's video even without sending ours.
+            if (mode === 'video') {
+                if (!this.localVideoStream ||
+                        this.localVideoStream.getVideoTracks()[0]?.readyState === 'ended') {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                        await this.enableCamera(stream);
+                    } catch (err) {
+                        console.warn('[PM] camera failed, continuing as video without local cam:', err);
+                        // Don't fall back to voice — still connect as video so we can
+                        // RECEIVE the other person's video even without sending ours.
+                    }
+                } else {
+                    // Stream already active — connect() will add the track from localVideoStream.
+                    this.cameraEnabled = true;
+                }
             }
-        }
 
-        // Connect as non-initiator before sending accept so our PC is ready when
-        // the initiator's offer arrives (or our own onnegotiationneeded fires first).
-        await this.connect(fromId, callType, false);
-        this.ws.send(JSON.stringify({ type: 'rtc:knock-accept', to: fromId }));
+            // Connect as non-initiator before sending accept so our PC is ready when
+            // the initiator's offer arrives (or our own onnegotiationneeded fires first).
+            await this.connect(fromId, mode, false);
+            this.ws.send(JSON.stringify({ type: 'rtc:knock-accept', to: fromId }));
+        } catch (err) {
+            console.error('[PM] acceptIncomingKnock FATAL:', err);
+        }
     }
 
     denyIncomingKnock(fromId: string) {
