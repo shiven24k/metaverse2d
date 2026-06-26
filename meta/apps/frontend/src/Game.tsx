@@ -278,48 +278,6 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
 }
 
 
-function drawCameraBubble(
-    ctx: CanvasRenderingContext2D,
-    videoEl: HTMLVideoElement,
-    worldX: number,
-    worldY: number,
-    isSpeaking: boolean,
-) {
-    const BUBBLE_RADIUS = 20;
-    const BUBBLE_Y_OFFSET = -52;
-
-    const cx = worldX;
-    const cy = worldY + BUBBLE_Y_OFFSET;
-
-    if (isSpeaking) {
-        const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 200);
-        ctx.beginPath();
-        ctx.arc(cx, cy, BUBBLE_RADIUS + 3, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(139, 92, 246, ${pulse})`;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-    }
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, BUBBLE_RADIUS, 0, Math.PI * 2);
-    ctx.clip();
-
-    if (videoEl.readyState >= 2) {
-        ctx.drawImage(videoEl, cx - BUBBLE_RADIUS, cy - BUBBLE_RADIUS, BUBBLE_RADIUS * 2, BUBBLE_RADIUS * 2);
-    } else {
-        ctx.fillStyle = '#1a1a2e';
-        ctx.fillRect(cx - BUBBLE_RADIUS, cy - BUBBLE_RADIUS, BUBBLE_RADIUS * 2, BUBBLE_RADIUS * 2);
-    }
-
-    ctx.restore();
-
-    ctx.beginPath();
-    ctx.arc(cx, cy, BUBBLE_RADIUS, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(139, 92, 246, 0.8)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-}
 
 const ArenaInner = () => {
     const navigate = useNavigate();
