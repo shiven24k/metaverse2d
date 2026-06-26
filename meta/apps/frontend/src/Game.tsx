@@ -234,7 +234,7 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
             borderRadius: 8,
             overflow: 'hidden',
             background: '#111',
-            border: '2px solid rgba(139,92,246,0.6)',
+            border: '2px solid rgba(139, 92, 246, 0.5)',
         }}>
             <video
                 ref={videoRef}
@@ -261,8 +261,8 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
             )}
             <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
-                padding: '3px 8px',
-                background: 'rgba(139,92,246,0.75)',
+                padding: '2px 6px',
+                background: 'rgba(0, 0, 0, 0.6)',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
                 <span style={{
@@ -1080,8 +1080,6 @@ const ArenaInner = () => {
             if (knockPendingPeerIdsRef.current.size > 0) rerender();
             // Speaking ring pulse animation
             if (speakingPeerIdsRef.current.size > 0) rerender();
-            // Camera bubble video frame refresh
-            if (avatarVideoElsRef.current.size > 0 || !!localAvatarVideoElRef.current) rerender();
             id = requestAnimationFrame(tick);
         }
         id = requestAnimationFrame(tick);
@@ -3263,9 +3261,6 @@ const ArenaInner = () => {
                 ctx.font = '16px sans-serif';
                 ctx.fillText(effectiveActivity === 'working' ? '💻' : '💺', cx, cy - 38);
             }
-            if (cameraEnabled && localAvatarVideoElRef.current) {
-                drawCameraBubble(ctx, localAvatarVideoElRef.current, cx, cy, false);
-            }
         }
 
         users.forEach(user => {
@@ -3351,10 +3346,6 @@ const ArenaInner = () => {
                 ctx.globalAlpha = 0.5 + 0.5 * Math.sin(Date.now() / 300);
                 ctx.fillText('📞', ux, uy - 52);
                 ctx.globalAlpha = 1;
-            }
-            const avatarVidEl = avatarVideoElsRef.current.get(user.userId);
-            if (avatarVidEl) {
-                drawCameraBubble(ctx, avatarVidEl, ux, uy, speakingPeerIdsRef.current.has(user.userId));
             }
         });
 
@@ -5071,16 +5062,20 @@ const ArenaInner = () => {
                             style={{
                                 position: 'fixed',
                                 top: 56,
-                                left: 12,
-                                width: 280,
-                                zIndex: 4001,
+                                left: 0,
+                                width: 300,
+                                zIndex: 50,
                                 padding: 8,
+                                background: 'rgba(10, 10, 15, 0.85)',
+                                backdropFilter: 'blur(8px)',
+                                WebkitBackdropFilter: 'blur(8px)',
+                                borderBottom: '1px solid rgba(139, 92, 246, 0.3)',
                             }}
                         >
                             <div style={{
                                 display: 'grid',
                                 gridTemplateColumns: gridCols === 1 ? '1fr' : '1fr 1fr',
-                                gap: 4,
+                                gap: 6,
                             }}>
                                 {cameraEnabled && connectedPeers > 0 && (
                                     <div style={{
@@ -5090,7 +5085,7 @@ const ArenaInner = () => {
                                         borderRadius: 8,
                                         overflow: 'hidden',
                                         background: '#111',
-                                        border: '2px solid rgba(139,92,246,0.6)',
+                                        border: '2px solid rgba(139, 92, 246, 0.5)',
                                     }}>
                                         <video
                                             ref={selfVideoRef}
@@ -5102,8 +5097,8 @@ const ArenaInner = () => {
                                         />
                                         <div style={{
                                             position: 'absolute', bottom: 0, left: 0, right: 0,
-                                            padding: '3px 8px',
-                                            background: 'rgba(139,92,246,0.75)',
+                                            padding: '2px 6px',
+                                            background: 'rgba(0, 0, 0, 0.6)',
                                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                         }}>
                                             <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>You</span>
