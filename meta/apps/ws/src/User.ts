@@ -178,6 +178,22 @@ export class User {
                     }
 
                     this.spaceId = spaceId;
+
+                    // Evict any stale session for the same userId (reconnect scenario).
+                    // Clearing spaceId prevents the stale session's destroy() from
+                    // broadcasting user-left, since this is a reconnect not a real leave.
+                    if (this.userId) {
+                        const roomUsers = getRoomManager().rooms.get(spaceId);
+                        if (roomUsers) {
+                            const staleIdx = roomUsers.findIndex(u => u.userId === this.userId && u.id !== this.id);
+                            if (staleIdx !== -1) {
+                                console.log('[WS] evicting stale session for userId', this.userId, 'on reconnect');
+                                roomUsers[staleIdx].spaceId = undefined;
+                                roomUsers.splice(staleIdx, 1);
+                            }
+                        }
+                    }
+
                     getRoomManager().addUser(spaceId, this);
                     this.x = Math.floor(Math.random() * space.width);
                     this.y = Math.floor(Math.random() * space.height);
@@ -189,7 +205,7 @@ export class User {
                     const allUsers =
                         getRoomManager()
                             .rooms.get(spaceId)
-                            ?.filter((u) => u.id !== this.id)
+                            ?.filter((u) => u.id !== this.id && u.userId !== this.userId)
                             ?.map((u) => ({ userId: u.userId ?? u.id, x: u.x, y: u.y, username: u.username, avatarId: u.avatarId })) ?? [];
 
                     this.send({
