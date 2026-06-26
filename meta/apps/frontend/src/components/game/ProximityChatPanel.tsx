@@ -17,12 +17,11 @@ interface ProximityChatPanelProps {
     onCallVoice: (peerId: string) => void;
     onCallVideo: (peerId: string) => void;
     onCancelCall: (peerId: string) => void;
-    topOffset?: number;
 }
 
 export function ProximityChatPanel({
     messages, roomId, members, onSend, onClose, isDesktop, currentUserId, onTypingChange,
-    nearbyPeers, pendingKnockPeerIds, onCallVoice, onCallVideo, onCancelCall, topOffset = 0,
+    nearbyPeers, pendingKnockPeerIds, onCallVoice, onCallVideo, onCancelCall,
 }: ProximityChatPanelProps) {
     const [inputValue, setInputValue] = useState('');
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -45,8 +44,8 @@ export function ProximityChatPanel({
     };
 
     const panelStyle: React.CSSProperties = isDesktop ? {
-        position: 'fixed', top: 56 + topOffset, left: 12, width: 280,
-        height: `calc(100vh - ${80 + topOffset}px)`, zIndex: 50,
+        position: 'fixed', top: 56, left: 12, width: 280,
+        height: 'calc(100vh - 80px)', zIndex: 50,
         display: 'flex', flexDirection: 'column',
         background: '#ffffff', borderRadius: 16,
         border: '1px solid #e5e7eb',

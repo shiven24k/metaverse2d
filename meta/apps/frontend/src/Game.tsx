@@ -228,14 +228,16 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
 
     return (
         <div style={{
-            position: 'relative',
-            width: '100%',
-            aspectRatio: '16/9',
-            borderRadius: 10,
+            width: 140,
+            height: 80,
+            borderRadius: 8,
             overflow: 'hidden',
-            background: 'rgba(139, 92, 246, 0.1)',
             border: '2px solid rgba(139, 92, 246, 0.7)',
-            boxShadow: '0 0 12px rgba(139, 92, 246, 0.2)',
+            background: '#111',
+            position: 'relative',
+            pointerEvents: 'auto',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
+            flexShrink: 0,
         }}>
             <video
                 ref={videoRef}
@@ -262,18 +264,15 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
             )}
             <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
-                padding: '3px 8px',
                 background: 'rgba(139, 92, 246, 0.8)',
-                borderRadius: '0 0 8px 8px',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                color: '#fff',
+                fontSize: 10,
+                fontWeight: 600,
+                padding: '2px 6px',
+                textAlign: 'center',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-                <span style={{
-                    fontSize: 11, fontWeight: 600, color: '#fff',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                    {username || peerId.slice(0, 8)}
-                </span>
-                <span style={{ fontSize: 10, lineHeight: 1 }}>🎙️</span>
+                {username || peerId.slice(0, 8)}
             </div>
         </div>
     );
@@ -340,8 +339,6 @@ const ArenaInner = () => {
     const rtcBufferRef = useRef<Array<{ type: string; data: unknown }>>([]);
     const speakingPeerIdsRef = useRef<Set<string>>(new Set());
     const [speakingPeerIds, setSpeakingPeerIds] = useState<Set<string>>(new Set());
-    const videoPanelRef = useRef<HTMLDivElement>(null);
-    const [videoPanelHeight, setVideoPanelHeight] = useState(0);
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState('');
 
@@ -682,18 +679,6 @@ const ArenaInner = () => {
             }
         };
     }, [cameraEnabled]);
-
-    // Track video panel height so the chat panel can shift down to make room.
-    useEffect(() => {
-        const el = videoPanelRef.current;
-        if (!el) { setVideoPanelHeight(0); return; }
-        const ro = new ResizeObserver(([entry]) => {
-            setVideoPanelHeight(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
-        });
-        ro.observe(el);
-        return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [remotePeerIds.length, cameraEnabled]);
 
     // Listen for remote video tracks arriving from PeerManager
     useEffect(() => {
@@ -3676,6 +3661,69 @@ const ArenaInner = () => {
                         style={{ display: 'block', width: '100%', height: '100%', cursor: isPanningRef.current ? 'grabbing' : spaceHeld ? 'grab' : editMode ? (selectedElement || selectedItem ? 'cell' : 'crosshair') : 'default', outline: canvasIsOver ? '2px solid #4f46e5' : 'none' }}
                     />
 
+                    {/* ── Video tile overlay — centered at top of canvas ── */}
+                    {(remotePeerIds.length > 0 || (cameraEnabled && connectedPeers > 0)) && (
+                        <div style={{
+                            position: 'absolute',
+                            top: 8,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            display: 'flex',
+                            flexDirection: 'row',
+                            gap: 8,
+                            zIndex: 20,
+                            pointerEvents: 'none',
+                            maxWidth: '90%',
+                        }}>
+                            {cameraEnabled && connectedPeers > 0 && (
+                                <div style={{
+                                    width: 140,
+                                    height: 80,
+                                    borderRadius: 8,
+                                    overflow: 'hidden',
+                                    border: '2px solid rgba(139, 92, 246, 0.7)',
+                                    background: '#111',
+                                    position: 'relative',
+                                    pointerEvents: 'auto',
+                                    boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
+                                    flexShrink: 0,
+                                }}>
+                                    <video
+                                        ref={selfVideoRef}
+                                        autoPlay
+                                        playsInline
+                                        muted
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }}
+                                    />
+                                    <div style={{
+                                        position: 'absolute', bottom: 0, left: 0, right: 0,
+                                        background: 'rgba(139, 92, 246, 0.8)',
+                                        color: '#fff',
+                                        fontSize: 10,
+                                        fontWeight: 600,
+                                        padding: '2px 6px',
+                                        textAlign: 'center',
+                                    }}>
+                                        You {micEnabled ? '🎙️' : '🔇'}
+                                    </div>
+                                </div>
+                            )}
+                            {remotePeerIds.map(peerId => {
+                                const stream = remoteStreamsRef.current.get(peerId);
+                                if (!stream) return null;
+                                return (
+                                    <RemoteVideoTile
+                                        key={peerId}
+                                        peerId={peerId}
+                                        stream={stream}
+                                        username={usersRef.current.get(peerId)?.username}
+                                        connectionState={peerConnectionStates.get(peerId)}
+                                    />
+                                );
+                            })}
+                        </div>
+                    )}
+
                     {/* ── Proximity Chat Panel ── */}
                     {!editMode && showProximityChat && (
                         <ProximityChatPanel
@@ -3717,7 +3765,6 @@ const ArenaInner = () => {
                                 pm.sendKnock(peerId, 'video');
                             }}
                             onCancelCall={(peerId) => peerManagerRef.current?.cancelKnock(peerId)}
-                            topOffset={videoPanelHeight}
                         />
                     )}
 
@@ -5011,95 +5058,6 @@ const ArenaInner = () => {
                         {cameraError} — tap to dismiss
                     </div>
                 )}
-
-                {/* Video panel — fixed left column, above chat panel */}
-                {(remotePeerIds.length > 0 || (cameraEnabled && connectedPeers > 0)) && (() => {
-                    const totalTiles = remotePeerIds.length + (cameraEnabled && connectedPeers > 0 ? 1 : 0);
-                    const gridCols = totalTiles <= 1 ? 1 : 2;
-                    return (
-                        <div
-                            ref={videoPanelRef}
-                            style={{
-                                position: 'fixed',
-                                top: 56,
-                                left: 0,
-                                width: 300,
-                                zIndex: 50,
-                                padding: 8,
-                                background: 'rgba(15, 10, 25, 0.92)',
-                                backdropFilter: 'blur(10px)',
-                                WebkitBackdropFilter: 'blur(10px)',
-                                borderBottom: '2px solid rgba(139, 92, 246, 0.6)',
-                                borderRight: '1px solid rgba(139, 92, 246, 0.2)',
-                            }}
-                        >
-                            <div style={{
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: 'rgba(139, 92, 246, 0.9)',
-                                letterSpacing: '0.05em',
-                                textTransform: 'uppercase',
-                                paddingBottom: 6,
-                                borderBottom: '1px solid rgba(139, 92, 246, 0.2)',
-                                marginBottom: 6,
-                            }}>
-                                📹 Live
-                            </div>
-                            <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: gridCols === 1 ? '1fr' : '1fr 1fr',
-                                gap: 6,
-                            }}>
-                                {cameraEnabled && connectedPeers > 0 && (
-                                    <div style={{
-                                        position: 'relative',
-                                        width: '100%',
-                                        aspectRatio: '16/9',
-                                        borderRadius: 10,
-                                        overflow: 'hidden',
-                                        background: 'rgba(139, 92, 246, 0.1)',
-                                        border: '2px solid rgba(139, 92, 246, 0.7)',
-                                        boxShadow: '0 0 12px rgba(139, 92, 246, 0.2)',
-                                    }}>
-                                        <video
-                                            ref={selfVideoRef}
-                                            autoPlay
-                                            playsInline
-                                            muted
-                                            style={{ width: '100%', height: '100%', objectFit: 'cover',
-                                                display: 'block', transform: 'scaleX(-1)' }}
-                                        />
-                                        <div style={{
-                                            position: 'absolute', bottom: 0, left: 0, right: 0,
-                                            padding: '3px 8px',
-                                            background: 'rgba(139, 92, 246, 0.8)',
-                                            borderRadius: '0 0 8px 8px',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                        }}>
-                                            <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>You</span>
-                                            <span style={{ fontSize: 10, lineHeight: 1 }}>
-                                                {micEnabled ? '🎙️' : '🔇'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                )}
-                                {remotePeerIds.map(peerId => {
-                                    const stream = remoteStreamsRef.current.get(peerId);
-                                    if (!stream) return null;
-                                    return (
-                                        <RemoteVideoTile
-                                            key={peerId}
-                                            peerId={peerId}
-                                            stream={stream}
-                                            username={usersRef.current.get(peerId)?.username}
-                                            connectionState={peerConnectionStates.get(peerId)}
-                                        />
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    );
-                })()}
 
                 <VoiceToolbar
                     micEnabled={micEnabled}
