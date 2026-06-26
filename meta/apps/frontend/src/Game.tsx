@@ -231,10 +231,11 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
             position: 'relative',
             width: '100%',
             aspectRatio: '16/9',
-            borderRadius: 8,
+            borderRadius: 10,
             overflow: 'hidden',
-            background: '#111',
-            border: '2px solid rgba(139, 92, 246, 0.5)',
+            background: 'rgba(139, 92, 246, 0.1)',
+            border: '2px solid rgba(139, 92, 246, 0.7)',
+            boxShadow: '0 0 12px rgba(139, 92, 246, 0.2)',
         }}>
             <video
                 ref={videoRef}
@@ -261,8 +262,9 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
             )}
             <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
-                padding: '2px 6px',
-                background: 'rgba(0, 0, 0, 0.6)',
+                padding: '3px 8px',
+                background: 'rgba(139, 92, 246, 0.8)',
+                borderRadius: '0 0 8px 8px',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
                 <span style={{
@@ -5024,12 +5026,25 @@ const ArenaInner = () => {
                                 width: 300,
                                 zIndex: 50,
                                 padding: 8,
-                                background: 'rgba(10, 10, 15, 0.85)',
-                                backdropFilter: 'blur(8px)',
-                                WebkitBackdropFilter: 'blur(8px)',
-                                borderBottom: '1px solid rgba(139, 92, 246, 0.3)',
+                                background: 'rgba(15, 10, 25, 0.92)',
+                                backdropFilter: 'blur(10px)',
+                                WebkitBackdropFilter: 'blur(10px)',
+                                borderBottom: '2px solid rgba(139, 92, 246, 0.6)',
+                                borderRight: '1px solid rgba(139, 92, 246, 0.2)',
                             }}
                         >
+                            <div style={{
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color: 'rgba(139, 92, 246, 0.9)',
+                                letterSpacing: '0.05em',
+                                textTransform: 'uppercase',
+                                paddingBottom: 6,
+                                borderBottom: '1px solid rgba(139, 92, 246, 0.2)',
+                                marginBottom: 6,
+                            }}>
+                                📹 Live
+                            </div>
                             <div style={{
                                 display: 'grid',
                                 gridTemplateColumns: gridCols === 1 ? '1fr' : '1fr 1fr',
@@ -5040,10 +5055,11 @@ const ArenaInner = () => {
                                         position: 'relative',
                                         width: '100%',
                                         aspectRatio: '16/9',
-                                        borderRadius: 8,
+                                        borderRadius: 10,
                                         overflow: 'hidden',
-                                        background: '#111',
-                                        border: '2px solid rgba(139, 92, 246, 0.5)',
+                                        background: 'rgba(139, 92, 246, 0.1)',
+                                        border: '2px solid rgba(139, 92, 246, 0.7)',
+                                        boxShadow: '0 0 12px rgba(139, 92, 246, 0.2)',
                                     }}>
                                         <video
                                             ref={selfVideoRef}
@@ -5055,8 +5071,9 @@ const ArenaInner = () => {
                                         />
                                         <div style={{
                                             position: 'absolute', bottom: 0, left: 0, right: 0,
-                                            padding: '2px 6px',
-                                            background: 'rgba(0, 0, 0, 0.6)',
+                                            padding: '3px 8px',
+                                            background: 'rgba(139, 92, 246, 0.8)',
+                                            borderRadius: '0 0 8px 8px',
                                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                         }}>
                                             <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>You</span>
