@@ -278,6 +278,49 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
 }
 
 
+function drawCameraBubble(
+    ctx: CanvasRenderingContext2D,
+    videoEl: HTMLVideoElement,
+    worldX: number,
+    worldY: number,
+    isSpeaking: boolean,
+) {
+    const BUBBLE_RADIUS = 20;
+    const BUBBLE_Y_OFFSET = -52;
+
+    const cx = worldX;
+    const cy = worldY + BUBBLE_Y_OFFSET;
+
+    if (isSpeaking) {
+        const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 200);
+        ctx.beginPath();
+        ctx.arc(cx, cy, BUBBLE_RADIUS + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(139, 92, 246, ${pulse})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, BUBBLE_RADIUS, 0, Math.PI * 2);
+    ctx.clip();
+
+    if (videoEl.readyState >= 2) {
+        ctx.drawImage(videoEl, cx - BUBBLE_RADIUS, cy - BUBBLE_RADIUS, BUBBLE_RADIUS * 2, BUBBLE_RADIUS * 2);
+    } else {
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(cx - BUBBLE_RADIUS, cy - BUBBLE_RADIUS, BUBBLE_RADIUS * 2, BUBBLE_RADIUS * 2);
+    }
+
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, BUBBLE_RADIUS, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(139, 92, 246, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
+
 const ArenaInner = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -329,6 +372,8 @@ const ArenaInner = () => {
     // Instead, keep the Map in a ref and drive re-renders with a plain string[] of keys.
     const remoteStreamsRef = useRef(new Map<string, MediaStream>());
     const [remotePeerIds, setRemotePeerIds] = useState<string[]>([]);
+    const avatarVideoElsRef = useRef(new Map<string, HTMLVideoElement>());
+    const localAvatarVideoElRef = useRef<HTMLVideoElement | null>(null);
     const knockPendingPeerIdsRef = useRef<Set<string>>(new Set());
     const peerConnectionStatesRef = useRef(new Map<string, RTCPeerConnectionState>());
     const [peerConnectionStates, setPeerConnectionStates] = useState(new Map<string, RTCPeerConnectionState>());
@@ -650,6 +695,34 @@ const ArenaInner = () => {
         }
     }, [cameraEnabled, connectedPeers]);
 
+    // Maintain a hidden video element for drawing the local camera bubble on the canvas.
+    useEffect(() => {
+        if (cameraEnabled && localVideoStreamRef.current) {
+            const el = document.createElement('video');
+            el.srcObject = localVideoStreamRef.current;
+            el.autoplay = true;
+            el.playsInline = true;
+            el.muted = true;
+            el.style.display = 'none';
+            document.body.appendChild(el);
+            el.play().catch(() => {});
+            localAvatarVideoElRef.current = el;
+        } else {
+            if (localAvatarVideoElRef.current) {
+                localAvatarVideoElRef.current.srcObject = null;
+                localAvatarVideoElRef.current.remove();
+                localAvatarVideoElRef.current = null;
+            }
+        }
+        return () => {
+            if (localAvatarVideoElRef.current) {
+                localAvatarVideoElRef.current.srcObject = null;
+                localAvatarVideoElRef.current.remove();
+                localAvatarVideoElRef.current = null;
+            }
+        };
+    }, [cameraEnabled]);
+
     // Track video panel height so the chat panel can shift down to make room.
     useEffect(() => {
         const el = videoPanelRef.current;
@@ -683,15 +756,35 @@ const ArenaInner = () => {
             }
             remoteStreamsRef.current.set(peerId, stream);
             setRemotePeerIds([...remoteStreamsRef.current.keys()]);
+
+            // Avatar bubble — separate muted video element for canvas drawImage.
+            const prevVidEl = avatarVideoElsRef.current.get(peerId);
+            if (prevVidEl) { prevVidEl.srcObject = null; prevVidEl.remove(); }
+            const vidEl = document.createElement('video');
+            vidEl.srcObject = stream;
+            vidEl.autoplay = true;
+            vidEl.playsInline = true;
+            vidEl.muted = true;
+            vidEl.style.display = 'none';
+            document.body.appendChild(vidEl);
+            vidEl.play().catch(() => {});
+            avatarVideoElsRef.current.set(peerId, vidEl);
+
             videoTracks[0].onended = () => {
                 remoteStreamsRef.current.delete(peerId);
                 setRemotePeerIds([...remoteStreamsRef.current.keys()]);
+                const endedEl = avatarVideoElsRef.current.get(peerId);
+                if (endedEl) { endedEl.srcObject = null; endedEl.remove(); }
+                avatarVideoElsRef.current.delete(peerId);
             };
         };
         const onPeerLeft = (e: Event) => {
             const { peerId } = (e as CustomEvent<{ peerId: string }>).detail;
             remoteStreamsRef.current.delete(peerId);
             setRemotePeerIds([...remoteStreamsRef.current.keys()]);
+            const leftVidEl = avatarVideoElsRef.current.get(peerId);
+            if (leftVidEl) { leftVidEl.srcObject = null; leftVidEl.remove(); }
+            avatarVideoElsRef.current.delete(peerId);
             peerConnectionStatesRef.current.delete(peerId);
             setPeerConnectionStates(new Map(peerConnectionStatesRef.current));
             setKnockPendingPeerIds(prev => { const next = new Set(prev); next.delete(peerId); return next; });
@@ -727,6 +820,9 @@ const ArenaInner = () => {
             if (state === 'closed' || state === 'disconnected' || state === 'failed') {
                 remoteStreamsRef.current.delete(peerId);
                 setRemotePeerIds([...remoteStreamsRef.current.keys()]);
+                const stateVidEl = avatarVideoElsRef.current.get(peerId);
+                if (stateVidEl) { stateVidEl.srcObject = null; stateVidEl.remove(); }
+                avatarVideoElsRef.current.delete(peerId);
             }
         };
         const onSpeakingState = (e: Event) => {
@@ -984,6 +1080,8 @@ const ArenaInner = () => {
             if (knockPendingPeerIdsRef.current.size > 0) rerender();
             // Speaking ring pulse animation
             if (speakingPeerIdsRef.current.size > 0) rerender();
+            // Camera bubble video frame refresh
+            if (avatarVideoElsRef.current.size > 0 || !!localAvatarVideoElRef.current) rerender();
             id = requestAnimationFrame(tick);
         }
         id = requestAnimationFrame(tick);
@@ -3165,6 +3263,9 @@ const ArenaInner = () => {
                 ctx.font = '16px sans-serif';
                 ctx.fillText(effectiveActivity === 'working' ? '💻' : '💺', cx, cy - 38);
             }
+            if (cameraEnabled && localAvatarVideoElRef.current) {
+                drawCameraBubble(ctx, localAvatarVideoElRef.current, cx, cy, false);
+            }
         }
 
         users.forEach(user => {
@@ -3250,6 +3351,10 @@ const ArenaInner = () => {
                 ctx.globalAlpha = 0.5 + 0.5 * Math.sin(Date.now() / 300);
                 ctx.fillText('📞', ux, uy - 52);
                 ctx.globalAlpha = 1;
+            }
+            const avatarVidEl = avatarVideoElsRef.current.get(user.userId);
+            if (avatarVidEl) {
+                drawCameraBubble(ctx, avatarVidEl, ux, uy, speakingPeerIdsRef.current.has(user.userId));
             }
         });
 
@@ -5081,6 +5186,8 @@ const ArenaInner = () => {
                         if (!pm) return;
                         remoteStreamsRef.current.clear();
                         setRemotePeerIds([]);
+                        avatarVideoElsRef.current.forEach(el => { el.srcObject = null; el.remove(); });
+                        avatarVideoElsRef.current.clear();
                         pm.destroy();
                         localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
                         localVideoStreamRef.current = null;
@@ -5136,3 +5243,83 @@ const ArenaInner = () => {
 const Arena = () => <ArenaInner />;
 
 export default Arena;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAMERA BUBBLES — PHASE 2 PLAN
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Phase 2: Polish and interaction
+//
+// 1. BUBBLE SCALE WITH ZOOM — the bubble is currently drawn in world space so it
+//    scales with zoom automatically (the canvas ctx.scale(zoom,zoom) handles it).
+//    No change needed, but verify at zoom extremes (0.5x, 3x) that the bubble
+//    doesn't clip into the avatar sprite. Adjust BUBBLE_Y_OFFSET and BUBBLE_RADIUS
+//    constants if needed.
+//
+// 2. FALLBACK INITIAL — when videoEl.readyState < 2 (no frame yet), draw the peer's
+//    initials inside the dark fallback circle:
+//      ctx.fillStyle = '#fff';
+//      ctx.font = `bold ${BUBBLE_RADIUS * 0.7}px sans-serif`;
+//      ctx.textAlign = 'center';
+//      ctx.textBaseline = 'middle';
+//      ctx.fillText(username[0].toUpperCase(), cx, cy);
+//    Requires passing username into drawCameraBubble (add as optional 6th param).
+//
+// 3. BUBBLE VISIBILITY GUARD — only show bubble when the peer is within the
+//    viewport (skip drawCameraBubble if the world position is off-screen).
+//    This avoids drawing invisible elements every frame:
+//      const screenCX = worldX * zoom + offsetX - camX;
+//      const screenCY = worldY * zoom + offsetY - camY;
+//      if (screenCX < -BUBBLE_RADIUS || screenCX > vpW + BUBBLE_RADIUS) return;
+//      if (screenCY < -BUBBLE_RADIUS || screenCY > vpH + BUBBLE_RADIUS) return;
+//    Pass vpW, vpH, zoom, offsetX, offsetY, camX, camY to drawCameraBubble, or
+//    do the check inline before calling it.
+//
+// 4. CLICK-TO-EXPAND — track a Map<string, boolean> (bubbleExpanded) in a ref.
+//    On canvas click, check if the click hits any bubble's bounding circle.
+//    If so, toggle expanded state and render that peer's bubble at 3x radius
+//    (60px) while expanded. This gives a quick "pip" mode for video calls.
+//    Expanded bubble should render above all other canvas content (draw last).
+//
+// 5. AUDIO INDICATOR RING — replace the binary speaking ring with a real-time
+//    volume ring: use PeerManager.getSpeakingVolume(peerId) (new method to add)
+//    that returns a 0..1 value from the AnalyserNode. Drive ring thickness
+//    proportionally (lineWidth = 2 + volume * 6) rather than binary pulse.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// CAMERA BUBBLES — PHASE 3 PLAN
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Phase 3: Performance and advanced features
+//
+// 1. OFFSCREEN CANVAS — for each peer, maintain an OffscreenCanvas of size
+//    (BUBBLE_RADIUS * 2) x (BUBBLE_RADIUS * 2). Pre-clip to circle on a
+//    separate OffscreenCanvas 2D context and call transferToImageBitmap() each
+//    frame. Use ctx.drawImage(imageBitmap, ...) in the main render loop.
+//    This moves the clip+drawImage work off the main canvas compositing path.
+//    Requires checking browser support (Safari < 17.4 lacks OffscreenCanvas).
+//
+// 2. VIDEO FRAME CALLBACK — replace continuous drawCameraBubble calls in the
+//    rAF loop with HTMLVideoElement.requestVideoFrameCallback() per peer.
+//    Draw the bubble only when a new frame arrives (typically 30fps from webcam)
+//    rather than every rAF tick (60fps). Reduces GPU overdraw by ~50% for
+//    camera-heavy calls.
+//    Polyfill needed for Firefox < 116.
+//
+// 3. SCREEN SHARE BUBBLE — when a peer starts screen sharing (separate
+//    MediaStream with display-type video track), render their bubble with a
+//    rectangular border instead of circular (use rounded-rect clip or just
+//    draw a rounded rectangle at aspect ratio 16:9 above the avatar).
+//    Requires PeerManager to dispatch a separate 'rtc:screenShare' event
+//    so Game.tsx can differentiate camera vs. screen tracks.
+//
+// 4. NAME TAG OVERLAY — draw the peer's username in small white text below
+//    the bubble (between bubble bottom and avatar head), visible only when
+//    multiple peers have overlapping avatars in a conference room tile.
+//    Gate on: avatarVideoElsRef.current.size > 3 (only clutter when busy).
+//
+// 5. BUBBLE COLLISION AVOIDANCE — if two peers' bubbles overlap (world distance
+//    < 2 * BUBBLE_RADIUS + 4), offset them horizontally by half the overlap
+//    so both remain visible. Simple 1D separation pass in the render loop
+//    over all (userId, worldX, worldY) pairs that have active bubbles.
+//
