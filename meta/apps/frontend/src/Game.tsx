@@ -2001,7 +2001,7 @@ const ArenaInner = () => {
             }
 
             case 'user-left': {
-                const leftUser = users.get(message.payload.userId);
+                const leftUser = usersRef.current.get(message.payload.userId);
                 const nextUsersMap = new Map(usersRef.current);
                 nextUsersMap.delete(message.payload.userId);
                 usersRef.current = nextUsersMap;
@@ -4948,8 +4948,8 @@ const ArenaInner = () => {
                 )}
 
                 {/* Video panel — fixed left column, above chat panel */}
-                {(remotePeerIds.length > 0 || cameraEnabled) && (() => {
-                    const totalTiles = remotePeerIds.length + (cameraEnabled ? 1 : 0);
+                {(remotePeerIds.length > 0 || (cameraEnabled && connectedPeers > 0)) && (() => {
+                    const totalTiles = remotePeerIds.length + (cameraEnabled && connectedPeers > 0 ? 1 : 0);
                     const gridCols = totalTiles <= 1 ? 1 : 2;
                     return (
                         <div
@@ -4968,7 +4968,7 @@ const ArenaInner = () => {
                                 gridTemplateColumns: gridCols === 1 ? '1fr' : '1fr 1fr',
                                 gap: 4,
                             }}>
-                                {cameraEnabled && (
+                                {cameraEnabled && connectedPeers > 0 && (
                                     <div style={{
                                         position: 'relative',
                                         width: '100%',
