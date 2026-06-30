@@ -344,7 +344,7 @@ export default function SpacePage() {
             }
         } catch {}
         clearAuth();
-        navigate("/login", { replace: true });
+        navigate("/", { replace: true });
     };
 
     // Auto-dismiss claim result after 3 s

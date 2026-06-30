@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuthStore } from '../stores/authStore';
 
 type ActivePage = 'home' | 'about' | 'pricing' | 'contact';
 
@@ -15,6 +16,8 @@ const LINKS: { label: string; to: string; key: ActivePage }[] = [
 ];
 
 export default function MarketingNav({ active = 'home' }: Props) {
+    const token = useAuthStore((s) => s.token);
+    const isLoggedIn = !!token;
     const capsuleRef = useRef<HTMLElement>(null);
     const [narrow, setNarrow] = useState(false);
     const [open, setOpen] = useState(false);
@@ -91,27 +94,44 @@ export default function MarketingNav({ active = 'home' }: Props) {
                             ))}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0 }}>
-                            <Link
-                                to="/login"
-                                className="mkt-nav-login"
-                                style={{
-                                    textDecoration: 'none', fontSize: 14, fontWeight: 600,
-                                    color: '#4a4368', padding: '9px 16px', borderRadius: 11,
-                                    whiteSpace: 'nowrap', transition: 'color .15s, background .15s',
-                                }}
-                            >Log in</Link>
-                            <Link
-                                to="/login"
-                                className="mkt-nav-cta"
-                                style={{
-                                    textDecoration: 'none', fontSize: 14, fontWeight: 700,
-                                    color: '#fff', padding: '10px 18px', borderRadius: 12,
-                                    background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
-                                    boxShadow: '0 6px 16px rgba(124,58,237,0.32)',
-                                    whiteSpace: 'nowrap', transition: 'transform .15s, box-shadow .15s',
-                                    display: 'inline-flex', alignItems: 'center', gap: 7,
-                                }}
-                            >Start free <span style={{ fontSize: 15 }}>→</span></Link>
+                            {isLoggedIn ? (
+                                <Link
+                                    to="/lobby"
+                                    className="mkt-nav-cta"
+                                    style={{
+                                        textDecoration: 'none', fontSize: 14, fontWeight: 700,
+                                        color: '#fff', padding: '10px 18px', borderRadius: 12,
+                                        background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
+                                        boxShadow: '0 6px 16px rgba(124,58,237,0.32)',
+                                        whiteSpace: 'nowrap', transition: 'transform .15s, box-shadow .15s',
+                                        display: 'inline-flex', alignItems: 'center', gap: 7,
+                                    }}
+                                >Open app <span style={{ fontSize: 15 }}>→</span></Link>
+                            ) : (
+                                <>
+                                    <Link
+                                        to="/login"
+                                        className="mkt-nav-login"
+                                        style={{
+                                            textDecoration: 'none', fontSize: 14, fontWeight: 600,
+                                            color: '#4a4368', padding: '9px 16px', borderRadius: 11,
+                                            whiteSpace: 'nowrap', transition: 'color .15s, background .15s',
+                                        }}
+                                    >Log in</Link>
+                                    <Link
+                                        to="/login"
+                                        className="mkt-nav-cta"
+                                        style={{
+                                            textDecoration: 'none', fontSize: 14, fontWeight: 700,
+                                            color: '#fff', padding: '10px 18px', borderRadius: 12,
+                                            background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
+                                            boxShadow: '0 6px 16px rgba(124,58,237,0.32)',
+                                            whiteSpace: 'nowrap', transition: 'transform .15s, box-shadow .15s',
+                                            display: 'inline-flex', alignItems: 'center', gap: 7,
+                                        }}
+                                    >Start free <span style={{ fontSize: 15 }}>→</span></Link>
+                                </>
+                            )}
                         </div>
                     </>
                 )}
@@ -156,25 +176,40 @@ export default function MarketingNav({ active = 'home' }: Props) {
                         ))}
                     </div>
                     <div style={{ display: 'flex', gap: 10, marginTop: 10, paddingTop: 12, borderTop: '1px solid #ece9f7' }}>
-                        <Link
-                            to="/login"
-                            onClick={() => setOpen(false)}
-                            style={{
-                                flex: 1, textAlign: 'center', textDecoration: 'none',
-                                fontSize: 14, fontWeight: 600, color: '#4a4368',
-                                padding: 12, borderRadius: 11, border: '1px solid #e7e2f5',
-                            }}
-                        >Log in</Link>
-                        <Link
-                            to="/login"
-                            onClick={() => setOpen(false)}
-                            style={{
-                                flex: 1, textAlign: 'center', textDecoration: 'none',
-                                fontSize: 14, fontWeight: 700, color: '#fff',
-                                padding: 12, borderRadius: 11,
-                                background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
-                            }}
-                        >Start free</Link>
+                        {isLoggedIn ? (
+                            <Link
+                                to="/lobby"
+                                onClick={() => setOpen(false)}
+                                style={{
+                                    flex: 1, textAlign: 'center', textDecoration: 'none',
+                                    fontSize: 14, fontWeight: 700, color: '#fff',
+                                    padding: 12, borderRadius: 11,
+                                    background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
+                                }}
+                            >Open app →</Link>
+                        ) : (
+                            <>
+                                <Link
+                                    to="/login"
+                                    onClick={() => setOpen(false)}
+                                    style={{
+                                        flex: 1, textAlign: 'center', textDecoration: 'none',
+                                        fontSize: 14, fontWeight: 600, color: '#4a4368',
+                                        padding: 12, borderRadius: 11, border: '1px solid #e7e2f5',
+                                    }}
+                                >Log in</Link>
+                                <Link
+                                    to="/login"
+                                    onClick={() => setOpen(false)}
+                                    style={{
+                                        flex: 1, textAlign: 'center', textDecoration: 'none',
+                                        fontSize: 14, fontWeight: 700, color: '#fff',
+                                        padding: 12, borderRadius: 11,
+                                        background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
+                                    }}
+                                >Start free</Link>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
