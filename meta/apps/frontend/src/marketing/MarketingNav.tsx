@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 type ActivePage = 'home' | 'about' | 'pricing' | 'contact';
 
@@ -15,7 +15,6 @@ const LINKS: { label: string; to: string; key: ActivePage }[] = [
 ];
 
 export default function MarketingNav({ active = 'home' }: Props) {
-    const navigate = useNavigate();
     const capsuleRef = useRef<HTMLElement>(null);
     const [narrow, setNarrow] = useState(false);
     const [open, setOpen] = useState(false);

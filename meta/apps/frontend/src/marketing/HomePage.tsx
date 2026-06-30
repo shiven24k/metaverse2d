@@ -331,12 +331,6 @@ export default function HomePage() {
     useReveal(rootRef);
     usePixelCanvas(canvasRef);
 
-    const CheckIcon = ({ color = '#16a34a' }: { color?: string }) => (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <path d="M20 6 9 17l-5-5" />
-        </svg>
-    );
-
     return (
         <div ref={rootRef} className="mkt-body" style={{ fontFamily: "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", color: '#211c3b', background: '#faf9ff', overflowX: 'hidden' }}>
             <MarketingNav active="home" />
