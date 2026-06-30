@@ -13,6 +13,7 @@ import type { ProximityChatMessage, AppNotification, SpaceElement, PlacedItem, S
 import { PeerManager } from './webrtc/PeerManager';
 import { VOICE_RADIUS, VIDEO_RADIUS } from './webrtc/constants';
 import { VoiceToolbar } from './components/game/VoiceToolbar';
+import { ConferenceMeetingGrid } from './components/game/ConferenceMeetingGrid';
 
 // ── PixelAvatar — CSS pixel art character, ported from design system ──────────
 
@@ -313,6 +314,8 @@ const ArenaInner = () => {
     const currentBroadcastZoneRef = useRef<string | null>(null);
     const selfVideoRef = useRef<HTMLVideoElement | null>(null);
     const localVideoStreamRef = useRef<MediaStream | null>(null);
+    const [inConferenceRoom, setInConferenceRoom] = useState(false);
+    const [conferencePeerIds, setConferencePeerIds] = useState<string[]>([]);
     const [micEnabled, setMicEnabled] = useState(true);
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [deafened, setDeafened] = useState(false);
@@ -851,11 +854,13 @@ const ArenaInner = () => {
             if (currentConferenceRoomRef.current) {
                 peerManagerRef.current?.leaveConference();
                 ws.send(JSON.stringify({ type: 'rtc:leave-room', roomId: currentConferenceRoomRef.current }));
+                setConferencePeerIds([]);
             }
             if (newRoomId) {
                 ws.send(JSON.stringify({ type: 'rtc:join-room', roomId: newRoomId }));
             }
             currentConferenceRoomRef.current = newRoomId;
+            setInConferenceRoom(!!newRoomId);
         }
     }, []);
 
@@ -2281,14 +2286,18 @@ const ArenaInner = () => {
                 peerManagerRef.current.handleIce(message.from, message.candidate as RTCIceCandidateInit);
                 break;
 
-            case 'rtc:room-peers':
-                for (const peerId of (message.peers as string[])) {
+            case 'rtc:room-peers': {
+                const roomPeerIds = message.peers as string[];
+                setConferencePeerIds(roomPeerIds);
+                for (const peerId of roomPeerIds) {
                     peerManagerRef.current?.joinConferencePeer(peerId);
                 }
                 break;
+            }
 
             case 'rtc:peer-left':
                 peerManagerRef.current?.disconnect(message.peerId as string);
+                setConferencePeerIds(prev => prev.filter(id => id !== (message.peerId as string)));
                 break;
 
             case 'rtc:knock': {
@@ -3639,10 +3648,24 @@ const ArenaInner = () => {
                 </div>
             </header>
 
-            {/* ── Canvas area: position absolute fills the area below the header ── */}
+            {/* ── Canvas area: full viewport OR picture-in-picture during conference ── */}
                 <div
                     ref={containerRef}
-                    style={{ position: 'absolute', top: 56, left: 0, right: 0, bottom: 0, overflow: 'hidden', outline: 'none', marginLeft: !editMode && showProximityChat && isDesktop ? 292 : 0, transition: 'margin-left 0.2s ease' }}
+                    style={inConferenceRoom ? {
+                        position: 'fixed',
+                        bottom: 88, left: 16,
+                        width: 240, height: 150,
+                        zIndex: 502,
+                        borderRadius: 12,
+                        overflow: 'hidden',
+                        outline: 'none',
+                        boxShadow: '0 4px 24px rgba(0,0,0,0.7), 0 0 0 2px rgba(124,58,237,0.55)',
+                    } : {
+                        position: 'absolute', top: 56, left: 0, right: 0, bottom: 0,
+                        overflow: 'hidden', outline: 'none',
+                        marginLeft: !editMode && showProximityChat && isDesktop ? 292 : 0,
+                        transition: 'margin-left 0.2s ease',
+                    }}
                     onKeyDown={handleKeyDown}
                     onKeyUp={handleKeyUp}
                     onClick={() => useGameStore.getState().setShowEmotePicker(false)}
@@ -3661,8 +3684,21 @@ const ArenaInner = () => {
                         style={{ display: 'block', width: '100%', height: '100%', cursor: isPanningRef.current ? 'grabbing' : spaceHeld ? 'grab' : editMode ? (selectedElement || selectedItem ? 'cell' : 'crosshair') : 'default', outline: canvasIsOver ? '2px solid #4f46e5' : 'none' }}
                     />
 
-                    {/* ── Video tile overlay — centered at top of canvas ── */}
-                    {(remotePeerIds.length > 0 || (cameraEnabled && connectedPeers > 0)) && (
+                    {/* ── PiP label — shown when canvas is shrunk to conference PiP ── */}
+                    {inConferenceRoom && (
+                        <div style={{
+                            position: 'absolute', top: 0, left: 0, right: 0,
+                            background: 'rgba(13,13,20,0.65)',
+                            color: '#a78bfa', fontSize: 9, fontWeight: 700,
+                            padding: '3px 6px', letterSpacing: '0.06em',
+                            pointerEvents: 'none', zIndex: 1,
+                        }}>
+                            2D WORLD
+                        </div>
+                    )}
+
+                    {/* ── Video tile overlay — centered at top of canvas (proximity calls only) ── */}
+                    {!inConferenceRoom && (remotePeerIds.length > 0 || (cameraEnabled && connectedPeers > 0)) && (
                         <div style={{
                             position: 'absolute',
                             top: 8,
@@ -5059,7 +5095,95 @@ const ArenaInner = () => {
                     </div>
                 )}
 
-                <VoiceToolbar
+                {inConferenceRoom && currentUser && (() => {
+                    const confToggleMic = () => {
+                        const next = !micEnabled;
+                        setMicEnabled(next);
+                        peerManagerRef.current?.toggleMic(next);
+                    };
+                    const confToggleDeafen = () => {
+                        const next = !deafened;
+                        setDeafened(next);
+                        peerManagerRef.current?.setDeafen(next);
+                        if (next) setMicEnabled(false);
+                    };
+                    const confToggleCamera = async () => {
+                        const next = !cameraEnabled;
+                        if (next) {
+                            let stream: MediaStream | null = null;
+                            try {
+                                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                                localVideoStreamRef.current = stream;
+                                await peerManagerRef.current?.enableCamera(stream);
+                                setCameraEnabled(true);
+                                setCameraError(null);
+                            } catch (err) {
+                                stream?.getTracks().forEach(t => t.stop());
+                                localVideoStreamRef.current = null;
+                                const msg = err instanceof Error && err.name === 'NotAllowedError'
+                                    ? 'Camera permission denied' : 'Camera not supported on this device';
+                                setCameraError(msg);
+                                setTimeout(() => setCameraError(null), 5000);
+                            }
+                        } else {
+                            peerManagerRef.current?.toggleCamera(false);
+                            localVideoStreamRef.current = null;
+                            setCameraEnabled(false);
+                        }
+                    };
+                    const confLeave = () => {
+                        // Exit conference room state so grid is hidden and canvas restores
+                        if (currentConferenceRoomRef.current) {
+                            wsRef.current?.send(JSON.stringify({ type: 'rtc:leave-room', roomId: currentConferenceRoomRef.current }));
+                            peerManagerRef.current?.leaveConference();
+                            currentConferenceRoomRef.current = null;
+                        }
+                        setInConferenceRoom(false);
+                        setConferencePeerIds([]);
+                        remoteStreamsRef.current.clear();
+                        setRemotePeerIds([]);
+                        localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
+                        localVideoStreamRef.current = null;
+                        setKnockPendingPeerIds(new Set());
+                        setCameraEnabled(false);
+                        setMicEnabled(true);
+                        setDeafened(false);
+                        setConnectedPeers(0);
+                    };
+                    const selfParticipant = {
+                        peerId: currentUser.userId,
+                        stream: localVideoStreamRef.current ?? undefined,
+                        username: currentUser.username,
+                        isSelf: true as const,
+                        speaking: false,
+                        micEnabled,
+                        cameraEnabled,
+                    };
+                    const remoteParticipants = conferencePeerIds.map(peerId => ({
+                        peerId,
+                        stream: remoteStreamsRef.current.get(peerId),
+                        username: usersRef.current.get(peerId)?.username ?? peerId.slice(0, 8),
+                        isSelf: false as const,
+                        speaking: speakingPeerIds.has(peerId),
+                        micEnabled: true,
+                        cameraEnabled: !!(remoteStreamsRef.current.get(peerId)?.getVideoTracks()[0]),
+                        connectionState: peerConnectionStates.get(peerId),
+                    }));
+                    return (
+                        <ConferenceMeetingGrid
+                            participants={[selfParticipant, ...remoteParticipants]}
+                            micEnabled={micEnabled}
+                            cameraEnabled={cameraEnabled}
+                            deafened={deafened}
+                            onToggleMic={confToggleMic}
+                            onToggleCamera={confToggleCamera}
+                            onToggleDeafen={confToggleDeafen}
+                            onLeaveCall={confLeave}
+                        />
+                    );
+                })()}
+
+                {!inConferenceRoom && <VoiceToolbar
                     micEnabled={micEnabled}
                     cameraEnabled={cameraEnabled}
                     deafened={deafened}
@@ -5157,7 +5281,7 @@ const ArenaInner = () => {
                                 });
                         }
                     }}
-                />
+                />}
 
                 {/* Hidden container for HTMLAudioElement nodes — keeps them in the DOM so
                     browsers don't GC or suspend detached audio elements mid-call. */}
