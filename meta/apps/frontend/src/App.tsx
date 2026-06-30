@@ -8,6 +8,10 @@ import JoinPage from './JoinPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAuthStore } from './stores/authStore';
+import HomePage from './marketing/HomePage';
+import AboutPage from './marketing/AboutPage';
+import PricingPage from './marketing/PricingPage';
+import ContactPage from './marketing/ContactPage';
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
@@ -51,6 +55,13 @@ export default function App() {
     return (
         <ErrorBoundary>
             <Routes>
+                {/* Marketing pages */}
+                <Route path="/" element={<HomePage />} />
+                <Route path="/about" element={<AboutPage />} />
+                <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+
+                {/* App pages */}
                 <Route path="/login" element={<AuthPage />} />
                 <Route path="/join/:token" element={<JoinPage />} />
                 <Route path="/auth/callback" element={<OAuthCallbackPage />} />
@@ -67,7 +78,7 @@ export default function App() {
                     } />
                     <Route path="/profile/:userId" element={<ProfilePage />} />
                 </Route>
-                <Route path="*" element={<Navigate to="/login" replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </ErrorBoundary>
     );

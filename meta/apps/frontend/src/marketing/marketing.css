@@ -1,0 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+
+.mkt-body {
+  margin: 0;
+  background: #faf9ff;
+  color: #211c3b;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+.mkt-body h1,
+.mkt-body h2,
+.mkt-body h3,
+.mkt-body h4 {
+  color: #211c3b;
+}
+
+@keyframes ov-floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes ov-floaty2 {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(7px); }
+}
+
+@keyframes ov-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@keyframes ov-blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, -16px) scale(1.08); }
+}
+
+@keyframes ov-blob-rev {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-20px, 16px) scale(1.08); }
+}
+
+@keyframes ov-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ov-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes ov-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.85; }
+}
+
+.mkt-floaty { animation: ov-floaty 6s ease-in-out infinite; }
+.mkt-floaty2 { animation: ov-floaty2 7s ease-in-out infinite; }
+.mkt-pulse { animation: ov-pulse 2s ease-in-out infinite; }
+.mkt-spin { animation: ov-spin 0.9s linear infinite; }
+.mkt-pop { animation: ov-pop 0.4s cubic-bezier(0.2, 0.7, 0.2, 1); }
+
+/* Nav hover */
+.mkt-nav-link:hover { background: #f3effe; color: #7c3aed; }
+.mkt-nav-cta:hover { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(124,58,237,0.42) !important; }
+.mkt-nav-login:hover { background: #f3effe; color: #7c3aed; }
+
+/* Footer link hover */
+.mkt-footer-link:hover { color: #7c3aed; }
+.mkt-social-btn:hover { background: #7c3aed !important; color: #fff !important; transform: translateY(-2px); }
+
+/* Feature card hover */
+.mkt-card-hover:hover { transform: translateY(-4px); box-shadow: 0 16px 34px rgba(99,102,241,0.16) !important; }
+.mkt-team-card:hover { transform: translateY(-4px); }
+
+/* CTA hover */
+.mkt-cta-white:hover { transform: translateY(-2px); }
+.mkt-cta-outline:hover { background: rgba(255,255,255,0.10); }
+
+/* Button primary hover */
+.mkt-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(124,58,237,0.42) !important; }
+
+/* Pricing card hover */
+.mkt-pricing-free-btn:hover { background: #ede9fe; }
+.mkt-pricing-pro-btn:hover { transform: translateY(-2px); }
+.mkt-pricing-team-btn:hover { background: #f3effe; }
+
+/* Input focus styles */
+.mkt-input:focus { border-color: #7c3aed !important; outline: none; }
+.mkt-select:focus { border-color: #7c3aed !important; outline: none; }
+.mkt-textarea:focus { border-color: #7c3aed !important; outline: none; }
+
+/* Link hover */
+.mkt-link-hover:hover { gap: 11px !important; }
