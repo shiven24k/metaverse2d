@@ -10,10 +10,13 @@ export default function ProtectedRoute() {
     const setUser = useAuthStore((s) => s.setUser);
     const clearAuth = useAuthStore((s) => s.clearAuth);
 
-    const [validating, setValidating] = useState(false);
-    const [valid, setValid] = useState(true);
-
     const authed = Boolean(token);
+
+    // If a token exists we must validate it BEFORE rendering the child route,
+    // otherwise the child (lobby/arena) mounts and fires authenticated fetches
+    // with a stale token — a burst of 403s with no way to sign out.
+    const [validating, setValidating] = useState(() => authed);
+    const [valid, setValid] = useState(() => !authed);
 
     useEffect(() => {
         if (!authed) {
@@ -59,7 +62,7 @@ export default function ProtectedRoute() {
     }, [authed, token, setUser, clearAuth]);
 
     if (!token && !isGuest) return <Navigate to="/login" replace />;
-    if (validating) {
+    if (authed && validating) {
         return (
             <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif', background: '#f0f2f5' }}>
                 <p style={{ color: '#6f6b82', fontSize: 14 }}>Checking session…</p>

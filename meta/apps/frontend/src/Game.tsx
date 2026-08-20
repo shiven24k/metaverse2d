@@ -3675,11 +3675,9 @@ const ArenaInner = () => {
                     <button onClick={() => navigate('/lobby')} style={{ padding: '6px 14px', borderRadius: 9, border: '1px solid #e3e1ee', background: '#fff', color: '#4d495f', cursor: 'pointer', fontSize: 13, fontWeight: 600, boxShadow: '0 1px 2px rgba(22,15,52,0.05)' }}>
                         Leave
                     </button>
-                    {!isGuest && (
-                        <button onClick={handleSignOut} title="Sign out" style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid #e3e1ee', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: '#a3a0b3' }}>
-                            <LogOut size={16} />
-                        </button>
-                    )}
+                    <button onClick={handleSignOut} title="Sign out" style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid #e3e1ee', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: '#a3a0b3' }}>
+                        <LogOut size={16} />
+                    </button>
                 </div>
             </header>
 

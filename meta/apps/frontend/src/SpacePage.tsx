@@ -549,38 +549,37 @@ export default function SpacePage() {
                     </>}
                 </nav>
 
-                {/* User footer — always offer sign out, even when the token is stale and
-                    /user/me fails (otherwise users with an invalid token can never log out) */}
-                {!isGuest && (
+                {/* User footer — ALWAYS offer sign out, even in guest/stale state.
+                    A stale token or guest flag must never lock the user out of
+                    clearing the session and getting back to the login page. */}
+                {username ? (
                     <div style={{ padding: 12, borderTop: "1px solid #ecebf3" }}>
-                        {username ? (
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 10 }}>
-                                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(140deg,#6366f1,#8b5cf6 52%,#d946ef)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
-                                    {username[0]?.toUpperCase()}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 700, color: "#191427", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{username}</div>
-                                    {wallet && (
-                                        <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "#b25e09", fontWeight: 600, marginTop: 1 }}>
-                                            <Coins size={12} />{wallet.coins.toLocaleString()}
-                                        </div>
-                                    )}
-                                </div>
-                                <button onClick={handleSignOut} title="Sign out" style={{ width: 28, height: 28, borderRadius: 8, border: "1px solid #ecebf3", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#a3a0b3" }}>
-                                    <LogOut size={15} />
-                                </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 10 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(140deg,#6366f1,#8b5cf6 52%,#d946ef)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                                {username[0]?.toUpperCase()}
                             </div>
-                        ) : (
-                            <button onClick={handleSignOut} title="Sign out" style={{ width: "100%", padding: "9px", borderRadius: 10, border: "1px solid #ecebf3", background: "#fff", color: "#4d495f", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: "system-ui,sans-serif" }}>
-                                <LogOut size={15} />Sign out
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "#191427", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{username}</div>
+                                {wallet && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "#b25e09", fontWeight: 600, marginTop: 1 }}>
+                                        <Coins size={12} />{wallet.coins.toLocaleString()}
+                                    </div>
+                                )}
+                            </div>
+                            <button onClick={handleSignOut} title="Sign out" style={{ width: 28, height: 28, borderRadius: 8, border: "1px solid #ecebf3", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#a3a0b3" }}>
+                                <LogOut size={15} />
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div style={{ padding: 12, borderTop: "1px solid #ecebf3", display: "flex", flexDirection: "column", gap: 8 }}>
+                        {isGuest && (
+                            <button onClick={() => navigate("/login")} style={{ width: "100%", padding: "8px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(124,58,237,.25)" }}>
+                                Sign In / Create Account
                             </button>
                         )}
-                    </div>
-                )}
-                {isGuest && (
-                    <div style={{ padding: "12px 16px", borderTop: "1px solid #ecebf3" }}>
-                        <button onClick={() => navigate("/login")} style={{ width: "100%", padding: "8px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(124,58,237,.25)" }}>
-                            Sign In / Create Account
+                        <button onClick={handleSignOut} title="Sign out" style={{ width: "100%", padding: "9px", borderRadius: 10, border: "1px solid #ecebf3", background: "#fff", color: "#4d495f", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: "system-ui,sans-serif" }}>
+                            <LogOut size={15} />Sign out
                         </button>
                     </div>
                 )}
