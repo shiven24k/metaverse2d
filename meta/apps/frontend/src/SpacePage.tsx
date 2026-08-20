@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
 import { Compass, Home, ShoppingBag, Package, Trophy, Plus, LogOut, Coins, Gift, Bell, Search, User, MessageSquare, LogIn } from "lucide-react";
@@ -144,19 +144,30 @@ export default function SpacePage() {
         ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
     };
 
+    const authFailedRef = useRef(false);
+
+    const handleAuthFailure = useCallback(() => {
+        if (authFailedRef.current) return;
+        authFailedRef.current = true;
+        clearAuth();
+        navigate("/login");
+    }, [clearAuth, navigate]);
+
     const fetchWallet = useCallback(async () => {
         try {
             const res = await fetch(`${API}/api/v1/wallet`, { headers: authHeaders });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (res.ok) setWallet(await res.json());
         } catch {}
-    }, [bearerToken]);
+    }, [bearerToken, handleAuthFailure]);
 
     const fetchGiftStatus = useCallback(async () => {
         try {
             const res = await fetch(`${API}/api/v1/gift/status`, { headers: authHeaders });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (res.ok) setGiftStatus(await res.json());
         } catch {}
-    }, [bearerToken]);
+    }, [bearerToken, handleAuthFailure]);
 
     const fetchSeason = useCallback(async () => {
         try {
@@ -169,20 +180,22 @@ export default function SpacePage() {
         setLoadingCollection(true);
         try {
             const res = await fetch(`${API}/api/v1/collection`, { headers: authHeaders });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (res.ok) { const d = await res.json(); setCollection(d.collection ?? []); }
         } catch {} finally { setLoadingCollection(false); }
-    }, [bearerToken]);
+    }, [bearerToken, handleAuthFailure]);
 
     const fetchUserInfo = useCallback(async () => {
         try {
             const res = await fetch(`${API}/api/v1/user/me`, { headers: authHeaders });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (res.ok) {
                 const d = await res.json();
                 setUserRole(d.user?.role ?? null);
                 setUsername(d.user?.username ?? d.user?.name ?? "");
             }
         } catch {}
-    }, [bearerToken]);
+    }, [bearerToken, handleAuthFailure]);
 
     const fetchGuestbook = useCallback(async (spaceId: string) => {
         setGuestbookLoading(true);
@@ -196,9 +209,10 @@ export default function SpacePage() {
         setQuestsLoading(true);
         try {
             const res = await fetch(`${API}/api/v1/quests/active`, { headers: authHeaders });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (res.ok) { const d = await res.json(); setQuests(d.quests ?? []); }
         } catch {} finally { setQuestsLoading(false); }
-    }, [bearerToken]);
+    }, [bearerToken, handleAuthFailure]);
 
     const fetchMaps = useCallback(async () => {
         try {
@@ -211,9 +225,10 @@ export default function SpacePage() {
         setLoadingNeighbourhood(true);
         try {
             const res = await fetch(`${API}/api/v1/neighbourhood`, { headers: authHeaders });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (res.ok) { setNeighbourhood(await res.json()); }
         } catch {} finally { setLoadingNeighbourhood(false); }
-    }, [bearerToken]);
+    }, [bearerToken, handleAuthFailure]);
 
     const fetchShop = useCallback(async () => {
         try {
@@ -235,6 +250,7 @@ export default function SpacePage() {
         setLoadingMine(true);
         try {
             const res = await fetch(`${API}/api/v1/space/all`, { credentials: "include", headers: authHeaders });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             const d = await res.json();
             setMySpaces(d.spaces ?? []);
         } catch {} finally { setLoadingMine(false); }
@@ -243,6 +259,7 @@ export default function SpacePage() {
     const fetchJoinedSpaces = async () => {
         try {
             const res = await fetch(`${API}/api/v1/space/joined`, { headers: authHeaders });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (res.ok) { const d = await res.json(); setJoinedSpaces(d.spaces ?? []); }
         } catch {}
     };
@@ -272,6 +289,7 @@ export default function SpacePage() {
             const res = await fetch(`${API}/api/v1/guestbook/${spaceId}`, {
                 method: "POST", headers: authHeaders, body: JSON.stringify({ message: gbMsg.trim() }),
             });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (res.ok) { setGbMsg(""); fetchGuestbook(spaceId); }
             else { const d = await res.json(); setGbError(d.message ?? "Failed"); }
         } catch { setGbError("Network error"); } finally { setGbSending(false); }
@@ -285,6 +303,7 @@ export default function SpacePage() {
                 method: "POST", credentials: "include", headers: authHeaders,
                 body: JSON.stringify({ name: newSpaceName, dimensions: newSpaceDims, mapId: selectedMap?.id }),
             });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (!res.ok) { const d = await res.json(); setError(d.message ?? "Failed to create space"); return; }
             setNewSpaceName(""); setSelectedMap(null);
             setCreateSuccess(`Space "${newSpaceName}" created!`);
@@ -297,6 +316,7 @@ export default function SpacePage() {
         setClaiming(true); setClaimResult("");
         try {
             const res = await fetch(`${API}/api/v1/gift/claim`, { method: "POST", headers: authHeaders });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (res.ok) {
                 const d = await res.json();
                 setClaimResult(`+${d.coins} coins${d.item ? ` + ${d.item.name}` : ""}!`);
@@ -311,6 +331,7 @@ export default function SpacePage() {
             const res = await fetch(`${API}/api/v1/shop/buy`, {
                 method: "POST", headers: authHeaders, body: JSON.stringify({ itemId }),
             });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             const d = await res.json();
             if (res.ok) { setBuyMsg("Purchased!"); fetchWallet(); }
             else setBuyMsg(d.message ?? "Failed");
@@ -323,6 +344,7 @@ export default function SpacePage() {
             const res = await fetch(`${API}/api/v1/space/${space.id}`, {
                 method: "DELETE", credentials: "include", headers: authHeaders,
             });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             if (res.ok) {
                 setMySpaces(prev => prev.filter(s => s.id !== space.id));
                 setAllSpaces(prev => prev.filter(s => s.id !== space.id));
@@ -527,25 +549,32 @@ export default function SpacePage() {
                     </>}
                 </nav>
 
-                {/* User footer */}
-                {!isGuest && username && (
+                {/* User footer — always offer sign out, even when the token is stale and
+                    /user/me fails (otherwise users with an invalid token can never log out) */}
+                {!isGuest && (
                     <div style={{ padding: 12, borderTop: "1px solid #ecebf3" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 10 }}>
-                            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(140deg,#6366f1,#8b5cf6 52%,#d946ef)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
-                                {username[0]?.toUpperCase()}
+                        {username ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 10 }}>
+                                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(140deg,#6366f1,#8b5cf6 52%,#d946ef)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                                    {username[0]?.toUpperCase()}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: "#191427", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{username}</div>
+                                    {wallet && (
+                                        <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "#b25e09", fontWeight: 600, marginTop: 1 }}>
+                                            <Coins size={12} />{wallet.coins.toLocaleString()}
+                                        </div>
+                                    )}
+                                </div>
+                                <button onClick={handleSignOut} title="Sign out" style={{ width: 28, height: 28, borderRadius: 8, border: "1px solid #ecebf3", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#a3a0b3" }}>
+                                    <LogOut size={15} />
+                                </button>
                             </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: "#191427", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{username}</div>
-                                {wallet && (
-                                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "#b25e09", fontWeight: 600, marginTop: 1 }}>
-                                        <Coins size={12} />{wallet.coins.toLocaleString()}
-                                    </div>
-                                )}
-                            </div>
-                            <button onClick={handleSignOut} title="Sign out" style={{ width: 28, height: 28, borderRadius: 8, border: "1px solid #ecebf3", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#a3a0b3" }}>
-                                <LogOut size={15} />
+                        ) : (
+                            <button onClick={handleSignOut} title="Sign out" style={{ width: "100%", padding: "9px", borderRadius: 10, border: "1px solid #ecebf3", background: "#fff", color: "#4d495f", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: "system-ui,sans-serif" }}>
+                                <LogOut size={15} />Sign out
                             </button>
-                        </div>
+                        )}
                     </div>
                 )}
                 {isGuest && (

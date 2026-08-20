@@ -87,6 +87,17 @@ export class User {
         this.initHandlers();
     }
 
+    // Send an explicit error then close, so the client can stop reconnecting and
+    // show a real message instead of looping forever on an invalid/stale token.
+    private failWith(code: 'unauthorized' | 'banned' | 'forbidden' | 'not-found', message: string) {
+        try {
+            this.send({ type: 'error', payload: { code, message } });
+        } catch {
+            // ignore — socket may already be gone
+        }
+        this.ws.close();
+    }
+
     initHandlers() {
         this.ws.on("message", async (data) => {
             let parsedData: IncomingMessage;
@@ -126,12 +137,12 @@ export class User {
                             });
                             userId = session?.user?.id;
                         } catch {
-                            this.ws.close();
+                            this.failWith('unauthorized', 'Session expired, please sign in again');
                             return;
                         }
 
                         if (!userId) {
-                            this.ws.close();
+                            this.failWith('unauthorized', 'Session expired, please sign in again');
                             return;
                         }
 
@@ -141,7 +152,7 @@ export class User {
                             where: { userId },
                         });
                         if (banned) {
-                            this.ws.close();
+                            this.failWith('banned', 'This account is banned');
                             return;
                         }
 
@@ -159,20 +170,20 @@ export class User {
                     });
 
                     if (!space) {
-                        this.ws.close();
+                        this.failWith('not-found', 'Space not found');
                         return;
                     }
 
                     if (space.isPrivate) {
                         if (this.isGuest || !this.userId) {
-                            this.ws.close();
+                            this.failWith('forbidden', 'You do not have access to this space');
                             return;
                         }
                         const member = await client.spaceMember.findUnique({
                             where: { spaceId_userId: { spaceId, userId: this.userId } },
                         });
                         if (!member) {
-                            this.ws.close();
+                            this.failWith('forbidden', 'You do not have access to this space');
                             return;
                         }
                     }

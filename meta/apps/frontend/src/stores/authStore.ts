@@ -36,3 +36,16 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({ token: '', userId: null, role: null, isGuest: false });
     },
 }));
+
+// Keep multiple open tabs in sync: if a token or guest flag changes in another tab
+// (sign-in / sign-out / guest mode), update this tab's in-memory store so it doesn't
+// keep calling the API with a token that another tab just revoked or replaced.
+if (typeof window !== 'undefined') {
+    window.addEventListener('storage', (e) => {
+        if (e.key === TOKEN_KEY) {
+            useAuthStore.setState({ token: e.newValue ?? '', isGuest: false, userId: null, role: null });
+        } else if (e.key === GUEST_KEY) {
+            useAuthStore.setState({ isGuest: e.newValue === 'true', token: localStorage.getItem(TOKEN_KEY) ?? '' });
+        }
+    });
+}

@@ -236,6 +236,14 @@ type PongMessage = {
     type: 'pong';
 };
 
+type ErrorMessage = {
+    type: 'error';
+    payload: {
+        code: 'unauthorized' | 'banned' | 'forbidden' | 'not-found';
+        message: string;
+    };
+};
+
 type NotificationOutgoing = {
     type: 'notification';
     payload: {
@@ -347,6 +355,7 @@ export type OutgoingMessage =
     | NpcMovedMessage
     | ActivityChangedOutgoing
     | PongMessage
+    | ErrorMessage
     | ProximityChatMessage
     | ChatRoomUpdateMessage
     | ChatHistoryMessage

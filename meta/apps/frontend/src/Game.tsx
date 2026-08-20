@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
-import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Settings, Bell } from 'lucide-react';
+import { ArrowLeft, BookOpen, Trophy, Pencil, Coins, Settings, Bell, LogOut } from 'lucide-react';
 import { KanbanPanel } from './KanbanPanel';
 import { SpaceSettingsModal } from './SpaceSettingsModal';
 import { useGameStore } from './store/gameStore';
@@ -1171,6 +1171,20 @@ const ArenaInner = () => {
         clearAuth();
         navigate('/login');
     }, [addToast, clearAuth, navigate]);
+
+    const handleSignOut = useCallback(async () => {
+        try {
+            if (!isGuest && token) {
+                await fetch(`${API}/api/auth/sign-out`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+            }
+        } catch {}
+        clearAuth();
+        navigate('/', { replace: true });
+    }, [isGuest, token, clearAuth, navigate]);
 
     const flushBatch = useCallback(async () => {
         if (batchFlushTimer.current) { clearTimeout(batchFlushTimer.current); batchFlushTimer.current = null; }
@@ -2349,6 +2363,22 @@ const ArenaInner = () => {
 
             case 'pong':
                 break;
+
+            case 'error': {
+                const code = message.payload?.code as string | undefined;
+                const msg  = message.payload?.message as string ?? 'Server error';
+                if (code === 'unauthorized' || code === 'banned') {
+                    intentionalCloseRef.current = true;
+                    if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) wsRef.current.close();
+                    handleAuthFailure();
+                } else {
+                    intentionalCloseRef.current = true;
+                    if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) wsRef.current.close();
+                    setError(msg);
+                    addToast(msg, 'error');
+                }
+                break;
+            }
         }
     };
     handleMessageRef.current = handleMessage;
@@ -3645,6 +3675,11 @@ const ArenaInner = () => {
                     <button onClick={() => navigate('/lobby')} style={{ padding: '6px 14px', borderRadius: 9, border: '1px solid #e3e1ee', background: '#fff', color: '#4d495f', cursor: 'pointer', fontSize: 13, fontWeight: 600, boxShadow: '0 1px 2px rgba(22,15,52,0.05)' }}>
                         Leave
                     </button>
+                    {!isGuest && (
+                        <button onClick={handleSignOut} title="Sign out" style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid #e3e1ee', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: '#a3a0b3' }}>
+                            <LogOut size={16} />
+                        </button>
+                    )}
                 </div>
             </header>
 
