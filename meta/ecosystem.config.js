@@ -10,7 +10,7 @@ module.exports = {
                 NODE_ENV: 'production',
                 PORT: '3000',
                 DATABASE_URL: 'postgresql://user:password@ep-xxx.us-east-2.aws.neon.tech/metaverse?sslmode=require',
-                CORS_ORIGIN: 'https://your-app.pages.dev,https://your-custom-domain.com',
+                CORS_ORIGIN: 'https://officeverse.shivenco.com,https://metaverse2d-frontend.pages.dev',
                 BETTER_AUTH_URL: 'https://api.your-domain.com',
                 BETTER_AUTH_SECRET: 'change-this-to-a-random-secret-min-32-chars',
             },

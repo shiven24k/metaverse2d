@@ -375,8 +375,8 @@ const ArenaInner = () => {
     const [editorError, setEditorError] = useState('');
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
     const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [toasts, setToasts] = useState<{ id: string; message: string; type: 'info' | 'success' | 'warning' }[]>([]);
-    const addToast = useCallback((message: string, type: 'info' | 'success' | 'warning' = 'info') => {
+    const [toasts, setToasts] = useState<{ id: string; message: string; type: 'info' | 'success' | 'warning' | 'error' }[]>([]);
+    const addToast = useCallback((message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
         const id = Math.random().toString(36).slice(2);
         setToasts(prev => [...prev, { id, message, type }]);
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);

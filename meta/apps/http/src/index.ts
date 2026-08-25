@@ -21,6 +21,10 @@ const corsOptions: cors.CorsOptions = {
     optionsSuccessStatus: 200,
 };
 
+// Answer all OPTIONS preflights with 2xx before any auth/route logic runs,
+// so browsers never see a 403/5xx on preflight even for non-matching origins.
+app.options("*", (_req, res) => res.sendStatus(204));
+
 app.use(cors(corsOptions));
 
 // Handle preflight for all routes explicitly before any route handler runs.
