@@ -79,4 +79,9 @@ export class RedisRoomManager {
             JSON.stringify({ ...message, _senderUserId: user.userId, _instanceId: this.instanceId })
         );
     }
+
+    public broadcastToRoom(message: OutgoingMessage, roomId: string) {
+        this.rooms.get(roomId)?.forEach((u) => u.send(message));
+        this.pub.publish(`${ROOM_PREFIX}${roomId}`, JSON.stringify({ ...message, _instanceId: this.instanceId }));
+    }
 }

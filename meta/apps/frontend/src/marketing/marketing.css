@@ -1,4 +1,55 @@
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+
+:root {
+  --mkt-font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mkt-pixel: 'Press Start 2P', monospace;
+  --mkt-text: #19142b;
+  --mkt-muted: #6b6488;
+  --mkt-accent: #7c3aed;
+  --mkt-border: #ece8f7;
+  --mkt-bg: #faf9ff;
+}
+
+/* Responsive grid helpers (new landing page) */
+.mkt-hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 64px; align-items: center; }
+.mkt-showcase-grid { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: 56px; align-items: center; }
+.mkt-cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.mkt-why-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.mkt-team-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+.mkt-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+.mkt-testi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.mkt-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; text-align: center; }
+.mkt-footer-grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 40px; }
+
+@media (max-width: 960px) {
+  .mkt-hero-grid, .mkt-showcase-grid { grid-template-columns: 1fr; gap: 48px; }
+  .mkt-cards3, .mkt-why-grid, .mkt-steps, .mkt-testi-grid { grid-template-columns: 1fr; }
+  .mkt-team-grid { grid-template-columns: repeat(3, 1fr); }
+  .mkt-stats { grid-template-columns: repeat(2, 1fr); }
+  .mkt-footer-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) {
+  .mkt-team-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* New landing hover styles */
+.mkt-nav-link:hover { background: rgba(124, 58, 237, 0.07); color: #6d28d9; }
+.mkt-nav-login:hover { background: rgba(124, 58, 237, 0.07); color: #6d28d9; }
+.mkt-btn-secondary:hover { transform: translateY(-1px); border-color: #d9d2f6 !important; background: #faf9ff !important; }
+.mkt-btn-white:hover { transform: translateY(-1px); box-shadow: 0 16px 30px rgba(33, 28, 59, 0.25) !important; }
+.mkt-btn-outline:hover { background: rgba(255, 255, 255, 0.12); }
+
+.mkt-arrow-link { transition: gap .18s ease, color .18s ease; }
+.mkt-arrow-link:hover { gap: 12px; color: #5b21b6; }
+
+.mkt-faq-q { transition: color .18s ease, background .18s ease; }
+.mkt-faq-q:hover { color: #6d28d9; }
+
+.mkt-avatar-ring { transition: transform .18s ease; }
+.mkt-avatar-ring:hover { transform: translateY(-3px); }
+
+.mkt-logo-fade { opacity: 0.72; transition: opacity .2s ease; }
+.mkt-logo-fade:hover { opacity: 1; }
 
 .mkt-body {
   margin: 0;
@@ -61,24 +112,24 @@
 .mkt-pop { animation: ov-pop 0.4s cubic-bezier(0.2, 0.7, 0.2, 1); }
 
 /* Nav hover */
-.mkt-nav-link:hover { background: #f3effe; color: #7c3aed; }
-.mkt-nav-cta:hover { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(124,58,237,0.42) !important; }
-.mkt-nav-login:hover { background: #f3effe; color: #7c3aed; }
+.mkt-nav-link:hover { background: rgba(124, 58, 237, 0.07); color: #6d28d9; }
+.mkt-nav-cta:hover { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(124,58,237,0.30) !important; }
+.mkt-nav-login:hover { background: rgba(124, 58, 237, 0.07); color: #6d28d9; }
 
 /* Footer link hover */
 .mkt-footer-link:hover { color: #7c3aed; }
 .mkt-social-btn:hover { background: #7c3aed !important; color: #fff !important; transform: translateY(-2px); }
 
 /* Feature card hover */
-.mkt-card-hover:hover { transform: translateY(-4px); box-shadow: 0 16px 34px rgba(99,102,241,0.16) !important; }
-.mkt-team-card:hover { transform: translateY(-4px); }
+.mkt-card-hover:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(76, 29, 149, 0.12) !important; }
+.mkt-team-card:hover { transform: translateY(-3px); }
 
 /* CTA hover */
-.mkt-cta-white:hover { transform: translateY(-2px); }
-.mkt-cta-outline:hover { background: rgba(255,255,255,0.10); }
+.mkt-cta-white:hover { transform: translateY(-1px); box-shadow: 0 14px 30px rgba(33, 28, 59, 0.24) !important; }
+.mkt-cta-outline:hover { background: rgba(255,255,255,0.12); }
 
 /* Button primary hover */
-.mkt-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(124,58,237,0.42) !important; }
+.mkt-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 14px 28px rgba(124, 58, 237, 0.34) !important; }
 
 /* Pricing card hover */
 .mkt-pricing-free-btn:hover { background: #ede9fe; }

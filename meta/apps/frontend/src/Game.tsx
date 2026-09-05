@@ -2608,10 +2608,10 @@ const ArenaInner = () => {
     }, [authHeaders, fetchSpace, fetchInventory]);
 
     const isAreaFree = useCallback((x: number, y: number, w: number, h: number, checkElements = true): boolean => {
-        const toCheck = [
-            ...placedItemsRef.current.map(p => ({ x: p.x, y: p.y, w: p.item.width, h: p.item.height })),
-            ...(checkElements ? spaceElementsRef.current.map(e => ({ x: e.x, y: e.y, w: e.element.width, h: e.element.height })) : []),
-        ];
+        // Elements (tiles/walls) can overlap anything — allows filling all whitespace.
+        if (checkElements) return true;
+        // Items cannot stack on each other.
+        const toCheck = placedItemsRef.current.map(p => ({ x: p.x, y: p.y, w: p.item.width, h: p.item.height }));
         return !toCheck.some(p => x < p.x + p.w && x + w > p.x && y < p.y + p.h && y + h > p.y);
     }, []);
 
@@ -2645,6 +2645,7 @@ const ArenaInner = () => {
             if (!isAreaFree(pos.x, pos.y, selectedElement.width, selectedElement.height)) return;
             // Snapshot captured before first optimistic tile so undo restores clean state
             if (!paintSnapshotSaved.current) { saveUndoSnapshot(); paintSnapshotSaved.current = true; }
+            // Elements layer freely (tree on grass) — never remove what's below.
             // Optimistic: show tile immediately, server syncs in background
             const tempId = `_opt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
             const newEntry: SpaceElement = { id: tempId, element: selectedElement, x: pos.x, y: pos.y };

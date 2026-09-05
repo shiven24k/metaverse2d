@@ -66,22 +66,19 @@ describe('space boundary check', () => {
         expect(isOutOfBounds(19, 5, 2, 1, W, H)).toBe(true));
 });
 
-describe('batch element placement — within-batch collision tracking', () => {
-    // Simulates the batch loop from spaceRouter POST /element/batch
+describe('batch element placement — elements overlap freely', () => {
+    // Simulates the batch loop from spaceRouter POST /element/batch.
+    // Elements (tiles/walls) may overlap anything — only the boundary is enforced.
     function batchPlace(
         existing: { x: number; y: number; w: number; h: number }[],
         toAdd: { x: number; y: number; w: number; h: number }[],
         spaceW: number, spaceH: number,
     ): { x: number; y: number; w: number; h: number }[] {
         const placed: { x: number; y: number; w: number; h: number }[] = [];
-        const running = [...existing];
 
         for (const el of toAdd) {
             if (isOutOfBounds(el.x, el.y, el.w, el.h, spaceW, spaceH)) continue;
-            const collides = running.some(r => overlaps(el.x, el.y, el.w, el.h, r.x, r.y, r.w, r.h));
-            if (collides) continue;
             placed.push(el);
-            running.push(el); // track newly placed elements for later iterations
         }
         return placed;
     }
@@ -94,13 +91,12 @@ describe('batch element placement — within-batch collision tracking', () => {
         expect(result).toHaveLength(2);
     });
 
-    it('skips second element when it overlaps the first in the same batch', () => {
+    it('allows overlapping elements in the same batch', () => {
         const result = batchPlace([], [
             { x: 0, y: 0, w: 2, h: 2 },
-            { x: 1, y: 1, w: 2, h: 2 }, // overlaps the first
+            { x: 1, y: 1, w: 2, h: 2 }, // overlaps the first — allowed
         ], 20, 20);
-        expect(result).toHaveLength(1);
-        expect(result[0].x).toBe(0);
+        expect(result).toHaveLength(2);
     });
 
     it('skips elements out of bounds', () => {
@@ -110,11 +106,11 @@ describe('batch element placement — within-batch collision tracking', () => {
         expect(result).toHaveLength(0);
     });
 
-    it('existing elements block new placements', () => {
+    it('existing elements do not block new placements', () => {
         const existing = [{ x: 5, y: 5, w: 2, h: 2 }];
         const result = batchPlace(existing, [
-            { x: 5, y: 5, w: 1, h: 1 }, // overlaps existing
+            { x: 5, y: 5, w: 1, h: 1 }, // overlaps existing — allowed
         ], 20, 20);
-        expect(result).toHaveLength(0);
+        expect(result).toHaveLength(1);
     });
 });

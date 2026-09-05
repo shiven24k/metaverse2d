@@ -24,10 +24,9 @@ const SocialBtn = ({ children, label }: { children: React.ReactNode; label: stri
         aria-label={label}
         className="mkt-social-btn"
         style={{
-            width: 38, height: 38, borderRadius: 10, background: '#fff',
-            border: '1px solid #e7e1f6', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 34, height: 34, borderRadius: 9, background: '#fff',
+            border: '1px solid #ece8f7', display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#6b6488', textDecoration: 'none', transition: 'background .15s, color .15s, transform .15s',
-            boxShadow: '0 2px 8px rgba(99,102,241,0.06)',
         }}
     >{children}</a>
 );
@@ -42,29 +41,20 @@ export default function MarketingFooter() {
     return (
         <footer style={{
             width: '100%', boxSizing: 'border-box',
-            background: 'linear-gradient(180deg,#f6f3fe,#efeafb)',
-            color: '#4a4368', fontFamily: "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif",
-            padding: '64px 28px 30px', position: 'relative', overflow: 'hidden',
-            borderTop: '1px solid #e7e1f6',
+            background: '#faf9ff', color: '#4a4368',
+            fontFamily: "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+            padding: '60px 28px 28px', borderTop: '1px solid #ece8f7',
         }}>
-            <div style={{ position: 'absolute', top: -120, right: -80, width: 340, height: 340, borderRadius: '50%', background: 'radial-gradient(circle,rgba(124,58,237,0.12),transparent 70%)', pointerEvents: 'none' }} />
-            <div style={{ position: 'absolute', bottom: -140, left: -60, width: 300, height: 300, borderRadius: '50%', background: 'radial-gradient(circle,rgba(236,72,153,0.10),transparent 70%)', pointerEvents: 'none' }} />
-
-            <div style={{ maxWidth: 1120, margin: '0 auto', position: 'relative', display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 1fr', gap: 40 }}>
+            <div className="mkt-footer-grid" style={{ maxWidth: 1120, margin: '0 auto' }}>
                 <div style={{ maxWidth: 300 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 16 }}>
-                        <span style={{
-                            width: 34, height: 34, borderRadius: 9,
-                            background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontFamily: "'Press Start 2P', monospace", fontSize: 11, color: '#fff',
-                        }}>px</span>
-                        <span style={{ fontFamily: "'Silkscreen', monospace", fontWeight: 700, fontSize: 16, color: '#211c3b' }}>OfficeVerse</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                        <img src="/logo.svg" alt="OfficeVerse" style={{ height: 30, width: 'auto', display: 'block', imageRendering: 'pixelated' }} />
+                        <span style={{ fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 700, fontSize: 17, color: '#19142b' }}>OfficeVerse</span>
                     </div>
-                    <p style={{ fontSize: 14, lineHeight: 1.65, color: '#6b6488', margin: '0 0 20px' }}>
+                    <p style={{ fontSize: 14, lineHeight: 1.65, color: '#6b6488', margin: '0 0 18px' }}>
                         The 2D pixel office where remote teams actually feel together — walk over, wave, and get things done in a world you build tile by tile.
                     </p>
-                    <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ display: 'flex', gap: 9 }}>
                         <SocialBtn label="X"><XIcon /></SocialBtn>
                         <SocialBtn label="Discord"><DiscordIcon /></SocialBtn>
                         <SocialBtn label="GitHub"><GithubIcon /></SocialBtn>
@@ -72,19 +62,19 @@ export default function MarketingFooter() {
                 </div>
 
                 <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#8b82a8', marginBottom: 16 }}>Product</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#8b82a8', marginBottom: 14 }}>Product</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <FooterLink to="/">Features</FooterLink>
                         <FooterLink to="/pricing">Pricing</FooterLink>
-                        <FooterLink to="/login">Live workspace</FooterLink>
+                        <FooterLink to="/login">How it works</FooterLink>
                         <FooterLink href="#">Emotes & quests</FooterLink>
                     </div>
                 </div>
 
                 <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#8b82a8', marginBottom: 16 }}>Company</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-                        <FooterLink to="/about">About us</FooterLink>
+                    <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#8b82a8', marginBottom: 14 }}>Company</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <FooterLink to="/about">About</FooterLink>
                         <FooterLink to="/contact">Contact</FooterLink>
                         <FooterLink href="#">Careers</FooterLink>
                         <FooterLink href="#">Blog</FooterLink>
@@ -92,8 +82,8 @@ export default function MarketingFooter() {
                 </div>
 
                 <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#8b82a8', marginBottom: 16 }}>Resources</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#8b82a8', marginBottom: 14 }}>Resources</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <FooterLink href="#">Docs</FooterLink>
                         <FooterLink href="#">Community</FooterLink>
                         <FooterLink href="#">Status</FooterLink>
@@ -103,12 +93,12 @@ export default function MarketingFooter() {
             </div>
 
             <div style={{
-                maxWidth: 1120, margin: '44px auto 0', paddingTop: 24,
-                borderTop: '1px solid #e7e1f6', display: 'flex',
+                maxWidth: 1120, margin: '40px auto 0', paddingTop: 22,
+                borderTop: '1px solid #ece8f7', display: 'flex',
                 alignItems: 'center', justifyContent: 'space-between',
-                gap: 16, flexWrap: 'wrap', position: 'relative',
+                gap: 16, flexWrap: 'wrap',
             }}>
-                <span style={{ fontSize: 13, color: '#8b82a8' }}>© 2026 OfficeVerse 2D. Built for teams who'd rather hang out than sit on a call.</span>
+                <span style={{ fontSize: 13, color: '#8b82a8' }}>© 2026 OfficeVerse 2D</span>
                 <div style={{ display: 'flex', gap: 22 }}>
                     {['Privacy', 'Terms', 'Cookies'].map(t => (
                         <a key={t} href="#" className="mkt-footer-link" style={{ fontSize: 13, color: '#8b82a8', textDecoration: 'none', transition: 'color .15s' }}>{t}</a>

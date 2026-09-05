@@ -40,12 +40,12 @@ const VALUES = [
 ];
 
 const TEAM = [
-    { name: 'Mike Ramos', role: 'Founder & CEO', avatar: '/avatars/avatar-ceo.png' },
-    { name: 'Dana Kapoor', role: 'Head of Engineering', avatar: '/avatars/avatar-dev.png' },
-    { name: 'Dee Okafor', role: 'Design Lead', avatar: '/avatars/avatar-designer.png' },
-    { name: 'Helen Cho', role: 'People & Community', avatar: '/avatars/avatar-hr.png' },
-    { name: 'Mia Santos', role: 'Growth', avatar: '/avatars/avatar-marketing.png' },
-    { name: 'Sam Lee', role: 'Engineering Intern', avatar: '/avatars/avatar-intern.png' },
+    { name: 'Mike Ramos', role: 'Founder & CEO', avatar: '/avatars/avatar-ceo-front.png' },
+    { name: 'Dana Kapoor', role: 'Head of Engineering', avatar: '/avatars/avatar-dev-front.png' },
+    { name: 'Dee Okafor', role: 'Design Lead', avatar: '/avatars/avatar-designer-front.png' },
+    { name: 'Helen Cho', role: 'People & Community', avatar: '/avatars/avatar-hr-front.png' },
+    { name: 'Mia Santos', role: 'Growth', avatar: '/avatars/avatar-marketing-front.png' },
+    { name: 'Sam Lee', role: 'Engineering Intern', avatar: '/avatars/avatar-intern-front.png' },
 ];
 
 export default function AboutPage() {
@@ -135,7 +135,7 @@ export default function AboutPage() {
                 <div data-reveal style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 18 }}>
                     {TEAM.map(m => (
                         <div key={m.name} className="mkt-team-card" style={{ textAlign: 'center', borderRadius: 18, padding: '22px 12px', background: '#fff', border: '1px solid #ece9f7', boxShadow: '0 4px 14px rgba(99,102,241,0.07)', transition: 'transform .18s' }}>
-                            <img src={m.avatar} alt={m.name} style={{ display: 'block', width: 72, height: 54, margin: '0 auto 12px', imageRendering: 'pixelated', objectFit: 'none', objectPosition: '0 0' }} />
+                            <img src={m.avatar} alt={m.name} style={{ display: 'block', height: 84, width: 'auto', margin: '0 auto 12px', imageRendering: 'pixelated' }} />
                             <div style={{ fontSize: 14, fontWeight: 800 }}>{m.name}</div>
                             <div style={{ fontSize: 12, color: '#8b82a8', marginTop: 2 }}>{m.role}</div>
                         </div>

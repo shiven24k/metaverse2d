@@ -4,6 +4,23 @@ Multiplayer 2D pixel metaverse: React canvas frontend + Express REST API + WebSo
 
 ---
 
+## Documentation
+
+Detailed, code-grounded docs for every service live in [`docs/`](./docs/):
+
+| Doc | Contents |
+|-----|----------|
+| [docs/README.md](./docs/README.md) | Index + **where the project is right now** |
+| [docs/architecture.md](./docs/architecture.md) | System overview, ports, data flow, deployment |
+| [docs/http-service.md](./docs/http-service.md) | Express REST service deep dive (all route groups) |
+| [docs/ws-service.md](./docs/ws-service.md) | WebSocket service deep dive (messages, NPCs, WebRTC signaling) |
+| [docs/frontend-service.md](./docs/frontend-service.md) | React SPA deep dive (canvas game, editor, WebRTC client) |
+| [docs/database.md](./docs/database.md) | Prisma schema, models, migrations, seed |
+| [docs/webrtc.md](./docs/webrtc.md) | WebRTC feature reference |
+| [docs/webrtc-postmortem.md](./docs/webrtc-postmortem.md) | WebRTC bug retrospective |
+
+---
+
 ## Quick Start
 
 ```bash

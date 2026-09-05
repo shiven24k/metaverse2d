@@ -21,10 +21,6 @@ const corsOptions: cors.CorsOptions = {
     optionsSuccessStatus: 200,
 };
 
-// Answer all OPTIONS preflights with 2xx before any auth/route logic runs,
-// so browsers never see a 403/5xx on preflight even for non-matching origins.
-app.options("*", (_req, res) => res.sendStatus(204));
-
 app.use(cors(corsOptions));
 
 // Handle preflight for all routes explicitly before any route handler runs.
@@ -32,6 +28,12 @@ app.options("*", cors(corsOptions));
 
 // Intercept preflight for auth routes so toNodeHandler never sees OPTIONS requests.
 app.options("/api/auth/*", cors(corsOptions));
+
+// Fallback: answer any remaining OPTIONS preflights with 2xx before any
+// auth/route logic runs, so browsers never see a 403/5xx on preflight even
+// for non-matching origins. Registered AFTER the cors handlers above so the
+// cors middleware always gets first chance to attach CORS headers.
+app.options("*", (_req, res) => res.sendStatus(204));
 
 app.all("/api/auth/*", toNodeHandler(auth));
 console.log('[Auth] better-auth mounted at /api/auth/*');

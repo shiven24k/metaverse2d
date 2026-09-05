@@ -50,14 +50,18 @@ export const auth = betterAuth({
         user: {
             create: {
                 after: async (user) => {
-                    const commonItems = await client.item.findMany({ where: { rarity: "Common" } });
-                    for (const item of commonItems) {
-                        await client.inventoryItem.upsert({
-                            where: { userId_itemId: { userId: user.id, itemId: item.id } },
-                            create: { userId: user.id, itemId: item.id, quantity: 2 },
-                            update: {},
-                        });
-                    }
+                    const commonItems = await client.item.findMany({
+                        where: { rarity: "Common" },
+                        select: { id: true },
+                    });
+                    await client.inventoryItem.createMany({
+                        data: commonItems.map((item) => ({
+                            userId: user.id,
+                            itemId: item.id,
+                            quantity: 2,
+                        })),
+                        skipDuplicates: true,
+                    });
                 },
             },
         },
