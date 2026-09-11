@@ -11,8 +11,9 @@ meta/apps/http/
 │   ├── ws-server.ts      WS upgrade handling + NPC tick (shares ws/src/User.ts)
 │   ├── lib/auth.ts       better-auth instance (bearer + username + OAuth + hooks)
 │   ├── middleware/
-│   │   ├── user.ts       userMiddleware  → sets req.userId / req.role
-│   │   └── admin.ts      adminMiddleware → requires role === "Admin"
+│   │   ├── user.ts       userMiddleware  → sets req.userId / req.role / req.platformRole
+│   │   ├── admin.ts      adminMiddleware → requires role === "Admin"
+│   │   └── requirePlatformAdmin.ts   gates on req.platformRole === "PLATFORM_ADMIN"
 │   ├── routes/v1/        All business routes (23 files)
 │   └── types/index.ts    zod schemas + Express Request augmentation
 └── uploads/              runtime dir: uploaded images (served at /uploads/*)
@@ -74,13 +75,20 @@ Key behaviours:
 - **Token delivery**: sign-in/sign-up return the bearer token in the `set-auth-token` response header (client reads `res.headers.get("set-auth-token")`). `Authorization: Bearer <token>` authenticates all subsequent calls.
 - **New-user bonus**: `databaseHooks.user.create.after` grants **2 × every Common-rarity item** to the new inventory.
 - **OAuth**: Google/GitHub enabled only when their env vars are set. The frontend exchanges the resulting cookie session for a bearer token via `GET /api/v1/user/token`.
+- **`platformRole`** (`USER`/`PLATFORM_ADMIN`) is a second `additionalFields` entry mirroring `role`. Both are read-only (`input: false`), carried on the session user, and exposed by the middleware as `req.platformRole`. Use `requirePlatformAdmin` for global admin routes (see below); `role = "Admin"` remains the legacy content-admin gate.
 
 The two middleware wrap every protected route:
 
 | Middleware | Success sets | Failure |
 |------------|--------------|---------|
-| `userMiddleware` | `req.userId`, `req.role` | 403 `{ message: "Unauthorized" }` |
-| `adminMiddleware` | `req.userId`, `req.role = "Admin"` | 403 unless `role === "Admin"` |
+| `userMiddleware` | `req.userId`, `req.role`, `req.platformRole` | 403 `{ message: "Unauthorized" }` |
+| `adminMiddleware` | `req.userId`, `req.role = "Admin"`, `req.platformRole` | 403 unless `role === "Admin"` |
+| `requirePlatformAdmin` | — (reads `req.platformRole`) | 403 unless `PLATFORM_ADMIN` |
+| `enforcePlanLimit(key)` | — (reads `req.userId`; must run after `userMiddleware`) | 403 `Upgrade required` / `Plan limit reached` |
+
+`requirePlatformAdmin` is the **platform-level** admin gate (SaaS). It is distinct from both `adminMiddleware` (legacy content admin) and the Space-level `OWNER`/`MEMBER` RBAC. No route currently uses it — it ships ready for the future admin panel.
+
+`enforcePlanLimit` is the central plan gate (see §3.20). `screenShareEnabled` is gate-ready but no screen-share feature exists yet; `maxMembersPerSpace`/`maxConcurrentUsers` numeric limits are enforced on the WS side (join), not HTTP.
 
 ---
 
@@ -92,11 +100,11 @@ Route **ordering matters**: static paths are registered before dynamic `/:spaceI
 
 | Endpoint | Auth | Behaviour |
 |----------|------|-----------|
-| `GET /space/public` | — | Public spaces (`isPrivate: false`) with creator name, ordered by name |
+| `GET /space/public` | — | Discoverable spaces (`visibility` = PUBLIC or INVITE_ONLY) with creator name, ordered by name |
 | `GET /space/all` | ✓ | Spaces owned by `req.userId` |
 | `GET /space/joined` | ✓ | Spaces the user joined via invite (`SpaceMember.role = MEMBER`) |
-| `POST /space` | ✓ | Create blank (parses `dimensions` like `20x20`) **or** from a `mapId` template. In a `$transaction`: create space → seed default NPCs → add OWNER `SpaceMember` |
-| `PUT /space/:id` | ✓ owner | Update name / `isPrivate` |
+| `POST /space` | ✓ | Create blank (parses `dimensions` like `20x20`) **or** from a `mapId` template. In a `$transaction`: create space → seed default NPCs → add OWNER `SpaceMember`. **Gated by `enforcePlanLimit("maxSpaces")`**. New spaces default to `visibility: PRIVATE` |
+| `PUT /space/:id` | ✓ owner | Update name / `visibility` (or legacy `isPrivate` boolean → mapped to PRIVATE/PUBLIC) |
 | `DELETE /space/:spaceId` | ✓ owner | Cascade-delete spaceElements + space |
 | `DELETE /space/:spaceId/clear` | ✓ owner | Delete all elements + placedItems (items returned to inventory), keep the space |
 | `PUT /space/:spaceId/resize` | ✓ owner | Change width/height (5–200) and optionally shift all content by `offsetX/offsetY` |
@@ -112,6 +120,7 @@ Route **ordering matters**: static paths are registered before dynamic `/:spaceI
 - AABB overlap check against existing placed items → `409` on collision.
 - Batch placement also validates inventory quantity for repeated itemIds.
 - `metadata` JSON lets editors store data like sign text.
+- Writing `metadata.broadcastZoneId` is **gated**: 403 unless the user's plan has `broadcastEnabled` (Pro).
 
 **NPC routes**: `GET /:spaceId/npcs`, `POST /:spaceId/npc`, `PUT /npc/:id`, `DELETE /npc/:id`.
 - Creation defaults: name `"New NPC"`, sprite `"avatar-intern"`, motionType `PATROL`, wanderRadius clamped 1–10.
@@ -122,7 +131,12 @@ Route **ordering matters**: static paths are registered before dynamic `/:spaceI
 
 **Board routes** (also in `space.ts`): `GET/POST /:spaceId/board` — create board with 4 default columns (To Do / In Progress / In Review / Done); one board per space.
 
-**Invite/member routes**: `POST /:spaceId/invite` (owner, returns `token`, optional `expiresInDays`/`maxUses`), `GET /:spaceId/members`, `DELETE /:spaceId/member/:userId`.
+**Invite/member routes**: `POST /:spaceId/invite` (owner, returns `token`, optional `expiresInDays`/`maxUses`), `GET /:spaceId/members`, `DELETE /:spaceId/member/:userId` (also **force-closes the removed member's live WS socket** via `getRoomManager` → `forceKick`).
+
+**Access-request routes (email approval)**:
+- `POST /:spaceId/access-request` (auth) — non-member requests to join. Already a member → `{ alreadyMember: true }`; PUBLIC space → `{ autoApproved: true }`; else dedupes existing PENDING, creates `AccessRequest` (`expiresAt = now + 7d`), and **emails the owner** with signed Approve/Deny links. Rate-capped at 10 requests/user/day. Requires `ACCESS_DECISION_SECRET`.
+- `GET /space/access-request/decide?token=` (public, no session) — verifies the **JWT decision token** (`{ arId, decision }`, secret `ACCESS_DECISION_SECRET`), rejects already-decided (`410`) or expired (`410` + marks EXPIRED), then approves (creates `SpaceMember` MEMBER + emails requester) or denies. Returns a plain HTML page.
+- The token binds `arId` only — it can never decide a different request.
 
 ### 3.2 Items & Inventory — `routes/v1/item.ts`
 
@@ -149,7 +163,7 @@ Route **ordering matters**: static paths are registered before dynamic `/:spaceI
 
 ### 3.6 Users — `routes/v1/user.ts`
 
-- `GET /user/me` — id, username, name, role, email, avatarId, displayUsername, image.
+- `GET /user/me` — id, username, name, role, platformRole, email, avatarId, displayUsername, image.
 - `POST /user/metadata` — update `avatarId` and/or `displayUsername` (zod).
 - `POST /user/username` — update username (3–20 alnum+underscore), 409 if taken.
 - `GET /user/check-username` — availability check.
@@ -188,10 +202,20 @@ Route **ordering matters**: static paths are registered before dynamic `/:spaceI
 
 - `GET /neighbourhood` — **auto-assigns** the user to a group of 8 on first access: `hoodIndex = floor(memberCount / 8)`, naming `Neighbourhood #N`. Returns the neighbourhood with member usernames.
 
-### 3.13 Billing (scaffold) — `routes/v1/billing.ts`
+### 3.13 Billing (Razorpay) — `routes/v1/billing.ts`
 
-- `POST /billing/subscribe` — stub that returns "Stripe not configured".
-- `POST /billing/webhook` — 501 not implemented. Placeholder for Phase 4 Stripe.
+- `GET /billing/plans` — public plan catalog (id, tier, name, price, billingPeriod, limits).
+- `GET /billing/plan` — current user's **effective plan** (via `getEffectivePlan`) + subscription row (`status`, `currentPeriodEnd`, `cancelAtPeriodEnd`). Drives the billing UI.
+- `GET /billing/invoices` — the user's invoices, newest 20.
+- `POST /billing/subscribe` — `userMiddleware`. Looks up the requested `Plan` by id, requires `plan.razorpayPlanId` to be set, and creates a **Razorpay subscription** via their REST API (Basic auth, `fetch` — no npm SDK). Upserts the local `Subscription` (ownerId unique) as `TRIALING` and returns `{ subscriptionId, shortUrl, localSubscriptionId, plan }`. Returns `409` if the user already has an `ACTIVE` subscription, `503` if `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` are unset (graceful, like `turn.ts`).
+- `POST /billing/cancel` — self-service cancel-at-period-end (immediate for TRIALING) via Razorpay's cancel endpoint; sets `cancelAtPeriodEnd` and clears the plan cache.
+- `POST /billing/webhook` — **no session middleware** (Razorpay hits it directly; the `index.ts` json `verify` captures `req.rawBody`). Authenticated solely by the **Razorpay HMAC-SHA256 signature** (`X-Razorpay-Signature` vs `crypto.createHmac('sha256', RAZORPAY_WEBHOOK_SECRET).update(rawBody)`). Invalid/unsigned → **400** (so Razorpay retries). Handles `subscription.activated` (→ ACTIVE + period, clears grace), `subscription.charged` (→ Invoice row, idempotent via `razorpayPaymentId` unique + extends period + clears grace), `payment.failed` (→ **PAST_DUE + `graceEndsAt = now + 3d`** + emails the owner), `subscription.cancelled` (→ CANCELED), `subscription.halted`/`completed` (→ EXPIRED). Unknown subscription ids are 200-acked so Razorpay stops retrying. On any state change it calls `invalidatePlanCache(ownerId)` so gating reflects immediately.
+
+### Dunning — `lib/dunning.ts` (wired in `index.ts`)
+
+`runDunning()` runs on boot and hourly: finds PAST_DUE subscriptions whose `graceEndsAt <= now` (or null — legacy rows) and **downgrades them to Free** (status → EXPIRED, which gating treats as Free), then `invalidatePlanCache(ownerId)` + emails the owner. `lib/email.ts` is a dependency-free **Resend** client (`RESEND_API_KEY`/`RESEND_FROM`), a graceful no-op when unset.
+
+**Env vars:** `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`. Until `Plan.razorpayPlanId` is populated (via the Razorpay dashboard or API), subscribe returns a helpful 400 — nothing goes live by accident.
 
 ### 3.14 Maps & uploads — `routes/v1/maps.ts`, `routes/v1/upload.ts`
 
@@ -226,6 +250,36 @@ Admin-only:
 - `POST /admin/avatar` — create avatar.
 - `POST /admin/map` — create map template with `defaultElements`.
 - `POST /admin/season` — create season with linked itemIds.
+
+### 3.20 Plan gating — `middleware/enforcePlanLimit.ts` + `ws/src/lib/planAccess.ts`
+
+The **shared gating layer** lives in `ws/src/lib/planAccess.ts` (imported by http too — the established cross-import pattern):
+
+- `getEffectivePlan(userId)` → the user's ACTIVE-plan limits, else seeded FREE defaults. Lookups are **cached 60s in-memory** and retried on Prisma **P2024** (Neon pool timeout) with backoff + explicit logging.
+- `isBroadcastAllowed` / `isScreenShareAllowed` / `getSpaceCount` / `invalidatePlanCache` helpers.
+
+`enforcePlanLimit(key)` middleware: boolean keys → 403 if the plan disables the feature; numeric keys → 403 if current usage ≥ the cap. Currently wired to:
+
+| Gate | Where |
+|------|-------|
+| `maxSpaces` | `POST /space` (HTTP, via `enforcePlanLimit`) |
+| `maxConcurrentUsers` | WS `join` (room capacity) |
+| `broadcastEnabled` | WS `rtc:broadcast-zone-join` (soft toast deny) + `PUT /placed/:id/metadata` when setting `broadcastZoneId` |
+| `screenShareEnabled` | gate-ready, feature not built yet |
+
+### 3.21 Platform admin panel — `routes/v1/adminPanel.ts`
+
+All `/admin/panel/*` routes run `userMiddleware` **then** `requirePlatformAdmin` (a plain user hitting them gets 403 → the frontend shows the admin gate). Plain tables/forms per the plan:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /admin/panel/summary` | MRR (monthly-equivalent paise), user/admin/space counts, active subs, `subsByStatus`, failed-invoice count, **live room + user counts** (via `getRoomManager` — the HTTP process hosts the WS) |
+| `GET /admin/panel/users?search=` | Users (name/username/email contains), with sub status + plan tier |
+| `GET /admin/panel/subscriptions?status=` | Subs + owner + plan; filter by status (esp. `PAST_DUE`) |
+| `POST /admin/panel/subscriptions/:id/override` | Manual plan/status override → `AdminAuditLog` + `invalidatePlanCache(ownerId)` |
+| `GET /admin/panel/invoices?status=` | Invoices + owner; watch `failed` |
+| `GET /admin/panel/spaces` | Spaces + creator + `_count` (members/elements/placedItems/NPCs) |
+| `GET /admin/panel/audit` | AdminAuditLog trail |
 
 ---
 

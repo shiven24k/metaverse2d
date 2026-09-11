@@ -24,6 +24,7 @@ model User {
   password        String?
   avatarId        String?
   role            Role             @default(User)
+  platformRole    PlatformRole     @default(USER)
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   spaces          Space[]
@@ -42,6 +43,8 @@ model User {
   neighbourhood   NeighbourhoodMember[]
   kanbanCards     KanbanCard[]
   kanbanComments  KanbanComment[]
+  subscription    Subscription?
+  accessRequests  AccessRequest[]
 }
 
 model Session {
@@ -88,7 +91,7 @@ model Space {
   width       Int
   height      Int
   thumbnail   String?
-  isPrivate   Boolean          @default(false)
+  visibility  SpaceVisibility  @default(PRIVATE)
   creatorId   String
   creator     User             @relation(fields: [creatorId], references: [id])
   elements    spaceElements[]
@@ -100,6 +103,7 @@ model Space {
   kanbanBoard KanbanBoard?
   members     SpaceMember[]
   invites     SpaceInvite[]
+  accessRequests AccessRequest[]
 }
 
 model spaceElements {
@@ -454,4 +458,110 @@ model ProximityChatMessage {
   isSystem   Boolean       @default(false)
   createdAt  DateTime      @default(now())
   room       ProximityRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+enum PlatformRole {
+  USER
+  PLATFORM_ADMIN
+}
+
+enum PlanTier {
+  FREE
+  STARTER
+  PRO
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+model Plan {
+  id                 String         @id @default(cuid())
+  tier               PlanTier
+  name               String
+  priceInPaiseINR    Int            // store in smallest unit; avoid float money bugs
+  billingPeriod      String         // "monthly" | "yearly"
+  maxSpaces          Int
+  maxMembersPerSpace Int
+  maxConcurrentUsers Int
+  screenShareEnabled Boolean        @default(false)
+  broadcastEnabled   Boolean        @default(false)
+  razorpayPlanId     String?        // maps to Razorpay's Plan object
+  createdAt          DateTime       @default(now())
+  subscriptions      Subscription[]
+
+  @@unique([tier, billingPeriod])
+}
+
+model Subscription {
+  id                      String             @id @default(cuid())
+  ownerId                 String             @unique
+  owner                   User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  organizationId          String?            // future-proofing, unused for now
+  planId                  String
+  plan                    Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  status                  SubscriptionStatus @default(TRIALING)
+  razorpaySubscriptionId  String?            @unique
+  razorpayCustomerId      String?
+  currentPeriodStart      DateTime?
+  currentPeriodEnd        DateTime?
+  trialEndsAt             DateTime?
+  cancelAtPeriodEnd       Boolean            @default(false)
+  graceEndsAt             DateTime?          // dunning: grace end after a failed payment
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  invoices                Invoice[]
+}
+
+model Invoice {
+  id                String       @id @default(cuid())
+  subscriptionId    String
+  subscription      Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  razorpayPaymentId String?      @unique
+  razorpayInvoiceId String?      @unique
+  amountInPaise     Int
+  currency          String       @default("INR")
+  status            String       // "paid" | "failed" | "pending" | "refunded"
+  paidAt            DateTime?
+  createdAt         DateTime     @default(now())
+}
+
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String   // "PLAN_OVERRIDE" | "SUBSCRIPTION_CANCEL" | "USER_BAN" etc.
+  targetType String   // "USER" | "SUBSCRIPTION" | "SPACE"
+  targetId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
+
+enum SpaceVisibility {
+  PRIVATE      // invite/approval only (default)
+  INVITE_ONLY  // has a shareable link, still requires approval
+  PUBLIC       // anyone with an account can join instantly
+}
+
+enum AccessRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+  EXPIRED
+}
+
+model AccessRequest {
+  id          String              @id @default(cuid())
+  spaceId     String
+  space       Space               @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  requesterId String
+  requester   User                @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  status      AccessRequestStatus @default(PENDING)
+  message     String?
+  decidedAt   DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime            @default(now())
 }

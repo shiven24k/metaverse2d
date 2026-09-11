@@ -10,6 +10,10 @@ meta/apps/frontend/src/
 ├── SpacePage.tsx               The lobby (Discover / My Spaces / Shop / Collection / Quests / Neighbourhood / Guestbook / Creator)
 ├── AuthPage.tsx                Sign-in / sign-up / OAuth / guest
 ├── JoinPage.tsx                Invite-link landing
+├── BillingPage.tsx             Self-service billing: current plan, plans grid (monthly/yearly),
+│                               Razorpay upgrade, cancel-at-period-end, invoices
+├── AdminPanelPage.tsx          Platform-admin panel (/admin): summary, users, subscriptions
+│                               (+ override modal → AdminAuditLog), invoices, spaces, audit
 ├── ProfilePage.tsx             Public player profile
 ├── KanbanPanel.tsx             Per-space kanban board UI (space owner tool)
 ├── SpaceSettingsModal.tsx      Rename / privacy / members / invite / delete
@@ -49,6 +53,8 @@ Repo-level files: `vite.config.ts` (Vite build config), `vite-env.d.ts` (Vite am
 | `/lobby` | SpacePage | `ProtectedRoute` |
 | `/arena` | Game (`Arena`) | `ProtectedRoute` (spaceId via `?spaceId=`) |
 | `/profile/:userId` | ProfilePage | `ProtectedRoute` |
+| `/billing` | BillingPage | `ProtectedRoute` |
+| `/admin` | AdminPanelPage | `ProtectedRoute` + API-403 gate (page shows "Admin access required") |
 | `*` | redirect `/` | — |
 
 **`ProtectedRoute`** validates the stored token against `GET /api/v1/user/me` **before** rendering children — a stale/revoked token triggers `clearAuth()` + redirect instead of a burst of 403s. Guests (`isGuest`) bypass validation but cannot reach private areas.
@@ -133,6 +139,7 @@ Click a placed item in explore mode → floating text + WS `interact`. Chests aw
 
 ### In-arena side panels & HUD
 - **Guestbook** / **Quests** sidebars (header icons), **Kanban** (`KanbanPanel`, refreshed via `board-updated` WS), **Avatar picker** (POST `user/metadata` + `avatar-changed` WS), **Send Gift** modal (POST `gift/send` + `gift` WS announce), **GameDock** (emote + chat + hints), **VoiceToolbar** (mic/deafen/camera/leave), mic-permission retry banner, camera-error banner, save-status indicator, zoom indicator, and a toast stack.
+- **Access-request modal** — when the WS join is denied for a non-PUBLIC space and the error carries `canRequestAccess`, the arena shows a modal with an optional message; "Send request" POSTs `/space/:spaceId/access-request`. On `alreadyMember`/`autoApproved` it reloads to rejoin; otherwise it shows "Request sent — the owner will approve by email". Guests never see it (they can't request).
 
 ### Kanban panel (`KanbanPanel.tsx`)
 Full board editor (owner): create board, add/rename/delete columns, add/edit/move/delete cards (owner or assignee), assignees (from live space users), priority (LOW→URGENT), due dates (overdue highlight), comments; card drag-and-drop does an **optimistic reorder** then `PUT card/:id/move`. Refreshes on `board-updated` WS messages.
@@ -201,6 +208,25 @@ Tabs: **Discover** (public spaces), **My Spaces** (+ joined spaces), **Create** 
 - **`JoinPage.tsx`** (`/join/:token`) — loads the invite via `GET /api/v1/invite/:token` (space name, dimensions, member count). Guests / unauthenticated users are sent to login with `?redirect=/join/<token>`; signed-in users join via `POST /api/v1/invite/:token/join` then enter `/arena?spaceId=`.
 - **`ProfilePage.tsx`** (`/profile/:userId`) — loads the public profile via `GET /api/v1/player/:userId` plus the avatar catalog. On **your own** profile it also lets you change avatar (`POST /user/metadata`), display name (`POST /user/metadata`), username (`POST /user/username` with live availability check), and upload a profile photo (`POST /user/avatar`).
 - **`ProtectedRoute.tsx`** — see §1; **`ErrorBoundary.tsx`** wraps the lobby, arena, and app root.
+
+## 6c. Billing page (`BillingPage.tsx`, `/billing`)
+
+Self-service SaaS billing, reachable from the lobby sidebar (💳 Billing):
+- Fetches `GET /billing/plan` (effective plan + subscription), `GET /billing/plans` (catalog), `GET /billing/invoices`.
+- **Current plan** card: tier, status pill, period end, Cancel-at-period-end button (only when ACTIVE).
+- **Plans grid** with Monthly/Yearly toggle (yearly ≈ −20%): price, limit bullets, feature flags; Upgrade calls `POST /billing/subscribe` then **redirects to the Razorpay hosted `short_url`** (payment + webhook flip; page refetches on return). The current plan shows a ✓ Current pill and disables the button.
+- **Invoices** list (paid/failed pill + date).
+- Mirrors the other pages' auth-failure handling (401/403 → clear + `/login`).
+
+## 6d. Admin panel (`AdminPanelPage.tsx`, `/admin`)
+
+Platform-admin only. The page gates itself on the API's 403 (`/admin/*` returns 403 for non-PLATFORM_ADMIN) and shows a "Admin access required" card instead of logging out. Tabs:
+- **Summary** — MRR/mo, user/admin/space counts, active subs, subscriptions-by-status chips, failed invoices, **live room + user counts**.
+- **Users** — search + table (name/username/email, platformRole, plan/status, joined).
+- **Subscriptions** — status filter, override button → modal (status + plan selects) → `POST /admin/panel/subscriptions/:id/override` → writes `AdminAuditLog`.
+- **Invoices / Spaces / Audit** — plain tables (audit metadata rendered as JSON).
+
+The lobby sidebar shows a ⭐ **Admin** button only when `GET /user/me` returns `platformRole === "PLATFORM_ADMIN"` (the `/me` endpoint now returns it).
 
 ---
 

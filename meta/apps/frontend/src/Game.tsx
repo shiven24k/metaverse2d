@@ -430,6 +430,11 @@ const ArenaInner = () => {
     // Sign editing in edit mode
     const [signEditing, setSignEditing] = useState<{ placedItemId: string; text: string } | null>(null);
 
+    // ── Access requests (non-member join denial) ──────────────────────────────
+    const [accessRequest, setAccessRequest] = useState<{ spaceId: string; message: string; sent?: boolean } | null>(null);
+    const [accessRequestSending, setAccessRequestSending] = useState(false);
+    const [accessRequestError, setAccessRequestError] = useState('');
+
     // ── NPCs ─────────────────────────────────────────────────────────────────
     const [npcs, setNpcs] = useState<NPC[]>([]);
     const npcsRef = useRef<NPC[]>([]);
@@ -2376,6 +2381,10 @@ const ArenaInner = () => {
                     if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) wsRef.current.close();
                     setError(msg);
                     addToast(msg, 'error');
+                    // Authenticated non-member denied on a non-PUBLIC space → offer to request access.
+                    if (code === 'forbidden' && message.payload?.canRequestAccess && message.payload?.spaceId) {
+                        setAccessRequest({ spaceId: message.payload.spaceId, message: '' });
+                    }
                 }
                 break;
             }
@@ -2441,6 +2450,35 @@ const ArenaInner = () => {
         };
         useGameStore.getState().addProximityChatMessage(optimistic);
         lastProximityChatAtRef.current = Date.now();
+    };
+
+    // Non-member hit the WS denial → POST an access request; the owner approves
+    // by email. If we're actually already allowed, reload to rejoin.
+    const sendAccessRequest = async () => {
+        if (!accessRequest) return;
+        setAccessRequestSending(true);
+        setAccessRequestError('');
+        try {
+            const res = await fetch(`${API}/api/v1/space/${accessRequest.spaceId}/access-request`, {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ message: accessRequest.message }),
+            });
+            if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
+            const d = await res.json();
+            if (res.ok && (d.alreadyMember || d.autoApproved)) {
+                setAccessRequest(null);
+                window.location.reload();
+            } else if (res.ok) {
+                setAccessRequest({ ...accessRequest, sent: true });
+            } else {
+                setAccessRequestError(d.message ?? 'Request failed');
+            }
+        } catch {
+            setAccessRequestError('Network error sending request');
+        } finally {
+            setAccessRequestSending(false);
+        }
     };
 
     const handleMove = (newX: number, newY: number) => {
@@ -4009,6 +4047,48 @@ const ArenaInner = () => {
                             {interactionPopup.type === 'chest' ? 'Collect' : 'Dismiss'}
                         </button>
                     </div>
+                )}
+
+                {/* ── Access request modal (non-member denied) ── */}
+                {accessRequest && (
+                    <>
+                        <div style={{ position: "fixed", inset: 0, background: "rgba(20,15,40,0.45)", backdropFilter: "blur(3px)", zIndex: 1199 }} onClick={() => !accessRequestSending && setAccessRequest(null)} />
+                        <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: "#fff", border: "1px solid #ecebf3", borderRadius: 16, padding: "26px 28px", width: 400, maxWidth: "90vw", zIndex: 1200, boxShadow: "0 24px 60px rgba(22,15,52,0.22)", textAlign: "center" }}>
+                            {accessRequest.sent ? (
+                                <>
+                                    <div style={{ fontSize: 40, marginBottom: 12 }}>📨</div>
+                                    <h3 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800, color: "#191427" }}>Request sent</h3>
+                                    <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6f6b82", lineHeight: 1.6 }}>
+                                        The owner will review it and approve by email. When approved, come back and enter the space again.
+                                    </p>
+                                    <button onClick={() => setAccessRequest(null)} style={{ padding: "10px 22px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>OK</button>
+                                </>
+                            ) : (
+                                <>
+                                    <div style={{ fontSize: 36, marginBottom: 10 }}>🔒</div>
+                                    <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 800, color: "#191427" }}>Request access</h3>
+                                    <p style={{ margin: "0 0 18px", fontSize: 13, color: "#6f6b82", lineHeight: 1.6 }}>
+                                        This space is restricted. The owner will get an email with an approve/deny link.
+                                    </p>
+                                    <textarea
+                                        value={accessRequest.message}
+                                        onChange={e => setAccessRequest({ ...accessRequest, message: e.target.value })}
+                                        placeholder="Optional message to the owner…"
+                                        maxLength={200}
+                                        rows={3}
+                                        style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e3e1ee", fontSize: 13, color: "#191427", outline: "none", resize: "vertical", fontFamily: "inherit" }}
+                                    />
+                                    {accessRequestError && <p style={{ margin: "8px 0 0", fontSize: 12, color: "#dc2626", fontWeight: 600 }}>{accessRequestError}</p>}
+                                    <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "center" }}>
+                                        <button onClick={() => setAccessRequest(null)} disabled={accessRequestSending} style={{ padding: "9px 18px", borderRadius: 9, border: "1px solid #ecebf3", background: "#fff", color: "#6f6b82", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+                                        <button onClick={sendAccessRequest} disabled={accessRequestSending} style={{ padding: "9px 20px", borderRadius: 9, border: "none", background: accessRequestSending ? "#c4b5fd" : "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                                            {accessRequestSending ? "Sending…" : "Send request"}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </>
                 )}
 
                 {/* ── NPC dialogue ── */}

@@ -36,7 +36,7 @@ const avatarUpload = multer({
 userRouter.get("/me", userMiddleware, async (req, res) => {
     const user = await client.user.findUnique({
         where: { id: req.userId },
-        select: { id: true, username: true, name: true, role: true, email: true, avatarId: true, displayUsername: true, image: true },
+        select: { id: true, username: true, name: true, role: true, platformRole: true, email: true, avatarId: true, displayUsername: true, image: true },
     });
     if (!user) {
         res.status(404).json({ message: "User not found" });

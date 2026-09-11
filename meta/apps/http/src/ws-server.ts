@@ -229,7 +229,11 @@ export function attachWsServer(httpServer: Server): void {
         });
     });
 
-    setInterval(npcTick, 500);
+    // The ticker must NEVER take the process down: a throw/rejection in any single
+    // tick (bad room state, DB hiccup, etc.) is logged and the loop continues.
+    setInterval(() => {
+        npcTick().catch((err) => console.error('[NPC tick] error:', err));
+    }, 500);
 
     // Keep connections alive through Cloudflare (drops idle WS after ~100s on free plan)
     setInterval(() => {

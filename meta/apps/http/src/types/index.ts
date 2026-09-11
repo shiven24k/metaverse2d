@@ -115,7 +115,9 @@ declare global {
     namespace Express {
       export interface Request {
         role?: "Admin" | "User";
+        platformRole?: "USER" | "PLATFORM_ADMIN";
         userId?: string;
+        rawBody?: Buffer;
       }
     }
 }

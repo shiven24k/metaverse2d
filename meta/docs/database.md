@@ -47,7 +47,7 @@ pnpm --filter @repo/db seed
 ### Spaces & world
 | Model | Purpose | Notable fields |
 |-------|---------|----------------|
-| `Space` | A 2D world | `width`, `height`, `name`, `thumbnail?`, `isPrivate`, `creatorId`; relations: `elements`, `placedItems`, `npcs`, `fromPortals/toPortals`, `kanbanBoard`, `members`, `invites`, `guestbook` |
+| `Space` | A 2D world | `width`, `height`, `name`, `thumbnail?`, `visibility` (`SpaceVisibility`, default PRIVATE), `creatorId`; relations: `elements`, `placedItems`, `npcs`, `fromPortals/toPortals`, `kanbanBoard`, `members`, `invites`, `accessRequests`, `guestbook` |
 | `spaceElements` | Tiles placed in a space | `spaceId`, `elementId`, `x`, `y` |
 | `Element` | Element type catalogue | `width`, `height`, `static`, `imageUrl`, `blocking` |
 | `Map` / `MapElements` | Map templates for space creation | template `width/height/name/thumbnail` + default elements |
@@ -56,7 +56,8 @@ pnpm --filter @repo/db seed
 | `NPC` | Non-player characters | `sprite`, `dialogues[]`, `x/y`, `patrolPath Json`, `motionType` (`NPCMotion`), `wanderRadius` |
 | `SpacePortal` | Edge-to-edge link between spaces | `fromSpaceId`, `toSpaceId`, `fromEdge/toEdge` (`SpaceEdge`), `label` |
 | `SpaceMember` | Membership of a space (owner/member) | `role` (`SpaceMemberRole`), unique `(spaceId, userId)` |
-| `SpaceInvite` | Invite links for private spaces | `token` (unique), `expiresAt?`, `maxUses?`, `useCount` |
+| `SpaceInvite` | Invite links for restricted spaces | `token` (unique), `expiresAt?`, `maxUses?`, `useCount` |
+| `AccessRequest` | Email-approval join requests | `spaceId`, `requesterId`, `status` (`AccessRequestStatus`), `message?`, `decidedAt?`, `expiresAt`; **partial unique index** on `(spaceId, requesterId) WHERE status = 'PENDING'` |
 
 ### Inventory & economy
 | Model | Purpose | Notable fields |
@@ -91,8 +92,16 @@ pnpm --filter @repo/db seed
 | `ProximityRoom` | One per deterministic room key | `roomKey` (unique), `spaceId` |
 | `ProximityChatMessage` | Persisted nearby chat | `senderId`, `senderName`, `content`, `isSystem`, `roomId` |
 
+### Platform / billing (SaaS — shape only, wiring comes later)
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| `Plan` | Billing plan catalog | `tier` (`PlanTier`), `billingPeriod` ("monthly"/"yearly"), `priceInPaiseINR`, `maxSpaces`, `maxMembersPerSpace`, `maxConcurrentUsers`, `screenShareEnabled`, `broadcastEnabled`, `razorpayPlanId?`; unique `(tier, billingPeriod)` |
+| `Subscription` | User's active plan | `ownerId` (unique), `organizationId?` (future-proof), `planId`, `status` (`SubscriptionStatus`), `razorpaySubscriptionId?`/`razorpayCustomerId?`, `currentPeriodStart/End?`, `trialEndsAt?`, `cancelAtPeriodEnd`, `graceEndsAt?` (dunning: when a failed payment's grace period ends) |
+| `Invoice` | Billing records from webhooks | `subscriptionId`, `razorpayPaymentId?`/`razorpayInvoiceId?` (unique → webhook idempotency), `amountInPaise`, `currency`, `status` |
+| `AdminAuditLog` | Admin action trail | `adminId`, `action`, `targetType`, `targetId`, `metadata Json?` |
+
 ### Enums
-`Role` (Admin/User) · `SpaceMemberRole` (OWNER/MEMBER) · `NPCMotion` (STATIC/PATROL/WANDER) · `SpaceEdge` (NORTH/SOUTH/EAST/WEST) · `Layer` (FLOOR/WALL) · `KanbanPriority` (LOW/MEDIUM/HIGH/URGENT)
+`Role` (Admin/User) · `PlatformRole` (USER/PLATFORM_ADMIN) · `SpaceMemberRole` (OWNER/MEMBER) · `NPCMotion` (STATIC/PATROL/WANDER) · `SpaceEdge` (NORTH/SOUTH/EAST/WEST) · `Layer` (FLOOR/WALL) · `KanbanPriority` (LOW/MEDIUM/HIGH/URGENT) · `PlanTier` (FREE/STARTER/PRO) · `SubscriptionStatus` (TRIALING/ACTIVE/PAST_DUE/CANCELED/EXPIRED) · `SpaceVisibility` (PRIVATE/INVITE_ONLY/PUBLIC) · `AccessRequestStatus` (PENDING/APPROVED/DENIED/EXPIRED)
 
 ---
 
@@ -118,6 +127,9 @@ pnpm --filter @repo/db seed
 | `20260609165524` | Space privacy + members |
 | `20260613000000` | NPC sprite default fix |
 | `20260617000000` | Proximity chat |
+| `20260905000000` | Platform roles + billing shape (`User.platformRole`, Plan/Subscription/Invoice/AdminAuditLog) |
+| `20260905000002` | Dunning: `Subscription.graceEndsAt` |
+| `20260905000003` | Space access control: `Space.visibility` enum (backfilled from `isPrivate`), `AccessRequest` + partial pending-unique index |
 
 ---
 
@@ -130,5 +142,13 @@ Idempotent (`upsert` by fixed id). Seeds in order:
 3. **Map templates** — Park (20×20), Garden (15×15).
 4. **Avatars** — CEO, Developer, Designer, HR Manager, Marketing, Intern.
 5. **Office NPCs** — for every existing space with 0 NPCs: Manager Mike, Dev Dana, HR Helen, Explorer Erik, Guide Bob, Merchant Maya (all PATROL with scaled waypoints).
+6. **Plans** — 6 catalog rows (FREE/STARTER/PRO × monthly/yearly) with placeholder INR-paise prices and the gating limits (`maxSpaces`, `maxConcurrentUsers`, `screenShareEnabled`, `broadcastEnabled`).
 
 New spaces created via the API get **3** of these NPCs automatically (`makeDefaultNpcs` in `space.ts`), so seeding only backfills pre-existing spaces.
+
+### Admin promotion (one-off script)
+
+`prisma/set-platform-admin.ts` promotes a user to `PLATFORM_ADMIN` by email — deliberately **not** an API route:
+```bash
+pnpm --filter @repo/db set-platform-admin you@example.com
+```

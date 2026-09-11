@@ -14,7 +14,7 @@ meta/
 └── packages/db/     Prisma 6.3.1 + PostgreSQL
 ```
 
-**Auth**: better-auth with the `bearer()` plugin. All protected endpoints require `Authorization: Bearer <token>`. The WS server validates tokens by calling `auth.api.getSession()` from `@better-auth/core`. Token is returned in the `set-auth-token` response header on sign-up/sign-in.
+**Auth**: better-auth with the `bearer()` plugin. All protected endpoints require `Authorization: Bearer <token>`. The WS server validates tokens by calling `auth.api.getSession()` from `@better-auth/core`. Token is returned in the `set-auth-token` response header on sign-up/sign-in. Two session `additionalFields`: `role` (Admin\|User, legacy content admin) and `platformRole` (USER\|PLATFORM_ADMIN, global SaaS role). `userMiddleware`/`adminMiddleware` set `req.platformRole` from the session; `requirePlatformAdmin` gates on it (currently unused — reserved for the SaaS admin panel).
 
 **Build**: esbuild bundles `http` and `ws` into `dist/index.js`. These bundles **cannot find the Prisma native engine** at runtime — always start services in **dev mode** with `tsx watch`:
 ```bash
@@ -36,9 +36,9 @@ The globally-installed Prisma (if 7.x) will reject `url = env(...)` in the datas
 
 | Model | Key fields | Notes |
 |-------|-----------|-------|
-| `User` | id, email, username, avatarId, role | role = Admin\|User |
+| `User` | id, email, username, avatarId, role, platformRole | role = Admin\|User (Space-level admin via better-auth); platformRole = USER\|PLATFORM_ADMIN (global SaaS role) |
 | `Session` | token, userId, expiresAt | better-auth managed |
-| `Space` | id, width, height, creatorId | has fromPortals, toPortals relations |
+| `Space` | id, width, height, creatorId, visibility | visibility = PRIVATE\|INVITE_ONLY\|PUBLIC (default PRIVATE; replaces old isPrivate) |
 | `spaceElements` | spaceId, elementId, x, y | tiles placed in a space |
 | `Element` | id, imageUrl, width, height, blocking | catalogue; IDs like `el-grass` |
 | `PlacedItem` | spaceId, itemId, x, y, layer, metadata | `metadata Json?` holds sign text etc. |
@@ -48,15 +48,30 @@ The globally-installed Prisma (if 7.x) will reject `url = env(...)` in the datas
 | `NPC` | spaceId, name, sprite, dialogues[], x, y, patrolPath, motionType, wanderRadius | motionType = NPCMotion enum |
 | `NPCMotion` (enum) | STATIC, PATROL, WANDER | |
 | `SpacePortal` | fromSpaceId, toSpaceId, x, y, label | cascade delete from both Space relations |
+| `AccessRequest` | spaceId, requesterId, status, message?, expiresAt | partial unique index (spaceId, requesterId) WHERE status='PENDING' (SQL-only) |
 | `DailyGift` | userId, lastClaim, streak | one per user |
 | `ChestInteraction` | userId, placedItemId, lastAt | unique(userId, placedItemId) |
 | `BannedUser` | userId, reason | WS join rejects banned users |
+| `Plan` | tier, billingPeriod, priceInPaiseINR, maxSpaces, maxConcurrentUsers, screenShareEnabled, broadcastEnabled | unique(tier, billingPeriod); SaaS catalog |
+| `Subscription` | ownerId (unique), planId, status, razorpaySubscriptionId?, graceEndsAt? | status = TRIALING\|ACTIVE\|PAST_DUE\|CANCELED\|EXPIRED; wired via billing.ts + planAccess gating + dunning |
+| `Invoice` | subscriptionId, razorpayPaymentId?/razorpayInvoiceId? (unique) | webhook idempotency |
+| `AdminAuditLog` | adminId, action, targetType, targetId, metadata Json? | admin action trail |
 
 ---
 
 ## HTTP Routes (`apps/http/src/routes/v1/`)
 
 Route registration order matters in Express. Static paths must be registered before dynamic `/:param` paths.
+
+`billing.ts` webhook notes: `POST /billing/webhook` must stay free of session middleware (Razorpay hits it unauthenticated; only the HMAC-SHA256 signature in `X-Razorpay-Signature` should authenticate it). `index.ts` captures `req.rawBody` (via `express.json({ verify })`) only for the `/billing/webhook` path so the signature can be verified byte-for-byte. Never `200` an invalid signature — return 400 so Razorpay retries.
+
+**Plan gating**: shared helpers in `ws/src/lib/planAccess.ts` (imported by http too): `getEffectivePlan(userId)` returns ACTIVE-plan limits or FREE defaults, with a 60s in-memory cache and P2024 retry. `enforcePlanLimit(key)` (http middleware) gates `POST /space` (`maxSpaces`). WS gates in `User.ts`: `join` enforces `maxConcurrentUsers` (room capacity, after stale eviction → `failWith("forbidden")`), `rtc:broadcast-zone-join` soft-denies with a toast unless `broadcastEnabled`. `PUT /placed/:id/metadata` 403s when setting `broadcastZoneId` on a non-Pro plan. Call `invalidatePlanCache(userId)` after billing changes.
+
+**Platform admin panel**: `adminPanelRouter` (`routes/v1/adminPanel.ts`, mounted at `/admin/panel/*`) runs `userMiddleware` + `requirePlatformAdmin`. Only the override endpoint writes (`AdminAuditLog` + `invalidatePlanCache`); the rest are reads. `GET /user/me` returns `platformRole` so the frontend can show the ⭐ Admin nav entry only to admins.
+
+**Space access isolation**: `Space.visibility` (PRIVATE/INVITE_ONLY/PUBLIC, default PRIVATE) replaces the old `isPrivate` boolean (API still returns a derived `isPrivate` for the frontend, and `PUT /space/:id` still accepts it). `User.ts` join re-checks `SpaceMember` on every join/reconnect for non-PUBLIC spaces; guests are forbidden on non-PUBLIC. Access requests: `POST /:spaceId/access-request` → emails owner with `jwt`-signed approve/deny links (`ACCESS_DECISION_SECRET`); `GET /space/access-request/decide?token=` decides (pending-only, expiry → EXPIRED, approve upserts `SpaceMember`). `DELETE /:spaceId/member/:userId` **force-closes** the removed member's live socket via `User.forceKick` + `getRoomManager`.
+
+**Dunning**: `lib/dunning.ts` (started by `index.ts`, boot + hourly) downgrades PAST_DUE subscriptions whose `Subscription.graceEndsAt` has passed (or is null — legacy) to EXPIRED (gating = Free), clears the plan cache, and emails via `lib/email.ts` (Resend, env-gated). The webhook sets `graceEndsAt = now + 3d` on `payment.failed` and clears it on `activated`/`charged`/re-subscribe.
 
 ### `space.ts` — route ordering (critical)
 
@@ -349,8 +364,14 @@ Seeds (in order):
 3. 2 map templates (Park 20×20, Garden 15×15)
 4. 3 avatars (`avatar-default`, `avatar-ninja`, `avatar-wizard`)
 5. Office NPCs for each existing space with 0 NPCs (Manager Mike, Dev Dana, HR Helen)
+6. 6 Plan rows (FREE/STARTER/PRO × monthly/yearly) — placeholder INR prices + gating limits
 
 New spaces created via the API automatically receive the same 3 NPCs via `makeDefaultNpcs()` in `space.ts`.
+
+Promote a user to global admin (one-off script, never an API route):
+```bash
+pnpm --filter @repo/db set-platform-admin you@example.com   # prisma/set-platform-admin.ts
+```
 
 ---
 

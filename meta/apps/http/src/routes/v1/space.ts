@@ -1,16 +1,21 @@
 import { Router } from "express";
+import jwt from "jsonwebtoken";
 import client from "@repo/db/client";
 import { userMiddleware } from "../../middleware/user";
+import { enforcePlanLimit } from "../../middleware/enforcePlanLimit";
+import { isBroadcastAllowed } from "../../../../ws/src/lib/planAccess";
+import { getRoomManager } from "../../../../ws/src/getRoomManager";
+import { sendEmail } from "../../lib/email";
 import { AddElementSchema, CreateSpaceSchema, DeleteElementSchema, BatchAddElementSchema, BatchPlaceItemSchema, BatchDeleteElementSchema, BatchDeleteItemSchema } from "../../types";
 
 export const spaceRouter = Router();
 
 // ─── Static routes first (must come before /:spaceId) ────────────────────────
 
-// GET /space/public — public spaces only (private spaces are hidden)
+// GET /space/public — discoverable spaces only (PRIVATE spaces are hidden)
 spaceRouter.get("/public", async (req, res) => {
     const spaces = await client.space.findMany({
-        where: { isPrivate: false },
+        where: { visibility: { in: ["PUBLIC", "INVITE_ONLY"] } },
         include: {
             creator: {
                 select: { username: true, name: true },
@@ -25,6 +30,7 @@ spaceRouter.get("/public", async (req, res) => {
             name: s.name,
             thumbnail: s.thumbnail,
             dimensions: `${s.width}x${s.height}`,
+            visibility: s.visibility,
             createdBy: s.creator.username ?? s.creator.name,
         })),
     });
@@ -42,7 +48,8 @@ spaceRouter.get("/all", userMiddleware, async (req, res) => {
             name: s.name,
             thumbnail: s.thumbnail,
             dimensions: `${s.width}x${s.height}`,
-            isPrivate: s.isPrivate,
+            visibility: s.visibility,
+            isPrivate: s.visibility !== "PUBLIC",
         })),
     });
 });
@@ -64,7 +71,8 @@ spaceRouter.get("/joined", userMiddleware, async (req, res) => {
             name: m.space.name,
             thumbnail: m.space.thumbnail,
             dimensions: `${m.space.width}x${m.space.height}`,
-            isPrivate: m.space.isPrivate,
+            visibility: m.space.visibility,
+            isPrivate: m.space.visibility !== "PUBLIC",
             createdBy: m.space.creator.username ?? m.space.creator.name,
         })),
     });
@@ -224,8 +232,8 @@ async function isPositionBlocked(spaceId: string, x: number, y: number): Promise
     return false;
 }
 
-// POST /space — create a new space, auth required
-spaceRouter.post("/", userMiddleware, async (req, res) => {
+// POST /space — create a new space, auth required, plan-gated (maxSpaces)
+spaceRouter.post("/", userMiddleware, enforcePlanLimit("maxSpaces"), async (req, res) => {
     const parsedData = CreateSpaceSchema.safeParse(req.body);
     if (!parsedData.success) {
         res.status(400).json({ message: "Validation failed" });
@@ -549,6 +557,13 @@ spaceRouter.put("/placed/:id/metadata", userMiddleware, async (req, res) => {
         return;
     }
 
+    // Broadcast zones are a Pro-gated feature — block creating one on a lower plan.
+    const meta = metadata as Record<string, unknown>;
+    if (meta.broadcastZoneId && !(await isBroadcastAllowed(req.userId!))) {
+        res.status(403).json({ message: "Broadcast zones require the Pro plan" });
+        return;
+    }
+
     const placed = await client.placedItem.findUnique({
         where: { id: req.params.id },
         include: { space: { select: { creatorId: true } } },
@@ -810,7 +825,7 @@ spaceRouter.put("/:spaceId/resize", userMiddleware, async (req, res) => {
 
 // ─── Privacy, invite, and member routes ───────────────────────────────────────
 
-// PUT /space/:id — update space name and/or isPrivate (owner only)
+// PUT /space/:id — update space name and/or visibility (owner only)
 spaceRouter.put("/:id", userMiddleware, async (req, res) => {
     const space = await client.space.findUnique({
         where: { id: req.params.id },
@@ -819,13 +834,18 @@ spaceRouter.put("/:id", userMiddleware, async (req, res) => {
     if (!space) { res.status(404).json({ message: "Space not found" }); return; }
     if (space.creatorId !== req.userId) { res.status(403).json({ message: "Unauthorized" }); return; }
 
-    const { name, isPrivate } = req.body;
-    const data: { name?: string; isPrivate?: boolean } = {};
+    const { name, visibility, isPrivate } = req.body;
+    const data: { name?: string; visibility?: "PRIVATE" | "INVITE_ONLY" | "PUBLIC" } = {};
     if (typeof name === "string" && name.trim()) data.name = name.trim();
-    if (typeof isPrivate === "boolean") data.isPrivate = isPrivate;
+    // visibility takes precedence; isPrivate is accepted for the existing frontend.
+    if (visibility === "PRIVATE" || visibility === "INVITE_ONLY" || visibility === "PUBLIC") {
+        data.visibility = visibility;
+    } else if (typeof isPrivate === "boolean") {
+        data.visibility = isPrivate ? "PRIVATE" : "PUBLIC";
+    }
 
     const updated = await client.space.update({ where: { id: req.params.id }, data });
-    res.json({ id: updated.id, name: updated.name, isPrivate: updated.isPrivate });
+    res.json({ id: updated.id, name: updated.name, visibility: updated.visibility, isPrivate: updated.visibility !== "PUBLIC" });
 });
 
 // POST /space/:spaceId/invite — generate invite token (owner only)
@@ -877,7 +897,189 @@ spaceRouter.delete("/:spaceId/member/:userId", userMiddleware, async (req, res) 
     if (req.params.userId === req.userId) { res.status(400).json({ message: "Cannot remove yourself as owner" }); return; }
 
     await client.spaceMember.deleteMany({ where: { spaceId: req.params.spaceId, userId: req.params.userId } });
+
+    // Isolation: force-close the removed member's live socket.
+    // 1) Prefer the internal kick endpoint on the standalone WS process — the
+    //    socket lives in THAT process's RoomManager, which this HTTP process
+    //    cannot see (cross-process gap). Loopback-only + INTERNAL_KICK_SECRET.
+    // 2) Fall back to this process's own RoomManager (single-process deployment,
+    //    where the WS is attached to this same HTTP process and no standalone WS
+    //    process hosts the internal endpoint).
+    let internalKicked = false;
+    const internalUrl = process.env.INTERNAL_KICK_URL ?? "http://127.0.0.1:4001/internal/kick";
+    const internalSecret = process.env.INTERNAL_KICK_SECRET ?? "";
+    if (internalSecret) {
+        try {
+            const resp = await fetch(internalUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${internalSecret}` },
+                body: JSON.stringify({ spaceId: req.params.spaceId, userId: req.params.userId }),
+            });
+            if (resp.ok) {
+                const body = (await resp.json().catch(() => ({}))) as { kicked?: boolean };
+                internalKicked = !!body.kicked;
+            } else {
+                console.warn(`[kick] internal endpoint responded ${resp.status} for user ${req.params.userId}`);
+            }
+        } catch (err) {
+            // Standalone WS process unreachable (not running / different port) —
+            // log loudly rather than swallowing: a silent failure here means a
+            // "removed" user keeps their live session.
+            console.warn(`[kick] internal endpoint unreachable (${internalUrl}): ${(err as Error).message}`);
+        }
+    }
+    if (!internalKicked) {
+        try {
+            const roomUsers = getRoomManager().rooms.get(req.params.spaceId) ?? [];
+            const target = roomUsers.find((u) => u.userId === req.params.userId);
+            target?.forceKick("You have been removed from this space");
+        } catch (err) {
+            console.warn("[kick] in-process kick failed:", err);
+        }
+    }
+
     res.json({ message: "Member removed" });
+});
+
+// ─── Access requests (email-approval flow) ───────────────────────────────────
+
+const ACCESS_REQUEST_DAYS = 7;
+const ACCESS_REQUEST_DAILY_CAP = 10;
+
+function signDecisionToken(accessRequestId: string, decision: "approve" | "deny"): string {
+    return jwt.sign({ arId: accessRequestId, decision }, process.env.ACCESS_DECISION_SECRET!, {
+        expiresIn: `${ACCESS_REQUEST_DAYS}d`,
+    });
+}
+
+// GET /space/access-request/decide — approve/deny link from email (public).
+// Decision is baked into the signed token; replay is blocked by status !== PENDING.
+spaceRouter.get("/access-request/decide", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) { res.status(400).send("Missing decision token"); return; }
+
+    let payload: { arId?: string; decision?: string } | null = null;
+    try {
+        payload = jwt.verify(token, process.env.ACCESS_DECISION_SECRET ?? "") as typeof payload;
+    } catch {
+        res.status(400).send("Invalid or expired decision link");
+        return;
+    }
+    if (!payload?.arId || (payload.decision !== "approve" && payload.decision !== "deny")) {
+        res.status(400).send("Invalid decision link");
+        return;
+    }
+
+    const request = await client.accessRequest.findUnique({
+        where: { id: payload.arId },
+        include: {
+            space: { select: { name: true } },
+            requester: { select: { email: true, name: true } },
+        },
+    });
+    if (!request) { res.status(404).send("Access request not found"); return; }
+    if (request.status !== "PENDING") { res.status(410).send("This request was already decided"); return; }
+    if (request.expiresAt < new Date()) {
+        await client.accessRequest.update({ where: { id: request.id }, data: { status: "EXPIRED", decidedAt: new Date() } });
+        res.status(410).send("This request has expired — please ask them to request again");
+        return;
+    }
+
+    const baseUrl = process.env.APP_URL ?? "http://localhost:5173";
+
+    if (payload.decision === "approve") {
+        await client.$transaction(async (tx) => {
+            await tx.spaceMember.upsert({
+                where: { spaceId_userId: { spaceId: request.spaceId, userId: request.requesterId } },
+                create: { spaceId: request.spaceId, userId: request.requesterId, role: "MEMBER" },
+                update: {},
+            });
+            await tx.accessRequest.update({ where: { id: request.id }, data: { status: "APPROVED", decidedAt: new Date() } });
+        });
+        if (request.requester.email) {
+            await sendEmail(request.requester.email, `You can now join ${request.space.name}`,
+                `<p>Hi ${request.requester.name},</p><p>Your request to join <strong>${request.space.name}</strong> was approved. Head to <a href="${baseUrl}/lobby">the lobby</a> to join.</p>`);
+        }
+        res.type("html").send(
+            `<html><body style="font-family:system-ui;padding:48px;text-align:center"><h2>Request approved ✅</h2><p>You can now join <strong>${request.space.name}</strong>.</p><p><a href="${baseUrl}/lobby">Go to the lobby</a></p></body></html>`
+        );
+    } else {
+        await client.accessRequest.update({ where: { id: request.id }, data: { status: "DENIED", decidedAt: new Date() } });
+        if (request.requester.email) {
+            await sendEmail(request.requester.email, `Your request to join ${request.space.name}`,
+                `<p>Hi ${request.requester.name},</p><p>Your request to join <strong>${request.space.name}</strong> was declined.</p>`);
+        }
+        res.type("html").send(
+            `<html><body style="font-family:system-ui;padding:48px;text-align:center"><h2>Request declined</h2><p>Your request to join <strong>${request.space.name}</strong> was not approved.</p></body></html>`
+        );
+    }
+});
+
+// POST /space/:spaceId/access-request — non-member requests to join (auth).
+// Emails the owner with signed Approve/Deny links.
+spaceRouter.post("/:spaceId/access-request", userMiddleware, async (req, res) => {
+    const { message } = req.body as { message?: string };
+    const spaceId = req.params.spaceId;
+
+    if (!process.env.ACCESS_DECISION_SECRET) {
+        res.status(503).json({ message: "Access requests are not configured (set ACCESS_DECISION_SECRET)" });
+        return;
+    }
+
+    const [space, requester] = await Promise.all([
+        client.space.findUnique({ where: { id: spaceId }, include: { creator: { select: { email: true, name: true } } } }),
+        client.user.findUnique({ where: { id: req.userId! }, select: { name: true, username: true } }),
+    ]);
+    if (!space) { res.status(404).json({ message: "Space not found" }); return; }
+
+    // Already a member → no-op, just join.
+    const existingMember = await client.spaceMember.findUnique({
+        where: { spaceId_userId: { spaceId, userId: req.userId! } },
+    });
+    if (existingMember) { res.json({ alreadyMember: true }); return; }
+
+    // PUBLIC → no request needed (auto-join).
+    if (space.visibility === "PUBLIC") { res.json({ autoApproved: true }); return; }
+
+    // Rate limit: cap access requests per user per day across all spaces.
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recent = await client.accessRequest.count({
+        where: { requesterId: req.userId!, createdAt: { gte: since } },
+    });
+    if (recent >= ACCESS_REQUEST_DAILY_CAP) {
+        res.status(429).json({ message: "Too many access requests today — try again tomorrow" });
+        return;
+    }
+
+    // Reuse an existing PENDING request (the partial unique index backstops this).
+    const pending = await client.accessRequest.findFirst({
+        where: { spaceId, requesterId: req.userId!, status: "PENDING" },
+    });
+    if (pending) { res.json({ id: pending.id, status: "PENDING" }); return; }
+
+    const expiresAt = new Date(Date.now() + ACCESS_REQUEST_DAYS * 24 * 60 * 60 * 1000);
+    const request = await client.accessRequest.create({
+        data: { spaceId, requesterId: req.userId!, message: message?.trim() || null, expiresAt },
+    });
+
+    const requesterName = requester?.name ?? requester?.username ?? "A user";
+    if (space.creator.email) {
+        const base = `${process.env.APP_URL ?? "http://localhost:5173"}/api/v1/space/access-request/decide`;
+        const approve = `${base}?token=${signDecisionToken(request.id, "approve")}`;
+        const deny = `${base}?token=${signDecisionToken(request.id, "deny")}`;
+        await sendEmail(space.creator.email, `Access request for ${space.name}`,
+            `<p>Hi ${space.creator.name},</p>` +
+            `<p><strong>${requesterName}</strong> has requested access to your space <strong>${space.name}</strong>.</p>` +
+            (message?.trim() ? `<p>Message: "${message.trim()}"</p>` : "") +
+            `<p style="display:flex;gap:12px">` +
+            `<a style="background:#16a34a;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none" href="${approve}">Approve</a>` +
+            `&nbsp;` +
+            `<a style="background:#dc2626;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none" href="${deny}">Deny</a>` +
+            `</p>` +
+            `<p style="color:#6b7280">This link expires in ${ACCESS_REQUEST_DAYS} days.</p>`);
+    }
+
+    res.json({ id: request.id, status: "PENDING" });
 });
 
 // ─── Dynamic routes last ──────────────────────────────────────────────────────
@@ -1044,7 +1246,8 @@ spaceRouter.get("/:spaceId", async (req, res) => {
     res.json({
         name: space.name,
         creatorId: space.creatorId,
-        isPrivate: space.isPrivate,
+        visibility: space.visibility,
+        isPrivate: space.visibility !== "PUBLIC",
         dimensions: `${space.width}x${space.height}`,
         elements: space.elements.map((e) => ({
             id: e.id,

@@ -5,6 +5,7 @@ import client from "@repo/db/client";
 import { auth } from "./lib/auth";
 import { getBlockingCells, invalidateBlockingCache } from "./blockingCache";
 import { ProximityChatManager } from "./proximityChatManager";
+import { getEffectivePlan, isBroadcastAllowed } from "./lib/planAccess";
 import { randomUUID } from "crypto";
 
 // Conference room state — in-memory, ephemeral
@@ -89,9 +90,9 @@ export class User {
 
     // Send an explicit error then close, so the client can stop reconnecting and
     // show a real message instead of looping forever on an invalid/stale token.
-    private failWith(code: 'unauthorized' | 'banned' | 'forbidden' | 'not-found', message: string) {
+    private failWith(code: 'unauthorized' | 'banned' | 'forbidden' | 'not-found', message: string, extra?: { canRequestAccess?: boolean; spaceId?: string }) {
         try {
-            this.send({ type: 'error', payload: { code, message } });
+            this.send({ type: 'error', payload: { code, message, ...extra } });
         } catch {
             // ignore — socket may already be gone
         }
@@ -120,6 +121,16 @@ export class User {
 
                     const spaceId = parsedData.payload.spaceId;
                     const token = parsedData.payload.token;
+
+                    // Guard at the source: never let a missing/malformed spaceId
+                    // reach a Prisma call. Prisma drops `undefined` filter keys, so
+                    // findFirst({ where: { id: undefined } }) would match an arbitrary
+                    // space and addUser(undefined) would poison the room map and crash
+                    // the NPC ticker ~500ms later.
+                    if (typeof spaceId !== "string" || spaceId.trim() === "") {
+                        this.failWith('not-found', 'Missing or invalid spaceId');
+                        return;
+                    }
 
                     if (!token) {
                         // Guest: no token → assign temp identity, skip DB auth
@@ -174,7 +185,7 @@ export class User {
                         return;
                     }
 
-                    if (space.isPrivate) {
+                    if (space.visibility !== 'PUBLIC') {
                         if (this.isGuest || !this.userId) {
                             this.failWith('forbidden', 'You do not have access to this space');
                             return;
@@ -183,7 +194,9 @@ export class User {
                             where: { spaceId_userId: { spaceId, userId: this.userId } },
                         });
                         if (!member) {
-                            this.failWith('forbidden', 'You do not have access to this space');
+                            // Authenticated non-member: tell the client it may request
+                            // access (guests can't — they have no account to approve for).
+                            this.failWith('forbidden', 'You are not a member of this space', { canRequestAccess: true, spaceId });
                             return;
                         }
                     }
@@ -203,6 +216,18 @@ export class User {
                                 roomUsers.splice(staleIdx, 1);
                             }
                         }
+                    }
+
+                    // Plan-gated room capacity (maxConcurrentUsers). Counted AFTER
+                    // stale-session eviction so reconnects don't count against themselves.
+                    const joinPlan = await getEffectivePlan(this.userId);
+                    const roomCount = getRoomManager().rooms.get(spaceId)?.length ?? 0;
+                    if (roomCount >= joinPlan.maxConcurrentUsers) {
+                        this.failWith(
+                            'forbidden',
+                            `This space is full (${joinPlan.maxConcurrentUsers} concurrent users on the ${joinPlan.tier} plan)`
+                        );
+                        return;
                     }
 
                     getRoomManager().addUser(spaceId, this);
@@ -485,6 +510,24 @@ export class User {
 
                 case 'rtc:broadcast-zone-join': {
                     if (!this.userId || !this.spaceId) break;
+
+                    // Broadcast zones are a Pro-gated feature — soft-deny with a
+                    // notification toast instead of killing the connection.
+                    if (!(await isBroadcastAllowed(this.userId))) {
+                        this.send({
+                            type: 'notification',
+                            payload: {
+                                id: randomUUID(),
+                                notifType: 'announcement',
+                                title: 'Broadcast zones require the Pro plan',
+                                message: 'Upgrade to Pro to use broadcast / cinema-hall zones.',
+                                priority: 'normal',
+                                timestamp: Date.now(),
+                            },
+                        });
+                        break;
+                    }
+
                     const { zoneId, isSpeaker } = parsedData;
                     if (!broadcastZones.has(zoneId)) {
                         broadcastZones.set(zoneId, { speakerId: null, listeners: new Set() });
@@ -789,5 +832,19 @@ export class User {
 
     send(payload: OutgoingMessage) {
         this.ws.send(JSON.stringify(payload));
+    }
+
+    /**
+     * Force-close this socket with an error (used by member revocation so a
+     * removed user can't keep their open room session). Closing triggers the
+     * `close` handler → destroy() → user-left broadcast + room removal.
+     */
+    forceKick(message: string) {
+        try {
+            this.send({ type: 'error', payload: { code: 'forbidden', message } });
+        } catch {
+            // socket may already be gone
+        }
+        this.ws.close();
     }
 }

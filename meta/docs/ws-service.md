@@ -13,6 +13,7 @@ meta/apps/ws/src/
 ├── blockingCache.ts       TTL-cached set of blocking cells per space
 ├── proximityChatManager.ts Proximity chat room keys + message persistence
 ├── lib/auth.ts            better-auth instance for token validation
+├── lib/planAccess.ts      Shared SaaS plan gating (see §5.5)
 └── config.ts              (legacy constant, unused)
 ```
 
@@ -31,7 +32,7 @@ meta/apps/ws/src/
    - No token → guest identity: `userId = guest-<id>`, username `Guest-XXXX`, avatar `avatar-intern`.
    - Token → `auth.api.getSession({ authorization: Bearer <token> })`; invalid/expired → `failWith("unauthorized")` then close (client stops reconnecting and shows the error).
 3. **Ban check** — `BannedUser.findUnique` → `failWith("banned")`.
-4. **Private-space check** — if `space.isPrivate`, the user must be an existing `SpaceMember`, else `failWith("forbidden")`. Guests are always forbidden.
+4. **Access check** — if `space.visibility !== 'PUBLIC'`, the user must be an existing `SpaceMember` (re-checked on **every** join/reconnect), else `failWith("forbidden")`. Guests are always forbidden on non-PUBLIC spaces. PUBLIC spaces allow anyone (guests included) to join without a membership row.
 5. **Stale-session eviction** — if another socket with the same `userId` is still in the room array, it is removed (and its `spaceId` cleared) so a reconnect doesn't show a duplicate avatar.
 6. Spawn at a random cell, snapped to the **nearest walkable cell** (`findNearestWalkable` via the blocking cache).
 7. Send `space-joined` (spawn, userId, username, avatarId, roster of other users), broadcast `user-joined` + a `notification`, then `broadcastRoomUpdates` (proximity chat room recalculation).
@@ -44,6 +45,8 @@ Guarded by `if (!this.spaceId) return` (socket closed before joining). Then:
 3. Clean up broadcast zones (speaker or listener paths).
 4. Broadcast `user-left` + a `notification`.
 5. `removeUser` + recompute proximity chat rooms.
+
+`forceKick(message)` (used by member revocation in the HTTP route) sends an `error` (`forbidden`) then closes the socket — the close handler runs `destroy()`, so the removed member leaves the room immediately, not on their next reconnect.
 
 ---
 
@@ -71,7 +74,7 @@ Guarded by `if (!this.spaceId) return` (socket closed before joining). Then:
 | `rtc:knock-accept / rtc:knock-deny` | `{ to }` | Relay to target |
 | `rtc:join-room` | `{ roomId }` | Add to `conferenceRooms`, reply `rtc:room-peers` with existing members |
 | `rtc:leave-room` | `{ roomId }` | Remove from conference room |
-| `rtc:broadcast-zone-join` | `{ zoneId, isSpeaker }` | Add to `broadcastZones` as speaker or listener; push `rtc:broadcast-zone-state` to all affected users |
+| `rtc:broadcast-zone-join` | `{ zoneId, isSpeaker }` | **Plan-gated** (Pro): soft-deny with a toast notification if `broadcastEnabled` is false; otherwise add to `broadcastZones` as speaker or listener; push `rtc:broadcast-zone-state` to all affected users |
 | `rtc:broadcast-zone-leave` | `{ zoneId }` | Remove from zone; notify speaker/listeners |
 
 ---
@@ -134,6 +137,18 @@ Runs only for **rooms that have users**. For each space:
 
 ---
 
+## 5.5 Plan gating (SaaS)
+
+`lib/planAccess.ts` is the shared gating helper (also imported by HTTP):
+
+- `getEffectivePlan(userId)` → ACTIVE-plan limits or FREE defaults; **60 s in-memory cache**; **P2024 retry + explicit logging** (a silent failure here could wrongly block a paying user).
+- Wired enforcement points:
+  - **`join` room capacity** — after stale-session eviction, if `roomCount >= plan.maxConcurrentUsers` the join is rejected with `failWith("forbidden", "This space is full (N concurrent users on the TIER plan)")` (client stops reconnecting and shows the banner).
+  - **`rtc:broadcast-zone-join`** — if `!plan.broadcastEnabled`, the join is **soft-denied** with a `notification` toast (not a socket kill).
+- Cache invalidation: `invalidatePlanCache(userId)` should be called after billing changes (webhooks) so gates reflect upgrades immediately.
+
+---
+
 ## 6. Conference rooms & broadcast zones (WebRTC)
 
 Both live in **module-level Maps** inside `User.ts` — in-memory and ephemeral.
@@ -191,7 +206,7 @@ broadcastToRoom(msg, roomId)                            // everyone including se
 | `chat-room-update` | `{ roomId, members[] }` |
 | `chat-history` | `{ roomId, messages[] }` |
 | `board-updated` | `{ spaceId }` (from HTTP board routes) |
-| `error` | `{ code, message }` before close (`unauthorized/banned/forbidden/not-found`) |
+| `error` | `{ code, message, canRequestAccess?, spaceId? }` before close (`unauthorized/banned/forbidden/not-found`); `canRequestAccess` is set on join denial for an authenticated non-member so the client can offer to request access |
 | `pong` | — |
 | `rtc:offer/answer/ice` | `{ from, sdp?/candidate? }` |
 | `rtc:knock` | `{ from, fromName, callType }` |

@@ -19,5 +19,6 @@ export const adminMiddleware = async (req: Request, res: Response, next: NextFun
 
     req.userId = session.user.id;
     req.role = "Admin";
+    req.platformRole = session.user.platformRole as "USER" | "PLATFORM_ADMIN" | undefined;
     next();
 };

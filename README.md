@@ -168,11 +168,11 @@ The token is returned in the `set-auth-token` response header on sign-in.
 | POST | `/api/v1/admin/unban/:userId` | admin | Unban a user |
 | POST | `/api/v1/admin/season` | admin | Create a new season |
 
-### Billing (Stripe scaffold)
+### Billing (Razorpay)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/v1/billing/subscribe` | yes | Start a subscription (requires Stripe keys) |
+| POST | `/api/v1/billing/subscribe` | yes | Start a subscription (requires Razorpay keys) |
 
 ---
 
@@ -410,7 +410,7 @@ Social
 Retention
 ✅ Seasonal system — time-limited items, current season API
 ✅ Collection book — full catalog with owned flag per user
-✅ Billing scaffold (Stripe-ready, subscribe endpoint)
+✅ Billing (Razorpay) — subscribe, webhook, plan gating, admin panel, dunning
 
 Creator / Admin
 ✅ File upload (png, jpg, gif, webp, svg) — stored in uploads/, served as static files

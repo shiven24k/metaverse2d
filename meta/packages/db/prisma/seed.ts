@@ -643,6 +643,46 @@ async function main() {
   }
   console.log("NPCs seeded");
 
+  // ─── Plans (SaaS billing catalog) ────────────────────────────────────────────
+  // Placeholder prices (INR paise) — finalize before going live with Razorpay.
+  // Limits per the billing plan (screen share / broadcast are gating targets;
+  // 100000 is a sentinel for "unlimited").
+  const PLAN_DEFS = [
+    { tier: "FREE",    billingPeriod: "monthly", price: 0,      maxSpaces: 1,     maxMembersPerSpace: 10,  maxConcurrentUsers: 10,  screenShare: false, broadcast: false },
+    { tier: "FREE",    billingPeriod: "yearly",  price: 0,      maxSpaces: 1,     maxMembersPerSpace: 10,  maxConcurrentUsers: 10,  screenShare: false, broadcast: false },
+    { tier: "STARTER", billingPeriod: "monthly", price: 29900,  maxSpaces: 3,     maxMembersPerSpace: 30,  maxConcurrentUsers: 30,  screenShare: true,  broadcast: false },
+    { tier: "STARTER", billingPeriod: "yearly",  price: 287000, maxSpaces: 3,     maxMembersPerSpace: 30,  maxConcurrentUsers: 30,  screenShare: true,  broadcast: false },
+    { tier: "PRO",     billingPeriod: "monthly", price: 99900,  maxSpaces: 100000, maxMembersPerSpace: 100, maxConcurrentUsers: 100, screenShare: true,  broadcast: true },
+    { tier: "PRO",     billingPeriod: "yearly",  price: 959000, maxSpaces: 100000, maxMembersPerSpace: 100, maxConcurrentUsers: 100, screenShare: true,  broadcast: true },
+  ] as const;
+
+  for (const p of PLAN_DEFS) {
+    await client.plan.upsert({
+      where: { tier_billingPeriod: { tier: p.tier, billingPeriod: p.billingPeriod } },
+      update: {
+        name: p.tier.charAt(0) + p.tier.slice(1).toLowerCase(),
+        priceInPaiseINR: p.price,
+        maxSpaces: p.maxSpaces,
+        maxMembersPerSpace: p.maxMembersPerSpace,
+        maxConcurrentUsers: p.maxConcurrentUsers,
+        screenShareEnabled: p.screenShare,
+        broadcastEnabled: p.broadcast,
+      },
+      create: {
+        tier: p.tier,
+        name: p.tier.charAt(0) + p.tier.slice(1).toLowerCase(),
+        billingPeriod: p.billingPeriod,
+        priceInPaiseINR: p.price,
+        maxSpaces: p.maxSpaces,
+        maxMembersPerSpace: p.maxMembersPerSpace,
+        maxConcurrentUsers: p.maxConcurrentUsers,
+        screenShareEnabled: p.screenShare,
+        broadcastEnabled: p.broadcast,
+      },
+    });
+  }
+  console.log("Plans seeded");
+
   console.log("Seed complete!");
 }
 

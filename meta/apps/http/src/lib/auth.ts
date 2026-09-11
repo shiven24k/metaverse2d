@@ -44,6 +44,11 @@ export const auth = betterAuth({
                 defaultValue: "User",
                 input: false,
             },
+            platformRole: {
+                type: "string",
+                defaultValue: "USER",
+                input: false,
+            },
         },
     },
     databaseHooks: {

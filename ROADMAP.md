@@ -134,7 +134,7 @@ Players have profiles, can visit each other's spaces, leave guestbook notes, do 
 - Neighbourhood + NeighbourhoodMember Prisma models
 - `GET /api/v1/neighbourhood` — auto-assigns on first access (groups of 8), returns members
 - `User.supporter` boolean field
-- `POST /api/v1/billing/subscribe` + webhook scaffold (requires Stripe keys)
+- `POST /api/v1/billing/subscribe` + signature-verified webhook (Razorpay, env-gated)
 - Space.thumbnail field already exists in schema
 
 ### Deliverable ✅
@@ -241,7 +241,7 @@ Players have a daily reason to log in (gift + streak), a weekly reason (quests +
 ✅ Collection book (catalog with owned flag)
 ✅ Streak milestones (7-day rare, 28-day legacy)
 ✅ Neighbourhood auto-assign groups of 8
-✅ Billing scaffold (Stripe-ready)
+✅ Billing (Razorpay) — subscribe, webhook, plan gating, admin panel, dunning
 ✅ RedisRoomManager (ioredis pub/sub, USE_REDIS_ROOMS env toggle)
 ✅ Map templates + element rendering on canvas
 ✅ File upload + Creator Studio tab (asset upload + admin item creation)

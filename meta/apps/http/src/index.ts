@@ -7,6 +7,7 @@ import { toNodeHandler } from 'better-auth/node';
 import { router } from './routes/v1';
 import { auth } from './lib/auth';
 import { attachWsServer } from './ws-server';
+import { startDunningTicker } from './lib/dunning';
 
 const app = express();
 
@@ -38,7 +39,15 @@ app.options("*", (_req, res) => res.sendStatus(204));
 app.all("/api/auth/*", toNodeHandler(auth));
 console.log('[Auth] better-auth mounted at /api/auth/*');
 
-app.use(express.json());
+app.use(express.json({
+    // Capture the raw body for the billing webhook so the Razorpay HMAC
+    // signature can be verified against the exact bytes that were sent.
+    verify: (req, _res, buf) => {
+        if (req.originalUrl?.includes("/billing/webhook")) {
+            req.rawBody = buf;
+        }
+    },
+}));
 
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
@@ -46,6 +55,10 @@ app.use("/api/v1", router);
 
 const server = http.createServer(app);
 attachWsServer(server);
+
+// Dunning: auto-downgrade PAST_DUE subscriptions whose grace period ended.
+// Runs immediately on boot, then hourly.
+startDunningTicker();
 
 server.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT} (HTTP + WS)`);

@@ -14,5 +14,6 @@ export const userMiddleware = async (req: Request, res: Response, next: NextFunc
 
     req.userId = session.user.id;
     req.role = session.user.role as "Admin" | "User";
+    req.platformRole = session.user.platformRole as "USER" | "PLATFORM_ADMIN" | undefined;
     next();
 };

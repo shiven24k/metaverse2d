@@ -15,7 +15,7 @@ inviteRouter.get("/:token", async (req, res) => {
                     name: true,
                     width: true,
                     height: true,
-                    isPrivate: true,
+                    visibility: true,
                     _count: { select: { members: true } },
                 },
             },

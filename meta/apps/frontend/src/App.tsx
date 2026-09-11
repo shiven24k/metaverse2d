@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import AuthPage from './AuthPage';
 import SpacePage from './SpacePage';
 import ProfilePage from './ProfilePage';
+import BillingPage from './BillingPage';
+import AdminPanelPage from './AdminPanelPage';
 import Arena from './Game';
 import JoinPage from './JoinPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -77,6 +79,8 @@ export default function App() {
                         </ErrorBoundary>
                     } />
                     <Route path="/profile/:userId" element={<ProfilePage />} />
+                    <Route path="/billing" element={<BillingPage />} />
+                    <Route path="/admin" element={<AdminPanelPage />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

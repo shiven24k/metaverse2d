@@ -241,6 +241,10 @@ type ErrorMessage = {
     payload: {
         code: 'unauthorized' | 'banned' | 'forbidden' | 'not-found';
         message: string;
+        // Set on join denial for an authenticated non-member: the client can offer
+        // to POST /space/:spaceId/access-request.
+        canRequestAccess?: boolean;
+        spaceId?: string;
     };
 };
 

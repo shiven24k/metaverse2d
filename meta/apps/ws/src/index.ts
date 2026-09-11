@@ -1,4 +1,6 @@
 import { WebSocketServer } from 'ws';
+import http from 'http';
+import crypto from 'crypto';
 import { User } from './User';
 import { getRoomManager } from './getRoomManager';
 import client from '@repo/db/client';
@@ -17,20 +19,86 @@ wss.on('connection', function connection(ws) {
   });
 });
 
+// ─── Internal admin endpoint (loopback only) ──────────────────────────────────
+// Lets the HTTP process force-close a member's socket that lives in THIS process
+// (the standalone WS server). Bound to 127.0.0.1 so it is not reachable through
+// Cloudflare/the public domain, and gated by INTERNAL_KICK_SECRET.
+const INTERNAL_HOST = '127.0.0.1';
+const INTERNAL_PORT = parseInt(process.env.INTERNAL_PORT || '4001', 10);
+const INTERNAL_KICK_SECRET = process.env.INTERNAL_KICK_SECRET ?? '';
+
+function secretMatches(provided: string): boolean {
+    if (!INTERNAL_KICK_SECRET || !provided.startsWith('Bearer ')) return false;
+    const a = Buffer.from(provided.slice('Bearer '.length));
+    const b = Buffer.from(INTERNAL_KICK_SECRET);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+const internalServer = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.method === 'POST' && req.url === '/internal/kick') {
+        if (!secretMatches(req.headers['authorization'] ?? '')) {
+            res.statusCode = 401;
+            res.end(JSON.stringify({ error: 'unauthorized' }));
+            return;
+        }
+        let body = '';
+        req.on('data', (c) => {
+            body += c;
+            if (body.length > 1_000_000) req.destroy();
+        });
+        req.on('end', async () => {
+            try {
+                const parsed = JSON.parse(body || '{}');
+                const { spaceId, userId } = parsed as { spaceId?: unknown; userId?: unknown };
+                if (typeof spaceId !== 'string' || typeof userId !== 'string') {
+                    res.statusCode = 400;
+                    res.end(JSON.stringify({ error: 'spaceId and userId (strings) required' }));
+                    return;
+                }
+                const roomUsers = getRoomManager().rooms.get(spaceId) ?? [];
+                const target = roomUsers.find((u) => u.userId === userId);
+                if (target) {
+                    target.forceKick('You have been removed from this space');
+                    res.statusCode = 200;
+                    res.end(JSON.stringify({ kicked: true }));
+                } else {
+                    res.statusCode = 200;
+                    res.end(JSON.stringify({ kicked: false }));
+                }
+            } catch (err) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: 'invalid request body' }));
+            }
+        });
+        return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ error: 'not found' }));
+});
+
+internalServer.listen(INTERNAL_PORT, INTERNAL_HOST, () => {
+    console.log(`[internal] kick endpoint on http://${INTERNAL_HOST}:${INTERNAL_PORT}/internal/kick`);
+});
+
 // ─── AFK detection ───────────────────────────────────────────────────────────
 setInterval(() => {
-    const now = Date.now();
-    for (const [, users] of getRoomManager().rooms) {
-        for (const user of users) {
-            if (now - user.lastActivityAt > 180_000 && user.currentEmote !== 'afk') {
-                user.currentEmote = 'afk';
-                const msg: OutgoingMessage = {
-                    type: 'emote-broadcast',
-                    payload: { userId: user.userId ?? user.id, emoteId: 'afk', expiresAt: 0 },
-                };
-                for (const u of users) u.send(msg);
+    try {
+        const now = Date.now();
+        for (const [, users] of getRoomManager().rooms) {
+            for (const user of users) {
+                if (now - user.lastActivityAt > 180_000 && user.currentEmote !== 'afk') {
+                    user.currentEmote = 'afk';
+                    const msg: OutgoingMessage = {
+                        type: 'emote-broadcast',
+                        payload: { userId: user.userId ?? user.id, emoteId: 'afk', expiresAt: 0 },
+                    };
+                    for (const u of users) u.send(msg);
+                }
             }
         }
+    } catch (err) {
+        console.error('[AFK tick] error:', err);
     }
 }, 30_000);
 
@@ -266,5 +334,9 @@ async function npcTick() {
     }
 }
 
-// 500 ms per step — natural walking pace
-setInterval(npcTick, 500);
+// 500 ms per step — natural walking pace.
+// The ticker must NEVER take the process down: a throw/rejection in any single
+// tick (bad room state, DB hiccup, etc.) is logged and the loop continues.
+setInterval(() => {
+    npcTick().catch((err) => console.error('[NPC tick] error:', err));
+}, 500);

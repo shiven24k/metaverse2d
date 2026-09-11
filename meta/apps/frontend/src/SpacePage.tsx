@@ -135,6 +135,7 @@ export default function SpacePage() {
     const [quests, setQuests] = useState<QuestInfo[]>([]);
     const [questsLoading, setQuestsLoading] = useState(false);
     const [_userRole, setUserRole] = useState<string | null>(null);
+    const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 
     const [deleteTarget, setDeleteTarget] = useState<Space | null>(null);
     const [deletingSpace, setDeletingSpace] = useState(false);
@@ -193,6 +194,7 @@ export default function SpacePage() {
                 const d = await res.json();
                 setUserRole(d.user?.role ?? null);
                 setUsername(d.user?.username ?? d.user?.name ?? "");
+                setIsPlatformAdmin(d.user?.platformRole === "PLATFORM_ADMIN");
             }
         } catch {}
     }, [bearerToken, handleAuthFailure]);
@@ -546,6 +548,18 @@ export default function SpacePage() {
                                 background: tab === "create" ? "#f4f0fe" : "#f9f7ff", color: "#5b21b6", fontSize: 13.5, fontWeight: 600, fontFamily: "system-ui,sans-serif", textAlign: "left" }}>
                             <Plus size={16} />New space
                         </button>
+                        <button onClick={() => navigate("/billing")}
+                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10, border: "1px solid #d4d0e6", cursor: "pointer",
+                                background: "#fff", color: "#4d495f", fontSize: 13, fontWeight: 600, fontFamily: "system-ui,sans-serif", textAlign: "left" }}>
+                            💳 Billing
+                        </button>
+                        {isPlatformAdmin && (
+                            <button onClick={() => navigate("/admin")}
+                                style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10, border: "1px solid #e7ddfb", cursor: "pointer",
+                                    background: "#f4f0fe", color: "#5b21b6", fontSize: 13, fontWeight: 600, fontFamily: "system-ui,sans-serif", textAlign: "left" }}>
+                                ⭐ Admin
+                            </button>
+                        )}
                     </>}
                 </nav>
 

@@ -185,6 +185,11 @@ A single pm2 app named **`metaverse2d`** running `apps/http/dist/index.js` (the 
 | `USE_REDIS_ROOMS` | `false` | ws |
 | `REDIS_URL` | `redis://localhost:6379` | ws |
 | `METERED_APP_NAME` / `METERED_API_KEY` | — | http (turn-credentials) |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | — | http (billing subscribe) |
+| `RAZORPAY_WEBHOOK_SECRET` | — | http (billing webhook signature) |
+| `RESEND_API_KEY` / `RESEND_FROM` | — | http (transactional email / dunning) |
+| `ACCESS_DECISION_SECRET` | — | http (signed access-request approve/deny links) |
+| `APP_URL` | `http://localhost:5173` | http (email links, dunning) |
 | `GOOGLE_CLIENT_ID/SECRET`, `GITHUB_CLIENT_ID/SECRET` | — | http (OAuth) |
 
 ---
