@@ -180,11 +180,12 @@ interface EmoteBubble {
 
 
 
-function RemoteVideoTile({ peerId, stream, username, connectionState }: {
+function RemoteVideoTile({ peerId, stream, username, connectionState, sharing }: {
     peerId: string;
     stream: MediaStream;
     username?: string;
     connectionState?: RTCPeerConnectionState;
+    sharing?: boolean;
 }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [overlayVisible, setOverlayVisible] = useState(true);
@@ -240,6 +241,16 @@ function RemoteVideoTile({ peerId, stream, username, connectionState }: {
             boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
             flexShrink: 0,
         }}>
+            {sharing && (
+                <div style={{
+                    position: 'absolute', top: 4, left: 4, zIndex: 2,
+                    background: 'rgba(124,58,237,0.9)', color: '#fff',
+                    fontSize: 9, fontWeight: 700, padding: '2px 6px',
+                    borderRadius: 6, letterSpacing: 0.3,
+                }}>
+                    🖥 SCREEN
+                </div>
+            )}
             <video
                 ref={videoRef}
                 autoPlay
@@ -318,6 +329,9 @@ const ArenaInner = () => {
     const [conferencePeerIds, setConferencePeerIds] = useState<string[]>([]);
     const [micEnabled, setMicEnabled] = useState(true);
     const [cameraEnabled, setCameraEnabled] = useState(false);
+    const [screenSharing, setScreenSharing] = useState(false);
+    const [screenSharers, setScreenSharers] = useState<Set<string>>(() => new Set());
+    const [canScreenShare, setCanScreenShare] = useState(false);
     const [deafened, setDeafened] = useState(false);
     const [connectedPeers, setConnectedPeers] = useState(0);
     const [cameraError, setCameraError] = useState<string | null>(null);
@@ -786,27 +800,48 @@ const ArenaInner = () => {
                 return next;
             });
         };
-        window.addEventListener('rtc:remoteVideo', onRemoteVideo);
-        window.addEventListener('rtc:peerLeft', onPeerLeft);
-        window.addEventListener('rtc:proximityGroup', onProximityGroup);
-        window.addEventListener('rtc:knockSent', onKnockSent);
-        window.addEventListener('rtc:knockDenied', onKnockDenied);
-        window.addEventListener('rtc:knockCancelled', onKnockCancelled);
-        window.addEventListener('rtc:peersChanged', onPeersChanged);
-        window.addEventListener('rtc:connectionStateChanged', onConnectionStateChanged);
-        window.addEventListener('rtc:speakingState', onSpeakingState);
-        return () => {
-            window.removeEventListener('rtc:remoteVideo', onRemoteVideo);
-            window.removeEventListener('rtc:peerLeft', onPeerLeft);
-            window.removeEventListener('rtc:proximityGroup', onProximityGroup);
-            window.removeEventListener('rtc:knockSent', onKnockSent);
-            window.removeEventListener('rtc:knockDenied', onKnockDenied);
-            window.removeEventListener('rtc:knockCancelled', onKnockCancelled);
-            window.removeEventListener('rtc:peersChanged', onPeersChanged);
-            window.removeEventListener('rtc:connectionStateChanged', onConnectionStateChanged);
-            window.removeEventListener('rtc:speakingState', onSpeakingState);
-        };
-    }, [addToast]);
+            window.addEventListener('rtc:remoteVideo', onRemoteVideo);
+            window.addEventListener('rtc:peerLeft', onPeerLeft);
+            window.addEventListener('rtc:proximityGroup', onProximityGroup);
+            window.addEventListener('rtc:knockSent', onKnockSent);
+            window.addEventListener('rtc:knockDenied', onKnockDenied);
+            window.addEventListener('rtc:knockCancelled', onKnockCancelled);
+            window.addEventListener('rtc:peersChanged', onPeersChanged);
+            window.addEventListener('rtc:connectionStateChanged', onConnectionStateChanged);
+            window.addEventListener('rtc:speakingState', onSpeakingState);
+            const onScreenShareToggled = (e: Event) => {
+                const { sharing } = (e as CustomEvent<{ sharing: boolean }>).detail;
+                setScreenSharing(sharing);
+            };
+            window.addEventListener('rtc:screenShareToggled', onScreenShareToggled);
+            return () => {
+                window.removeEventListener('rtc:remoteVideo', onRemoteVideo);
+                window.removeEventListener('rtc:peerLeft', onPeerLeft);
+                window.removeEventListener('rtc:proximityGroup', onProximityGroup);
+                window.removeEventListener('rtc:knockSent', onKnockSent);
+                window.removeEventListener('rtc:knockDenied', onKnockDenied);
+                window.removeEventListener('rtc:knockCancelled', onKnockCancelled);
+                window.removeEventListener('rtc:peersChanged', onPeersChanged);
+                window.removeEventListener('rtc:connectionStateChanged', onConnectionStateChanged);
+                window.removeEventListener('rtc:speakingState', onSpeakingState);
+                window.removeEventListener('rtc:screenShareToggled', onScreenShareToggled);
+            };
+        }, [addToast]);
+
+    // Plan capability: screen share is STARTER+ (client-side UX gate; the WS
+    // server independently re-checks the plan on rtc:screen-share before
+    // relaying the share state to the room).
+    useEffect(() => {
+        if (isGuest || !token) return;
+        let cancelled = false;
+        fetch(`${API}/api/v1/billing/plan`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(res => (res.ok ? res.json() : null))
+            .then((d: { plan?: { screenShareEnabled?: boolean } } | null) => {
+                if (!cancelled && d?.plan) setCanScreenShare(Boolean(d.plan.screenShareEnabled));
+            })
+            .catch(() => { /* feature stays hidden — non-critical */ });
+        return () => { cancelled = true; };
+    }, [token, isGuest]);
 
     // Only tiles (spaceElements) and furniture (placedItems) with blocking=true block movement.
     // Other players, NPCs, and temporary objects are intentionally excluded.
@@ -2085,6 +2120,11 @@ const ArenaInner = () => {
                     next.delete(message.payload.userId);
                     return next;
                 });
+                setScreenSharers(prev => {
+                    const next = new Set(prev);
+                    next.delete(message.payload.userId);
+                    return next;
+                });
                 if (leftUser) addToast(`${leftUser.username} left`, 'warning');
                 runProximityCheck();
                 break;
@@ -2317,7 +2357,23 @@ const ArenaInner = () => {
             case 'rtc:peer-left':
                 peerManagerRef.current?.disconnect(message.peerId as string);
                 setConferencePeerIds(prev => prev.filter(id => id !== (message.peerId as string)));
+                setScreenSharers(prev => {
+                    const next = new Set(prev);
+                    next.delete(message.peerId as string);
+                    return next;
+                });
                 break;
+
+            case 'rtc:screen-share-state': {
+                const ssUserId = message.userId as string;
+                const ssSharing = message.sharing === true;
+                setScreenSharers(prev => {
+                    const next = new Set(prev);
+                    if (ssSharing) next.add(ssUserId); else next.delete(ssUserId);
+                    return next;
+                });
+                break;
+            }
 
             case 'rtc:knock': {
                 const knockMsg = message as { from: string; fromName: string; callType?: 'voice' | 'video' };
@@ -3826,6 +3882,7 @@ const ArenaInner = () => {
                                         stream={stream}
                                         username={usersRef.current.get(peerId)?.username}
                                         connectionState={peerConnectionStates.get(peerId)}
+                                        sharing={screenSharers.has(peerId)}
                                     />
                                 );
                             })}
@@ -5245,7 +5302,20 @@ const ArenaInner = () => {
                             setCameraEnabled(false);
                         }
                     };
+                    const confToggleScreenShare = async () => {
+                        const pm = peerManagerRef.current;
+                        if (!pm) return;
+                        if (pm.getScreenSharing()) {
+                            await pm.stopScreenShare();
+                        } else {
+                            const ok = await pm.startScreenShare();
+                            if (!ok) addToast('Screen share was cancelled', 'warning');
+                        }
+                    };
                     const confLeave = () => {
+                        // Stop an in-flight screen share first so the room badge
+                        // clears and the camera track is restored before teardown.
+                        void peerManagerRef.current?.stopScreenShare();
                         // Exit conference room state so grid is hidden and canvas restores
                         if (currentConferenceRoomRef.current) {
                             wsRef.current?.send(JSON.stringify({ type: 'rtc:leave-room', roomId: currentConferenceRoomRef.current }));
@@ -5288,9 +5358,12 @@ const ArenaInner = () => {
                             participants={[selfParticipant, ...remoteParticipants]}
                             micEnabled={micEnabled}
                             cameraEnabled={cameraEnabled}
+                            screenSharing={screenSharing}
+                            canScreenShare={canScreenShare}
                             deafened={deafened}
                             onToggleMic={confToggleMic}
                             onToggleCamera={confToggleCamera}
+                            onToggleScreenShare={confToggleScreenShare}
                             onToggleDeafen={confToggleDeafen}
                             onLeaveCall={confLeave}
                         />
@@ -5300,12 +5373,24 @@ const ArenaInner = () => {
                 {!inConferenceRoom && <VoiceToolbar
                     micEnabled={micEnabled}
                     cameraEnabled={cameraEnabled}
+                    screenSharing={screenSharing}
+                    canScreenShare={canScreenShare}
                     deafened={deafened}
                     connectedPeers={connectedPeers}
                     onToggleMic={() => {
                         const next = !micEnabled;
                         setMicEnabled(next);
                         peerManagerRef.current?.toggleMic(next);
+                    }}
+                    onToggleScreenShare={async () => {
+                        const pm = peerManagerRef.current;
+                        if (!pm) return;
+                        if (pm.getScreenSharing()) {
+                            await pm.stopScreenShare();
+                        } else {
+                            const ok = await pm.startScreenShare();
+                            if (!ok) addToast('Screen share was cancelled', 'warning');
+                        }
                     }}
                     onToggleDeafen={() => {
                         const next = !deafened;
@@ -5350,6 +5435,8 @@ const ArenaInner = () => {
                     onLeaveCall={() => {
                         const pm = peerManagerRef.current;
                         if (!pm) return;
+                        // Stop an in-flight screen share so the room badge clears.
+                        void pm.stopScreenShare();
                         remoteStreamsRef.current.clear();
                         setRemotePeerIds([]);
                         avatarVideoElsRef.current.forEach(el => { el.srcObject = null; el.remove(); });

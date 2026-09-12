@@ -51,6 +51,10 @@ export class PeerManager {
     ];
     private localStream: MediaStream | null = null;
     private localVideoStream: MediaStream | null = null;
+    // Screen share replaces the camera video track on the wire (single video
+    // sender per peer) — no extra peer connections, no renegotiation conflicts.
+    private screenStream: MediaStream | null = null;
+    private screenSharing = false;
     // Separate AudioContext used only for speaking detection — never in the audio playback path.
     private analyserCtx: AudioContext | null = null;
     private cameraEnabled = false;
@@ -205,7 +209,10 @@ export class PeerManager {
             // Adding tracks triggers onnegotiationneeded asynchronously.
             // localStream may be null if mic permission was denied — skip audio tracks gracefully.
             this.localStream?.getAudioTracks().forEach(t => pc.addTrack(t, this.localStream!));
-            if (this.localVideoStream) {
+            // One video track on the wire: the screen while sharing, else the camera.
+            if (this.screenSharing && this.screenStream) {
+                this.screenStream.getVideoTracks().forEach(t => pc.addTrack(t, this.screenStream!));
+            } else if (this.localVideoStream) {
                 this.localVideoStream.getVideoTracks().forEach(t => pc.addTrack(t, this.localVideoStream!));
             }
         }
@@ -312,6 +319,10 @@ export class PeerManager {
         this.localVideoStream = stream;
         this.cameraEnabled = true;
 
+        // While screen sharing, the screen occupies the video sender — keep the
+        // camera stored; stopScreenShare() puts it back on the wire.
+        if (this.screenSharing) return;
+
         for (const [peerId, peer] of this.peers.entries()) {
             const senders = peer.connection.getSenders();
             const videoSender = senders.find(s => s.track?.kind === 'video');
@@ -342,6 +353,81 @@ export class PeerManager {
         this.cameraEnabled = false;
         this.localVideoStream?.getVideoTracks().forEach(t => { t.enabled = false; });
     }
+
+    // ─── Screen share (STARTER+ plan feature) ─────────────────────────────────
+    //
+    // Safe by construction: the display track REPLACES the camera video track
+    // on the existing senders (video→video replaceTrack needs no renegotiation),
+    // so the perfect-negotiation / ICE / proximity / conference paths are
+    // untouched. One video track is on the wire at a time.
+
+    async startScreenShare(): Promise<boolean> {
+        if (this.screenSharing) return true;
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+            const screenTrack = stream.getVideoTracks()[0];
+            if (!screenTrack) {
+                stream.getTracks().forEach(t => t.stop());
+                return false;
+            }
+            this.screenStream = stream;
+            this.screenSharing = true;
+
+            // Browser's native "Stop sharing" bar.
+            screenTrack.onended = () => { void this.stopScreenShare(); };
+
+            for (const [peerId, peer] of this.peers.entries()) {
+                const videoSender = peer.connection.getSenders().find(s => s.track?.kind === 'video');
+                try {
+                    if (videoSender) {
+                        await videoSender.replaceTrack(screenTrack);
+                    } else {
+                        peer.connection.addTrack(screenTrack, stream);
+                    }
+                } catch (err) {
+                    console.warn('[PM] screen share track failed for', peerId, err);
+                }
+            }
+
+            this.ws.send(JSON.stringify({ type: 'rtc:screen-share', sharing: true }));
+            window.dispatchEvent(new CustomEvent('rtc:screenShareToggled', { detail: { sharing: true } }));
+            return true;
+        } catch (err) {
+            console.warn('[PM] getDisplayMedia denied/failed:', err);
+            return false;
+        }
+    }
+
+    async stopScreenShare() {
+        if (!this.screenSharing) return;
+        this.screenSharing = false;
+
+        const cameraTrack = this.cameraEnabled
+            ? this.localVideoStream?.getVideoTracks()[0] ?? null
+            : null;
+
+        for (const [peerId, peer] of this.peers.entries()) {
+            const videoSender = peer.connection.getSenders().find(s => s.track?.kind === 'video');
+            if (!videoSender) continue;
+            try {
+                if (cameraTrack) {
+                    await videoSender.replaceTrack(cameraTrack);
+                } else {
+                    await videoSender.replaceTrack(null);
+                }
+            } catch (err) {
+                console.warn('[PM] screen share restore failed for', peerId, err);
+            }
+        }
+
+        this.screenStream?.getTracks().forEach(t => t.stop());
+        this.screenStream = null;
+
+        this.ws.send(JSON.stringify({ type: 'rtc:screen-share', sharing: false }));
+        window.dispatchEvent(new CustomEvent('rtc:screenShareToggled', { detail: { sharing: false } }));
+    }
+
+    getScreenSharing() { return this.screenSharing; }
 
     // Called every animation frame with the current proximity peer lists.
     // Walking into range no longer auto-initiates a call; use sendKnock() explicitly.
@@ -600,8 +686,11 @@ export class PeerManager {
         for (const peerId of [...this.peers.keys()]) this.disconnect(peerId);
         this.localStream?.getTracks().forEach(t => t.stop());
         this.localVideoStream?.getTracks().forEach(t => t.stop());
+        this.screenStream?.getTracks().forEach(t => t.stop());
         this.localStream = null;
         this.localVideoStream = null;
+        this.screenStream = null;
+        this.screenSharing = false;
         this.analyserCtx?.close();
         this.analyserCtx = null;
     }

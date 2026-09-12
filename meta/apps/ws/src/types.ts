@@ -130,6 +130,11 @@ type RtcBroadcastZoneLeaveIncoming = {
     zoneId: string;
 };
 
+type RtcScreenShareIncoming = {
+    type: 'rtc:screen-share';
+    sharing: boolean;
+};
+
 export type IncomingMessage =
     | JoinMessage
     | MoveMessage
@@ -155,7 +160,8 @@ export type IncomingMessage =
     | RtcKnockAcceptIncoming
     | RtcKnockDenyIncoming
     | RtcBroadcastZoneJoinIncoming
-    | RtcBroadcastZoneLeaveIncoming;
+    | RtcBroadcastZoneLeaveIncoming
+    | RtcScreenShareIncoming;
 
 // ─── Outgoing messages (server → client) ─────────────────────────────────────
 
@@ -344,6 +350,12 @@ type RtcPeerLeftOutgoing = {
     peerId: string;
 };
 
+type RtcScreenShareStateOutgoing = {
+    type: 'rtc:screen-share-state';
+    userId: string;
+    sharing: boolean;
+};
+
 export type OutgoingMessage =
     | SpaceJoinedMessage
     | UserJoinedMessage
@@ -370,4 +382,5 @@ export type OutgoingMessage =
     | RtcPeerLeftOutgoing
     | RtcKnockRelayOutgoing
     | RtcKnockResponseRelayOutgoing
-    | RtcBroadcastZoneStateOutgoing;
+    | RtcBroadcastZoneStateOutgoing
+    | RtcScreenShareStateOutgoing;

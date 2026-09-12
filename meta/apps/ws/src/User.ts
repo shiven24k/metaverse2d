@@ -5,7 +5,7 @@ import client from "@repo/db/client";
 import { auth } from "./lib/auth";
 import { getBlockingCells, invalidateBlockingCache } from "./blockingCache";
 import { ProximityChatManager } from "./proximityChatManager";
-import { getEffectivePlan, isBroadcastAllowed } from "./lib/planAccess";
+import { getEffectivePlan, isBroadcastAllowed, isScreenShareAllowed } from "./lib/planAccess";
 import { randomUUID } from "crypto";
 
 // Conference room state — in-memory, ephemeral
@@ -67,6 +67,11 @@ export class User {
     public isGuest: boolean;
     public role: string = 'User';
     private spaceId?: string;
+    /** Creator of the joined space — plan-gated space features (concurrent-user
+     *  capacity, broadcast zones) check the OWNER's plan, not the joiner's. */
+    private spaceOwnerId?: string;
+    /** Whether this user is currently screen-sharing (relayed to the room for UI badges). */
+    public screenSharing: boolean = false;
     public x: number;
     public y: number;
     public currentRoomKey: string | null = null;
@@ -202,6 +207,7 @@ export class User {
                     }
 
                     this.spaceId = spaceId;
+                    this.spaceOwnerId = space.creatorId;
 
                     // Evict any stale session for the same userId (reconnect scenario).
                     // Clearing spaceId prevents the stale session's destroy() from
@@ -218,14 +224,18 @@ export class User {
                         }
                     }
 
-                    // Plan-gated room capacity (maxConcurrentUsers). Counted AFTER
-                    // stale-session eviction so reconnects don't count against themselves.
-                    const joinPlan = await getEffectivePlan(this.userId);
+                    // Plan-gated room capacity (maxConcurrentUsers) — the SPACE
+                    // OWNER's plan defines the room's capacity (that's what they
+                    // paid for: "N concurrent users per space"). Guests and Free
+                    // members must not shrink a paid owner's room.
+                    // Counted AFTER stale-session eviction so reconnects don't
+                    // count against themselves.
+                    const ownerPlan = await getEffectivePlan(space.creatorId);
                     const roomCount = getRoomManager().rooms.get(spaceId)?.length ?? 0;
-                    if (roomCount >= joinPlan.maxConcurrentUsers) {
+                    if (roomCount >= ownerPlan.maxConcurrentUsers) {
                         this.failWith(
                             'forbidden',
-                            `This space is full (${joinPlan.maxConcurrentUsers} concurrent users on the ${joinPlan.tier} plan)`
+                            `This space is full (${ownerPlan.maxConcurrentUsers} concurrent users on the ${ownerPlan.tier} plan)`
                         );
                         return;
                     }
@@ -508,19 +518,57 @@ export class User {
                     break;
                 }
 
-                case 'rtc:broadcast-zone-join': {
+                case 'rtc:screen-share': {
+                    // Screen share is a per-USER plan feature (STARTER+), unlike
+                    // room capacity / broadcast zones which gate on the space
+                    // owner's plan. The media itself is P2P (replaceTrack on the
+                    // existing video sender — no extra signaling); this relay
+                    // (a) enforces the plan server-side for the share state and
+                    // (b) tells the room who is sharing so UIs can show badges.
                     if (!this.userId || !this.spaceId) break;
+                    const sharing = parsedData.sharing === true;
 
-                    // Broadcast zones are a Pro-gated feature — soft-deny with a
-                    // notification toast instead of killing the connection.
-                    if (!(await isBroadcastAllowed(this.userId))) {
+                    if (sharing && !(await isScreenShareAllowed(this.userId))) {
                         this.send({
                             type: 'notification',
                             payload: {
                                 id: randomUUID(),
                                 notifType: 'announcement',
-                                title: 'Broadcast zones require the Pro plan',
-                                message: 'Upgrade to Pro to use broadcast / cinema-hall zones.',
+                                title: 'Screen share requires Starter or Pro',
+                                message: 'Upgrade to Starter or Pro to share your screen in calls.',
+                                priority: 'normal',
+                                timestamp: Date.now(),
+                            },
+                        });
+                        break;
+                    }
+
+                    this.screenSharing = sharing;
+                    getRoomManager().broadcast(
+                        { type: 'rtc:screen-share-state', userId: this.userId, sharing },
+                        this,
+                        this.spaceId
+                    );
+                    break;
+                }
+
+                case 'rtc:broadcast-zone-join': {
+                    if (!this.userId || !this.spaceId || !this.spaceOwnerId) break;
+
+                    // Broadcast zones are a Pro feature of the SPACE (like room
+                    // capacity): the OWNER's plan decides. Zone creation already
+                    // 403s non-Pro owners via the metadata endpoint, so this gate
+                    // mainly protects against tampering — but crucially it lets
+                    // the owner's Free/STARTER members join and LISTEN in a Pro
+                    // owner's cinema hall instead of demanding every joiner be Pro.
+                    if (!(await isBroadcastAllowed(this.spaceOwnerId))) {
+                        this.send({
+                            type: 'notification',
+                            payload: {
+                                id: randomUUID(),
+                                notifType: 'announcement',
+                                title: 'Broadcast zones require Pro',
+                                message: 'This space needs the Pro plan for broadcast / cinema-hall zones. Ask the owner to upgrade.',
                                 priority: 'normal',
                                 timestamp: Date.now(),
                             },
@@ -794,6 +842,15 @@ export class User {
                 if (u.id !== this.id) {
                     u.send({ type: 'rtc:peer-left', peerId: this.userId! });
                 }
+            }
+
+            // Clear the screen-share badge if this user was sharing.
+            if (this.screenSharing && this.userId) {
+                getRoomManager().broadcast(
+                    { type: 'rtc:screen-share-state', userId: this.userId, sharing: false },
+                    this,
+                    this.spaceId
+                );
             }
 
             // Clean up broadcast zones

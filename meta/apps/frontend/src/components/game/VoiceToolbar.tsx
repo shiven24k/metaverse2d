@@ -1,17 +1,20 @@
 interface VoiceToolbarProps {
     micEnabled: boolean;
     cameraEnabled: boolean;
+    screenSharing: boolean;
+    canScreenShare: boolean;
     deafened: boolean;
     connectedPeers: number;
     onToggleMic: () => void;
     onToggleCamera: () => void;
+    onToggleScreenShare: () => void;
     onToggleDeafen: () => void;
     onLeaveCall: () => void;
 }
 
 export function VoiceToolbar({
-    micEnabled, cameraEnabled, deafened, connectedPeers,
-    onToggleMic, onToggleCamera, onToggleDeafen, onLeaveCall,
+    micEnabled, cameraEnabled, screenSharing, canScreenShare, deafened, connectedPeers,
+    onToggleMic, onToggleCamera, onToggleScreenShare, onToggleDeafen, onLeaveCall,
 }: VoiceToolbarProps) {
     if (connectedPeers === 0) return null;
 
@@ -58,6 +61,15 @@ export function VoiceToolbar({
                 active={cameraEnabled}
                 icon={cameraEnabled ? '📹' : '📷'}
             />
+
+            {canScreenShare && (
+                <ToolbarBtn
+                    onClick={onToggleScreenShare}
+                    title={screenSharing ? 'Stop sharing screen' : 'Share your screen'}
+                    active={screenSharing}
+                    icon="🖥️"
+                />
+            )}
 
             <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.1)', margin: '0 2px' }} />
 

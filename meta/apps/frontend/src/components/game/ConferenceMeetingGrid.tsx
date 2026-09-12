@@ -15,9 +15,12 @@ interface Props {
     participants: ConferenceParticipant[];
     micEnabled: boolean;
     cameraEnabled: boolean;
+    screenSharing: boolean;
+    canScreenShare: boolean;
     deafened: boolean;
     onToggleMic: () => void;
     onToggleCamera: () => void;
+    onToggleScreenShare: () => void;
     onToggleDeafen: () => void;
     onLeaveCall: () => void;
 }
@@ -156,8 +159,8 @@ function TbBtn({ onClick, title, active, icon, danger = false }: {
 
 export function ConferenceMeetingGrid({
     participants,
-    micEnabled, cameraEnabled, deafened,
-    onToggleMic, onToggleCamera, onToggleDeafen, onLeaveCall,
+    micEnabled, cameraEnabled, screenSharing, canScreenShare, deafened,
+    onToggleMic, onToggleCamera, onToggleScreenShare, onToggleDeafen, onLeaveCall,
 }: Props) {
     const count = participants.length;
     const cols = gridCols(count);
@@ -202,6 +205,14 @@ export function ConferenceMeetingGrid({
                 <TbBtn onClick={onToggleMic} title={micEnabled ? 'Mute mic' : 'Unmute mic'} active={micEnabled} icon={micEnabled ? '🎙️' : '🔇'} danger={!micEnabled} />
                 <TbBtn onClick={onToggleDeafen} title={deafened ? 'Undeafen' : 'Deafen'} active={!deafened} icon={deafened ? '🔕' : '🎧'} danger={deafened} />
                 <TbBtn onClick={onToggleCamera} title={cameraEnabled ? 'Turn off camera' : 'Turn on camera'} active={cameraEnabled} icon={cameraEnabled ? '📹' : '📷'} />
+                {canScreenShare && (
+                    <TbBtn
+                        onClick={onToggleScreenShare}
+                        title={screenSharing ? 'Stop sharing screen' : 'Share your screen'}
+                        active={screenSharing}
+                        icon="🖥️"
+                    />
+                )}
                 <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
                 <button
                     onClick={onLeaveCall}

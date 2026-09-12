@@ -24,7 +24,7 @@ From `packages/db/prisma/schema.prisma`:
 | Model | Key fields | Notes |
 |---|---|---|
 | `Plan` | `tier` (FREE/STARTER/PRO), `billingPeriod` ("monthly"/"yearly"), `priceInPaiseINR`, `maxSpaces`, `maxMembersPerSpace`, `maxConcurrentUsers`, `screenShareEnabled`, `broadcastEnabled`, `razorpayPlanId?` | unique `(tier, billingPeriod)`; catalog only |
-| `Subscription` | `ownerId` **unique**, `planId`, `status`, `razorpaySubscriptionId?` unique, `razorpayCustomerId?`, `currentPeriodStart/End?`, `trialEndsAt?`, `cancelAtPeriodEnd`, `graceEndsAt?` | one per user; `graceEndsAt` = dunning deadline |
+| `Subscription` | `ownerId` **unique**, `planId`, `status`, `razorpaySubscriptionId?` unique, `razorpayCustomerId?`, `currentPeriodStart/End?`, `trialEndsAt?`, `cancelAtPeriodEnd`, `graceEndsAt?`, **`pendingPlanId?`, `pendingRazorpaySubscriptionId?` unique, `pendingShortUrl?`** | one per user; `graceEndsAt` = dunning deadline; `pending*` = an in-flight checkout whose payment hasn't been confirmed yet (the current `planId`/`status` are left untouched until it is) |
 | `Invoice` | `subscriptionId`, `razorpayPaymentId?` unique, `razorpayInvoiceId?` unique, `amountInPaise`, `currency`, `status`, `paidAt?` | unique ids give webhook idempotency |
 | `AdminAuditLog` | `adminId`, `action`, `targetType`, `targetId`, `metadata?` | every manual override is recorded |
 
@@ -44,33 +44,40 @@ From `packages/db/prisma/schema.prisma`:
 
 ## 3. End-to-end flow
 
+Checkout runs in a **Razorpay modal on the app's own page** (`checkout.js`), so the user is never redirected to `api.razorpay.com` and can't get "stuck" there. Payment is confirmed **synchronously** via `POST /billing/verify` (which asks Razorpay's API directly); the webhook remains the async backup that also records the Invoice row.
+
 ```
 User (browser)                HTTP API                     Razorpay
   │  POST /billing/subscribe ─►│
   │                            │ Basic-auth create subscription ─►│
   │                            │◄─ { id, short_url } ─────────────│
-  │                            │ upsert Subscription (TRIALING)
-  │◄─ { shortUrl } ────────────│
-  │  window.location = shortUrl ───────────────────────────────►│  hosted checkout
-  │                                                             │  customer pays
-  │                            │◄─ webhook subscription.activated/charged
-  │                            │ verify HMAC (timing-safe)
-  │                            │ Invoice upsert (idempotent) + Subscription → ACTIVE
+  │                            │ upsert/update Subscription with
+  │                            │   pendingPlanId + pendingRazorpaySubscriptionId
+  │◄─ { subscriptionId } ──────│   (current planId/status untouched)
+  │  open Razorpay modal ─────────────────────────────────────────►│
+  │  (keyId from /billing/health)  customer pays                   │
+  │  handler: POST /billing/verify { paymentId } ─►│
+  │                            │ GET /subscriptions/:id (+ payment)
+  │                            │ activatePendingPlan → ACTIVE
   │                            │ invalidatePlanCache(ownerId)
   │  GET /billing/plan ───────►│ returns ACTIVE plan
+  │                            │ (webhook subscription.activated / charged
+  │                            │  is the async backup + Invoice recorder)
 ```
 
 ### Switching / downgrading
 `POST /billing/subscribe`:
-1. If already on the same plan in `TRIALING`/`ACTIVE`/`PAST_DUE` → `409` (prevents duplicate Razorpay subscriptions).
-2. If there is a live local sub with a `razorpaySubscriptionId` and the plan differs → the **old Razorpay sub is cancelled** (`cancel_at_cycle_end: true` for `ACTIVE`/`PAST_DUE`, immediate for `TRIALING`), then a **new** subscription is created and the local row is overwritten (status `TRIALING`, `cancelAtPeriodEnd: false`).
-3. The browser is redirected to the new `short_url`.
+1. If the requested plan is already the current plan in `ACTIVE`/`PAST_DUE`, or is already the pending plan → `409` (prevents duplicate Razorpay subscriptions).
+2. If there is an abandoned **pending checkout** already, that Razorpay sub is cancelled immediately.
+3. If there is a live sub on a **different** plan (`ACTIVE`/`PAST_DUE`), the old Razorpay sub is cancelled at `cancel_at_cycle_end: true` (the customer keeps paid access until the new payment confirms), then a new pending checkout is created.
+4. The local row keeps the CURRENT `planId`/`status` — only the `pending*` fields change. The plan flips to the new one when `POST /billing/verify` or the webhook confirms payment.
 
-> No proration — see §9. Downgrades currently take effect immediately (charged now) rather than at period end.
+> No proration — see §9. Downgrades take effect on webhook/verify confirmation.
 
 ### Cancel
 `POST /billing/cancel` (optional `reason` in body, logged):
-- `TRIALING` → Razorpay cancel **immediately**; local status set to `CANCELED` right away.
+- **pending checkout** → Razorpay sub cancelled immediately; the `pending*` fields are cleared (current plan untouched).
+- `TRIALING` (legacy) → Razorpay cancel **immediately**; local status set to `CANCELED` right away.
 - otherwise → `cancel_at_cycle_end: true`; local `cancelAtPeriodEnd = true`; access continues until the period ends, then the `subscription.cancelled` webhook flips it to `CANCELED`.
 
 ### Dunning
@@ -85,15 +92,16 @@ User (browser)                HTTP API                     Razorpay
 |---|---|
 | `GET /api/v1/billing/plans` | Plan catalog (excludes `razorpayPlanId`). |
 | `GET /api/v1/billing/region` | Display-currency from IP (`CF-IPCountry` → `X-Country-Code` → optional `ipwho.is` → INR). Display-only. |
-| `GET /api/v1/billing/health` | Config flags: `razorpayConfigured`, `razorpayWebhookConfigured`, `resendConfigured`, `plansMissingRazorpayIds`. Drives the UI warning banner. |
+| `GET /api/v1/billing/health` | Config flags: `razorpayConfigured`, `razorpayWebhookConfigured`, `resendConfigured`, `plansMissingRazorpayIds`, and the **public `razorpayKeyId`** (used to init the checkout modal — key ids are safe to expose; the secret never leaves the server). Drives the UI warning banner. |
 
 ### Authenticated (`userMiddleware` → Bearer session)
 | Endpoint | Purpose |
 |---|---|
 | `GET /billing/plan` | Effective plan + subscription row (drives the UI). |
 | `GET /billing/invoices` | User's invoices (newest 20). |
-| `POST /billing/subscribe` | `{ planId }`. Rejects FREE, requires `razorpayPlanId`, serialized per-user (429 if a change is in flight), handles switching. Returns `{ subscriptionId, shortUrl, ... }`. |
+| `POST /billing/subscribe` | `{ planId }`. Rejects FREE, requires `razorpayPlanId`, serialized per-user (429 if a change is in flight), handles switching. Returns `{ subscriptionId, shortUrl, pendingPlan, ... }` — the app opens the Razorpay checkout modal with `subscriptionId` (hosted `shortUrl` is only the fallback). |
 | `POST /billing/cancel` | `{ reason? }` self-service cancel (see §3). |
+| `POST /billing/verify` | `{ paymentId? }` — fetches `GET /subscriptions/:id` directly from Razorpay: `active` → **activates the pending plan immediately** (+ records the paid Invoice from `paymentId` when captured); dead states (`cancelled/expired/halted/completed`) → clears the pending fields; still-pending → no-op. Called after the checkout modal reports success and when returning to `/billing` with a pending card, so the plan flips **even if the webhook is delayed or unconfigured**. |
 
 ### Webhook (no session — signature only)
 `POST /billing/webhook` — verified with `X-Razorpay-Signature` against `RAZORPAY_WEBHOOK_SECRET` using **`crypto.timingSafeEqual`**. Invalid/unsigned → **400** (so Razorpay retries). Unknown subscription ids are **200-acked** (stop retrying).
@@ -117,12 +125,14 @@ One helper: `apps/ws/src/lib/planAccess.ts::getEffectivePlan(userId)` — return
 
 FREE defaults (when no FREE row overrides): `maxSpaces 1`, `maxMembersPerSpace 5`, `maxConcurrentUsers 5`, no screen share, no broadcast.
 
+**Whose plan is checked?** Space-scoped limits (room capacity, broadcast zones) gate on the **space owner's** plan — the owner bought those seats/features for their space, so guests and Free members must not shrink a paid owner's room. User-level features (screen share) gate on the **user's own** plan.
+
 | Limit | Enforced at | Mechanism |
 |---|---|---|
-| `maxSpaces` | `POST /space` | `enforcePlanLimit("maxSpaces")` → 403 |
-| `maxConcurrentUsers` | WS `join` (after stale eviction) | `failWith("forbidden")` toast |
-| `broadcastEnabled` | WS `rtc:broadcast-zone-join`; `PUT /placed/:id/metadata` broadcast zone | soft-deny toast / 403 |
-| `screenShareEnabled` | WebRTC screen-share path | plan flag |
+| `maxSpaces` | `POST /space` | `enforcePlanLimit("maxSpaces")` → 403 (own plan) |
+| `maxConcurrentUsers` | WS `join` (after stale eviction) | checks **owner's** plan → `failWith("forbidden")` toast |
+| `broadcastEnabled` | WS `rtc:broadcast-zone-join`; `PUT /placed/:id/metadata` broadcast zone | **owner's** plan; soft-deny toast / 403 (a Pro owner's Free members CAN listen in their cinema hall) |
+| `screenShareEnabled` | WS `rtc:screen-share` relay gate + client UI button | **sharer's own** plan; denied → toast, no relay |
 | `maxMembersPerSpace` | `POST /invite/:token/join`; access-request **approve** | counts members vs owner's plan → 403 |
 
 ---
@@ -184,7 +194,7 @@ Frontend: `apps/frontend/src/AdminPanelPage.tsx` at `/admin` (shows "Admin acces
 **Verify**
 - `GET /billing/health` → `razorpayConfigured: true`, `plansMissingRazorpayIds: 0`.
 - `GET /billing/plans` → non-empty.
-- Click Upgrade on `/billing` → Razorpay checkout; after paying, `/billing/plan` shows `ACTIVE`.
+- Click Upgrade on `/billing` → Razorpay **checkout modal** on the app's page; after paying, the modal handler calls `POST /billing/verify` and `/billing/plan` shows `ACTIVE` immediately (webhook is the async backup). Landing back on a "Pending checkout" card → click **"I've paid — verify"** (auto-runs once on load too).
 
 ---
 
@@ -205,7 +215,7 @@ Not yet implemented (documented so behavior isn't mistaken for a bug):
 | **No customer portal / update card** | Payment method changes go through Razorpay's hosted flow only. |
 | **Frontend polling during TRIALING/PAST_DUE** | BillingPage polls every 5s while checkout is pending/past-due to reflect webhook state without a manual refresh. |
 
-Recent correctness fixes (do not revert): PAST_DUE grace access, timing-safe webhook compare, FREE-plan checkout rejection, per-user subscribe lock, invoice `P2002` guard, `maxMembersPerSpace` enforcement.
+Recent correctness fixes (do not revert): PAST_DUE grace access, timing-safe webhook compare, FREE-plan checkout rejection, per-user subscribe lock, invoice `P2002` guard, `maxMembersPerSpace` enforcement, **checkout modal + `POST /billing/verify`** (no hosted-page redirect, plan activates without the webhook), **owner-plan gates** for `maxConcurrentUsers`/broadcast zones, **screen share (STARTER+)**.
 
 ---
 
@@ -213,7 +223,7 @@ Recent correctness fixes (do not revert): PAST_DUE grace access, timing-safe web
 
 | File | Role |
 |---|---|
-| `apps/http/src/routes/v1/billing.ts` | Plans/region/health, subscribe, cancel, webhook, helpers |
+| `apps/http/src/routes/v1/billing.ts` | Plans/region/health, subscribe, cancel, **verify**, webhook, helpers |
 | `apps/http/src/routes/v1/adminPanel.ts` | Admin panel endpoints + override audit |
 | `apps/http/src/lib/dunning.ts` | Grace-period downgrade scheduler |
 | `apps/http/src/lib/email.ts` | Resend transactional email (env-gated) |
