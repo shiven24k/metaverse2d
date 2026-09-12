@@ -2,6 +2,7 @@ import { Router } from "express";
 import { userMiddleware } from "../../middleware/user";
 import client from "@repo/db/client";
 import { getRoomManager } from "../../../../ws/src/getRoomManager";
+import { MoveCardSchema, CreateCardCommentSchema } from "../../types";
 
 export const boardRouter = Router();
 
@@ -15,6 +16,20 @@ async function broadcastBoardUpdate(spaceId: string) {
     } catch {
         // WS not running in this process (e.g. tests), skip silently
     }
+}
+
+async function assertBoardAccess(userId: string, boardId: string): Promise<{ spaceId: string }> {
+    const board = await client.kanbanBoard.findUnique({
+        where: { id: boardId },
+        include: { space: { select: { id: true, creatorId: true } } },
+    });
+    if (!board) throw new Error("Board not found");
+    if (board.space.creatorId === userId) return { spaceId: board.space.id };
+    const member = await client.spaceMember.findFirst({
+        where: { spaceId: board.space.id, userId },
+    });
+    if (!member) throw new Error("Not a space member");
+    return { spaceId: board.space.id };
 }
 
 // POST /api/v1/board/:boardId/column
@@ -96,12 +111,19 @@ boardRouter.post("/column/:columnId/card", userMiddleware, async (req, res) => {
     });
     if (!column) { res.status(404).json({ message: "Column not found" }); return; }
 
+    const ownerId = column.board.space.creatorId;
+    const spaceId = column.board.space.id;
+    if (ownerId !== req.userId) {
+        const member = await client.spaceMember.findFirst({ where: { spaceId, userId: req.userId! } });
+        if (!member) { res.status(403).json({ message: "Not authorized" }); return; }
+    }
+
     const maxOrder = column.cards.reduce((m, c) => Math.max(m, c.order), -1);
     const card = await client.kanbanCard.create({
         data: { columnId: column.id, title: title.trim(), order: maxOrder + 1 },
     });
 
-    await broadcastBoardUpdate(column.board.space.id);
+    await broadcastBoardUpdate(spaceId);
     res.json({ card });
 });
 
@@ -139,17 +161,25 @@ boardRouter.put("/card/:id", userMiddleware, async (req, res) => {
 
 // PUT /api/v1/board/card/:id/move
 boardRouter.put("/card/:id/move", userMiddleware, async (req, res) => {
-    const { columnId, order } = req.body;
-    if (!columnId || order === undefined) {
-        res.status(400).json({ message: "columnId and order required" });
+    const parsed = MoveCardSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten().fieldErrors });
         return;
     }
+    const { columnId, order } = parsed.data;
 
     const card = await client.kanbanCard.findUnique({
         where: { id: req.params.id },
-        include: { column: { include: { board: { include: { space: { select: { id: true } } } } } } },
+        include: { column: { include: { board: { include: { space: { select: { id: true, creatorId: true } } } } } } },
     });
     if (!card) { res.status(404).json({ message: "Card not found" }); return; }
+
+    try {
+        await assertBoardAccess(req.userId!, card.column.boardId);
+    } catch (err) {
+        res.status(403).json({ message: (err as Error).message });
+        return;
+    }
 
     const targetColumn = await client.kanbanColumn.findUnique({
         where: { id: columnId },
@@ -199,14 +229,25 @@ boardRouter.delete("/card/:id", userMiddleware, async (req, res) => {
 
 // POST /api/v1/board/card/:id/comment
 boardRouter.post("/card/:id/comment", userMiddleware, async (req, res) => {
-    const { content } = req.body;
-    if (!content || typeof content !== "string" || !content.trim()) {
-        res.status(400).json({ message: "Comment content required" });
+    const parsed = CreateCardCommentSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten().fieldErrors });
         return;
     }
+    const { content } = parsed.data;
 
-    const card = await client.kanbanCard.findUnique({ where: { id: req.params.id } });
+    const card = await client.kanbanCard.findUnique({
+        where: { id: req.params.id },
+        include: { column: { include: { board: { include: { space: { select: { id: true, creatorId: true } } } } } } },
+    });
     if (!card) { res.status(404).json({ message: "Card not found" }); return; }
+
+    try {
+        await assertBoardAccess(req.userId!, card.column.boardId);
+    } catch (err) {
+        res.status(403).json({ message: (err as Error).message });
+        return;
+    }
 
     const comment = await client.kanbanComment.create({
         data: { cardId: card.id, userId: req.userId!, content: content.trim() },
@@ -226,6 +267,19 @@ boardRouter.post("/card/:id/comment", userMiddleware, async (req, res) => {
 
 // GET /api/v1/board/card/:id/comments
 boardRouter.get("/card/:id/comments", userMiddleware, async (req, res) => {
+    const card = await client.kanbanCard.findUnique({
+        where: { id: req.params.id },
+        include: { column: { include: { board: { include: { space: { select: { id: true, creatorId: true } } } } } } },
+    });
+    if (!card) { res.status(404).json({ message: "Card not found" }); return; }
+
+    try {
+        await assertBoardAccess(req.userId!, card.column.boardId);
+    } catch (err) {
+        res.status(403).json({ message: (err as Error).message });
+        return;
+    }
+
     const comments = await client.kanbanComment.findMany({
         where: { cardId: req.params.id },
         include: { user: { select: { username: true, name: true } } },

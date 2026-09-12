@@ -8,7 +8,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed": "npx tsx prisma/seed.ts",
-    "set-platform-admin": "npx tsx prisma/set-platform-admin.ts"
+    "set-platform-admin": "npx tsx prisma/set-platform-admin.ts",
+    "set-plan-ids": "npx tsx prisma/set-plan-ids.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

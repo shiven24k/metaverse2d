@@ -64,7 +64,12 @@ betterAuth({
   account: { accountLinking: { enabled: true, trustedProviders: ['google','github'] }, skipStateCookieCheck: true },
   emailAndPassword: { enabled: true },
   socialProviders: { google?, github? },   // only if env creds present
-  user: { additionalFields: { role: { type: "string", defaultValue: "User", input: false } } },
+  user: {
+    additionalFields: {
+      role: { type: "string", defaultValue: "User", input: false },
+      platformRole: { type: "string", defaultValue: "USER", input: false },
+    },
+  },
   databaseHooks: {
     user: { create: { after: grantCommonItemsToNewUser } },
   },
@@ -86,9 +91,9 @@ The two middleware wrap every protected route:
 | `requirePlatformAdmin` | — (reads `req.platformRole`) | 403 unless `PLATFORM_ADMIN` |
 | `enforcePlanLimit(key)` | — (reads `req.userId`; must run after `userMiddleware`) | 403 `Upgrade required` / `Plan limit reached` |
 
-`requirePlatformAdmin` is the **platform-level** admin gate (SaaS). It is distinct from both `adminMiddleware` (legacy content admin) and the Space-level `OWNER`/`MEMBER` RBAC. No route currently uses it — it ships ready for the future admin panel.
+`requirePlatformAdmin` is the **platform-level** admin gate (SaaS). It is distinct from both `adminMiddleware` (legacy content admin) and the Space-level `OWNER`/`MEMBER` RBAC. It is actively used by `/api/v1/admin/panel/*` (the SaaS admin panel).
 
-`enforcePlanLimit` is the central plan gate (see §3.20). `screenShareEnabled` is gate-ready but no screen-share feature exists yet; `maxMembersPerSpace`/`maxConcurrentUsers` numeric limits are enforced on the WS side (join), not HTTP.
+`enforcePlanLimit` is the central plan gate (see §3.20). `maxSpaces` is enforced on `POST /space`; `maxMembersPerSpace` is enforced on HTTP invite join and access-request approval; `maxConcurrentUsers` is enforced on the WS `join`.
 
 ---
 

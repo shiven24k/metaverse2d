@@ -163,7 +163,15 @@ Frontend: `apps/frontend/src/AdminPanelPage.tsx` at `/admin` (shows "Admin acces
 2. Seed the catalog: `pnpm --filter @repo/db seed` (upserts FREE/STARTER/PRO × monthly/yearly).
 
 **Razorpay**
-3. Create a Razorpay **Plan** for each paid catalog row and set `Plan.razorpayPlanId` (SQL or dashboard). `GET /billing/health` reports how many are missing.
+3. Create a Razorpay **Plan** for each paid catalog row, then map the ids without needing `psql`:
+   ```bash
+   pnpm --filter @repo/db set-plan-ids \
+     STARTER monthly plan_XXXX \
+     STARTER yearly  plan_YYYY \
+     PRO     monthly plan_ZZZZ \
+     PRO     yearly  plan_WWWW
+   ```
+   `GET /billing/health` reports how many are still missing.
 4. Set the API keys on the **API server** (`apps/http/.env`): `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`.
 5. In the Razorpay dashboard, point the webhook at `https://<api-host>/api/v1/billing/webhook` and select the subscription events in §4.
 

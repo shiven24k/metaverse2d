@@ -139,8 +139,8 @@ describe('PUT /space/:spaceId/resize', () => {
         expect(res.status).toBe(400);
     });
 
-    it('returns 400 for width above maximum (101)', async () => {
-        const res = await request(app).put('/space/sp1/resize').send({ width: 101, height: 20 });
+    it('returns 400 for width above maximum (201)', async () => {
+        const res = await request(app).put('/space/sp1/resize').send({ width: 201, height: 20 });
         expect(res.status).toBe(400);
     });
 

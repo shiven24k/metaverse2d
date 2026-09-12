@@ -48,7 +48,7 @@ node scripts/generate-avatars.mjs
 pnpm dev
 ```
 
-Ports: frontend `:5173` · http `:3000` · ws `:3001`
+Ports: frontend `:5173` · http+ws `:3000` (combined process; standalone ws `:3001`)
 
 ---
 
@@ -63,7 +63,7 @@ meta/
 │   │       └── items/     Item sprites (16–48px PNGs)
 │   ├── http/              Express REST API (port 3000)
 │   │   └── uploads/defaults/  Avatars + fallback copies of sprites
-│   └── ws/                WebSocket server (port 3001)
+│   └── ws/                Standalone WebSocket server (port 3001, optional)
 ├── packages/
 │   └── db/
 │       ├── prisma/
@@ -199,7 +199,7 @@ Portals appear in the `GET /api/v1/space/:id` response under the `portals` array
 
 ## WebSocket Protocol
 
-Connect to `ws://localhost:3001`. First message must be `join`.
+Connect to `ws://localhost:3000` (combined process) or `ws://localhost:3001` if running the standalone WS server. First message must be `join`.
 
 ### Client → Server
 
@@ -480,25 +480,40 @@ node scripts/generate-avatars.mjs   # Regenerate avatar sprite sheets
 
 ## Environment Variables
 
-Create `.env` files (not committed):
+Copy the `.env.example` files in each app/package and fill in your values:
 
-**`apps/http/.env`**
+**`apps/http/.env`** (see [`apps/http/.env.example`](./apps/http/.env.example))
 ```
 DATABASE_URL=postgresql://postgres:password@localhost:5432/metaverse
+PORT=3000
 CORS_ORIGIN=http://localhost:5173,http://localhost:5174
 BETTER_AUTH_URL=http://localhost:3000
 BETTER_AUTH_SECRET=<strong-secret>
+
+# Billing
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
+
+# Email
+RESEND_API_KEY=
+RESEND_FROM="Metaverse 2D <no-reply@metaverse2d.com>"
+
+APP_URL=http://localhost:5173
+ACCESS_DECISION_SECRET=
+INTERNAL_KICK_SECRET=
 ```
 
-**`apps/ws/.env`**
+**`apps/ws/.env`** (only for standalone WS; see [`apps/ws/.env.example`](./apps/ws/.env.example))
 ```
 DATABASE_URL=postgresql://postgres:password@localhost:5432/metaverse
 BETTER_AUTH_SECRET=<same-as-http>
 BETTER_AUTH_URL=http://localhost:3000
+INTERNAL_KICK_SECRET=
 ```
 
-**`apps/frontend/.env`** (optional, Vite dev server)
+**`apps/frontend/.env`** (optional, Vite dev server; see [`apps/frontend/.env.example`](./apps/frontend/.env.example))
 ```
 VITE_API_URL=http://localhost:3000
-VITE_WS_URL=ws://localhost:3001
+VITE_WS_URL=ws://localhost:3000
 ```

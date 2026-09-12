@@ -6,7 +6,7 @@ import { enforcePlanLimit } from "../../middleware/enforcePlanLimit";
 import { isBroadcastAllowed, getEffectivePlan } from "../../../../ws/src/lib/planAccess";
 import { getRoomManager } from "../../../../ws/src/getRoomManager";
 import { sendEmail } from "../../lib/email";
-import { AddElementSchema, CreateSpaceSchema, DeleteElementSchema, BatchAddElementSchema, BatchPlaceItemSchema, BatchDeleteElementSchema, BatchDeleteItemSchema } from "../../types";
+import { AddElementSchema, CreateSpaceSchema, DeleteElementSchema, BatchAddElementSchema, BatchPlaceItemSchema, BatchDeleteElementSchema, BatchDeleteItemSchema, ResizeSpaceSchema, CreateInviteSchema } from "../../types";
 
 export const spaceRouter = Router();
 
@@ -780,11 +780,12 @@ spaceRouter.post("/:spaceId/portal", userMiddleware, async (req, res) => {
 // ─── Resize route ──────────────────────────────────────────────────────────────
 
 spaceRouter.put("/:spaceId/resize", userMiddleware, async (req, res) => {
-    const { width, height, offsetX, offsetY } = req.body;
-    if (!width || !height || width < 5 || height < 5 || width > 200 || height > 200) {
-        res.status(400).json({ message: "width and height required (5–200)" });
+    const parsed = ResizeSpaceSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten().fieldErrors });
         return;
     }
+    const { width, height, offsetX, offsetY } = parsed.data;
     const space = await client.space.findUnique({
         where: { id: req.params.spaceId, creatorId: req.userId! },
     });
@@ -793,8 +794,8 @@ spaceRouter.put("/:spaceId/resize", userMiddleware, async (req, res) => {
         return;
     }
 
-    const dX = typeof offsetX === "number" ? offsetX : 0;
-    const dY = typeof offsetY === "number" ? offsetY : 0;
+    const dX = offsetX ?? 0;
+    const dY = offsetY ?? 0;
 
     await client.$transaction(async (tx) => {
         await tx.space.update({ where: { id: req.params.spaceId }, data: { width, height } });
@@ -853,7 +854,12 @@ spaceRouter.post("/:spaceId/invite", userMiddleware, async (req, res) => {
     const space = await client.space.findUnique({ where: { id: req.params.spaceId }, select: { creatorId: true } });
     if (!space || space.creatorId !== req.userId) { res.status(403).json({ message: "Unauthorized" }); return; }
 
-    const { expiresInDays, maxUses } = req.body;
+    const parsed = CreateInviteSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten().fieldErrors });
+        return;
+    }
+    const { expiresInDays, maxUses } = parsed.data;
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 86400_000) : null;
 
     const invite = await client.spaceInvite.create({

@@ -111,6 +111,27 @@ export const CreateItemSchema = z.object({
     season: z.string().optional(),
 })
 
+export const ResizeSpaceSchema = z.object({
+    width: z.number().int().min(5).max(200),
+    height: z.number().int().min(5).max(200),
+    offsetX: z.number().int().optional(),
+    offsetY: z.number().int().optional(),
+});
+
+export const CreateInviteSchema = z.object({
+    expiresInDays: z.number().int().min(1).max(30).optional(),
+    maxUses: z.number().int().min(1).max(1000).optional(),
+});
+
+export const MoveCardSchema = z.object({
+    columnId: z.string().min(1),
+    order: z.number().int().min(0),
+});
+
+export const CreateCardCommentSchema = z.object({
+    content: z.string().min(1).max(2000),
+});
+
 declare global {
     namespace Express {
       export interface Request {

@@ -9,12 +9,12 @@ Technical reference for AI agents working in this codebase. Covers architecture,
 ```
 meta/
 ├── apps/frontend/   React 19 + Vite SPA  (port 5173)
-├── apps/http/       Express REST API      (port 3000)
-├── apps/ws/         WebSocket server      (port 3001)
+├── apps/http/       Express REST API + WS (port 3000, default combined process)
+├── apps/ws/         Standalone WS server  (port 3001, optional split-server path)
 └── packages/db/     Prisma 6.3.1 + PostgreSQL
 ```
 
-**Auth**: better-auth with the `bearer()` plugin. All protected endpoints require `Authorization: Bearer <token>`. The WS server validates tokens by calling `auth.api.getSession()` from `@better-auth/core`. Token is returned in the `set-auth-token` response header on sign-up/sign-in. Two session `additionalFields`: `role` (Admin\|User, legacy content admin) and `platformRole` (USER\|PLATFORM_ADMIN, global SaaS role). `userMiddleware`/`adminMiddleware` set `req.platformRole` from the session; `requirePlatformAdmin` gates on it (currently unused — reserved for the SaaS admin panel).
+**Auth**: better-auth with the `bearer()` plugin. All protected endpoints require `Authorization: Bearer <token>`. The WS server validates tokens by calling `auth.api.getSession()` from `@better-auth/core`. Token is returned in the `set-auth-token` response header on sign-up/sign-in. Two session `additionalFields`: `role` (Admin\|User, legacy content admin) and `platformRole` (USER\|PLATFORM_ADMIN, global SaaS role). `userMiddleware`/`adminMiddleware` set `req.platformRole` from the session; `requirePlatformAdmin` gates on it and is actively used by `/api/v1/admin/panel/*`.
 
 **Build**: esbuild bundles `http` and `ws` into `dist/index.js`. These bundles **cannot find the Prisma native engine** at runtime — always start services in **dev mode** with `tsx watch`:
 ```bash
@@ -52,7 +52,7 @@ The globally-installed Prisma (if 7.x) will reject `url = env(...)` in the datas
 | `DailyGift` | userId, lastClaim, streak | one per user |
 | `ChestInteraction` | userId, placedItemId, lastAt | unique(userId, placedItemId) |
 | `BannedUser` | userId, reason | WS join rejects banned users |
-| `Plan` | tier, billingPeriod, priceInPaiseINR, maxSpaces, maxConcurrentUsers, screenShareEnabled, broadcastEnabled | unique(tier, billingPeriod); SaaS catalog |
+| `Plan` | tier, name, billingPeriod, priceInPaiseINR, maxSpaces, maxMembersPerSpace, maxConcurrentUsers, screenShareEnabled, broadcastEnabled, razorpayPlanId? | unique(tier, billingPeriod); SaaS catalog |
 | `Subscription` | ownerId (unique), planId, status, razorpaySubscriptionId?, graceEndsAt? | status = TRIALING\|ACTIVE\|PAST_DUE\|CANCELED\|EXPIRED; wired via billing.ts + planAccess gating + dunning |
 | `Invoice` | subscriptionId, razorpayPaymentId?/razorpayInvoiceId? (unique) | webhook idempotency |
 | `AdminAuditLog` | adminId, action, targetType, targetId, metadata Json? | admin action trail |
@@ -207,7 +207,7 @@ For each active room:
 ### Key constants
 
 ```typescript
-WS_URL  = import.meta.env.VITE_WS_URL  || 'ws://localhost:3001'
+WS_URL  = import.meta.env.VITE_WS_URL  || 'ws://localhost:3000'
 API     = import.meta.env.VITE_API_URL  || 'http://localhost:3000'
 TILE_SIZE = 50  // canvas pixels per tile
 ```
@@ -364,15 +364,20 @@ Seeds (in order):
 1. All element types (`el-grass` through `el-glass-wall`)
 2. All item types (`item-sofa` through `item-office-printer`)
 3. 2 map templates (Park 20×20, Garden 15×15)
-4. 3 avatars (`avatar-default`, `avatar-ninja`, `avatar-wizard`)
-5. Office NPCs for each existing space with 0 NPCs (Manager Mike, Dev Dana, HR Helen)
+4. 6 avatars (`avatar-ceo`, `avatar-dev`, `avatar-designer`, `avatar-hr`, `avatar-marketing`, `avatar-intern`)
+5. Office NPCs for each existing space with 0 NPCs (Manager Mike, Dev Dana, HR Helen, Explorer Erik, Guide Bob, Merchant Maya)
 6. 6 Plan rows (FREE/STARTER/PRO × monthly/yearly) — placeholder INR prices + gating limits
 
-New spaces created via the API automatically receive the same 3 NPCs via `makeDefaultNpcs()` in `space.ts`.
+New spaces created via the API automatically receive the same 6 NPCs via `makeDefaultNpcs()` in `space.ts`.
 
 Promote a user to global admin (one-off script, never an API route):
 ```bash
 pnpm --filter @repo/db set-platform-admin you@example.com   # prisma/set-platform-admin.ts
+```
+
+Map Razorpay plan ids after creating them in the dashboard (one-off script, never an API route):
+```bash
+pnpm --filter @repo/db set-plan-ids STARTER monthly plan_XXXX STARTER yearly plan_YYYY PRO monthly plan_ZZZZ PRO yearly plan_WWWW
 ```
 
 ---
