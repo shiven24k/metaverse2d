@@ -431,16 +431,6 @@ export default function HomePage() {
                 </div>
             </section>
 
-            {/* ─── TRUST BAR ─── */}
-            <section data-reveal style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 28px 10px' }}>
-                <p style={{ textAlign: 'center', fontFamily: FONT, fontSize: 13, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.faint, margin: '0 0 22px' }}>Trusted by remote teams</p>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 40, flexWrap: 'wrap' }}>
-                    {['North◇Loop', 'Pixelry', 'Bytehaus', 'Cloudkit', 'Studio∞', 'Meridian'].map(n => (
-                        <span key={n} className="mkt-logo-fade" style={{ fontFamily: FONT, fontWeight: 700, fontSize: 17, letterSpacing: '-0.01em', color: '#9a92b8' }}>{n}</span>
-                    ))}
-                </div>
-            </section>
-
             {/* ─── WHY OFFICEVERSE ─── */}
             <section style={{ maxWidth: 1120, margin: '0 auto', padding: '80px 28px 20px' }}>
                 <div data-reveal style={{ textAlign: 'center', maxWidth: 640, margin: '0 auto 52px' }}>
@@ -599,33 +589,6 @@ export default function HomePage() {
                             <div style={{ fontFamily: PIXEL, fontSize: 10, color: s.color, marginBottom: 10 }}>{s.n}</div>
                             <h4 style={{ fontFamily: FONT, fontSize: 18, fontWeight: 700, margin: '0 0 8px', color: C.text }}>{s.title}</h4>
                             <p style={{ fontFamily: FONT, fontSize: 14, lineHeight: 1.65, color: C.muted, margin: '0 auto', maxWidth: 260 }}>{s.body}</p>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-            {/* ─── TESTIMONIALS ─── */}
-            <section style={{ maxWidth: 1120, margin: '0 auto', padding: '70px 28px 20px' }}>
-                <div data-reveal style={{ textAlign: 'center', marginBottom: 48 }}>
-                    <Eyebrow>LOVED ON THE FLOOR</Eyebrow>
-                    <h2 style={{ fontFamily: FONT, fontSize: 'clamp(30px, 3.6vw, 42px)', lineHeight: 1.12, letterSpacing: '-0.03em', fontWeight: 800, margin: 0, color: C.text }}>Teams that ditched the call grid</h2>
-                </div>
-                <div className="mkt-testi-grid" data-reveal>
-                    {[
-                        { quote: '"Standup went from a dreaded 9am call to people just… wandering over to the whiteboard. Our interns finally feel like they\'re in the room."', name: 'Priya Nair', role: 'Design Lead, Pixelry', avatar: '/avatars/avatar-designer-front.png' },
-                        { quote: '"It\'s the first remote tool my whole team opens without being asked. The quests and seasonal drops are unreasonably motivating."', name: 'Marcus Bell', role: 'Eng Manager, Bytehaus', avatar: '/avatars/avatar-dev-front.png' },
-                        { quote: '"We onboarded 40 people in a week and nobody felt lost. They just followed Manager Mike around the office. Genuinely delightful."', name: 'Sofia Reyes', role: 'People Ops, Meridian', avatar: '/avatars/avatar-hr-front.png' },
-                    ].map(t => (
-                        <div key={t.name} style={{ borderRadius: 18, padding: 26, background: '#fff', border: '1px solid #ece8f7', boxShadow: '0 1px 2px rgba(33,28,59,0.04), 0 8px 24px rgba(76,29,149,0.05)' }}>
-                            <div style={{ color: '#f59e0b', fontSize: 14, marginBottom: 14, letterSpacing: 1.5 }}>★★★★★</div>
-                            <p style={{ fontFamily: FONT, fontSize: 15, lineHeight: 1.7, color: C.text, margin: '0 0 20px', fontWeight: 500 }}>{t.quote}</p>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                <img src={t.avatar} alt="" style={{ width: 40, height: 40, borderRadius: 12, objectFit: 'cover', objectPosition: 'center top', background: '#ede9fe', imageRendering: 'pixelated', border: '1px solid #ece8f7' }} />
-                                <div>
-                                    <div style={{ fontFamily: FONT, fontSize: 14, fontWeight: 700 }}>{t.name}</div>
-                                    <div style={{ fontFamily: FONT, fontSize: 12, color: C.muted }}>{t.role}</div>
-                                </div>
-                            </div>
                         </div>
                     ))}
                 </div>
