@@ -81,7 +81,7 @@ export default function BillingPage() {
     const [plansError, setPlansError] = useState<string | null>(null);
     const [msg, setMsg] = useState<{ text: string; isError: boolean } | null>(null);
     const [busy, setBusy] = useState(false);
-    const [health, setHealth] = useState<{ razorpayConfigured: boolean; plansMissingRazorpayIds: number } | null>(null);
+    const [health, setHealth] = useState<{ razorpayConfigured: boolean; plansMissingRazorpayIds: number; razorpayKeyId: string | null } | null>(null);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState("");
     const [cancelNote, setCancelNote] = useState("");
@@ -138,6 +138,40 @@ export default function BillingPage() {
         return () => clearInterval(id);
     }, [current?.subscription?.status, current?.pendingPlan?.id, fetchAll]);
 
+    // Ask the server to check the pending subscription's status directly with
+    // Razorpay. Activates the plan right after payment even if the webhook is
+    // delayed or missing. `paymentId` (from the checkout handler) also records
+    // the invoice immediately.
+    const verifyPayment = useCallback(async (paymentId?: string) => {
+        try {
+            const res = await fetch(`${API}/api/v1/billing/verify`, {
+                method: "POST",
+                headers: authHeaders,
+                body: JSON.stringify(paymentId ? { paymentId } : {}),
+            });
+            if (res.ok) {
+                const d = await res.json();
+                if (d.activated) {
+                    setMsg({ text: "Payment successful — your plan is now active! 🎉", isError: false });
+                } else if (d.cleared) {
+                    setMsg({ text: "The pending checkout is no longer valid (cancelled or expired).", isError: true });
+                }
+            }
+        } catch {
+            // Non-fatal — the 5s polling will pick up webhook updates anyway.
+        }
+        await fetchAll();
+    }, [authHeaders, fetchAll]);
+
+    // Returning from the hosted checkout page (or reloading with a pending
+    // checkout): check once whether the payment already went through.
+    useEffect(() => {
+        if (!current?.pendingPlan) return;
+        verifyPayment();
+        // Run only when a NEW pending checkout appears, not on every poll tick.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [current?.pendingPlan?.id]);
+
     const handleUpgrade = async (planId: string) => {
         setBusy(true);
         setMsg(null);
@@ -149,10 +183,38 @@ export default function BillingPage() {
             });
             if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
             const d = await res.json();
-            if (res.ok && d.shortUrl) {
-                // Razorpay hosted checkout handles the payment; the webhook
-                // flips the subscription status, and we refresh on return.
-                window.location.href = d.shortUrl;
+            if (res.ok && d.subscriptionId) {
+                const keyId = health?.razorpayKeyId;
+                // Preferred path: Razorpay checkout MODAL on our page — no
+                // redirect, and the handler verifies the payment immediately.
+                const RazorpayCtor = (window as unknown as { Razorpay?: new (options: Record<string, unknown>) => { open: () => void } }).Razorpay;
+                if (keyId && RazorpayCtor) {
+                    const rzp = new RazorpayCtor({
+                        key: keyId,
+                        subscription_id: d.subscriptionId,
+                        name: "OfficeVerse 2D",
+                        description: `${d.pendingPlan?.name ?? "Plan"} subscription`,
+                        theme: { color: "#7c3aed" },
+                        handler: (resp: { razorpay_payment_id?: string }) => {
+                            verifyPayment(resp?.razorpay_payment_id);
+                        },
+                        modal: {
+                            ondismiss: () => {
+                                verifyPayment();
+                            },
+                        },
+                    });
+                    await fetchAll(); // show the pending-checkout card behind the modal
+                    rzp.open();
+                    return;
+                }
+                // Fallback: hosted checkout page (user returns manually; the
+                // mount-time verify above picks up the payment).
+                if (d.shortUrl) {
+                    window.location.href = d.shortUrl;
+                    return;
+                }
+                setMsg({ text: "Checkout unavailable — Razorpay not configured.", isError: true });
                 return;
             }
             setMsg({ text: d.message ?? "Failed to start subscription", isError: true });
@@ -287,6 +349,10 @@ export default function BillingPage() {
                                         <div style={{ fontSize: 13, color: "#b45309", marginTop: 2 }}>{formatPrice(current.pendingPlan.priceInPaiseINR, current.pendingPlan.billingPeriod)}</div>
                                     </div>
                                     <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                        <button onClick={() => verifyPayment()} disabled={busy}
+                                            style={{ padding: "8px 16px", borderRadius: 9, border: "1px solid #c4b5fd", background: "#f4f0fe", color: "#6d28d9", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                                            {busy ? "…" : "I've paid — verify"}
+                                        </button>
                                         {current.pendingPlan.shortUrl && (
                                             <a href={current.pendingPlan.shortUrl} target="_blank" rel="noreferrer"
                                                 style={{ padding: "8px 16px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 13, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>

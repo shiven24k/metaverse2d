@@ -113,7 +113,13 @@ async function recordInvoice(
 }
 
 async function activatePendingPlan(
-    subscription: Awaited<ReturnType<typeof findSubscriptionByRazorpayId>>,
+    subscription: {
+        id: string;
+        pendingPlanId: string | null;
+        pendingRazorpaySubscriptionId: string | null;
+        currentPeriodStart: Date | null;
+        currentPeriodEnd: Date | null;
+    },
     periodStart: Date | null,
     periodEnd: Date | null
 ) {
@@ -135,7 +141,9 @@ async function activatePendingPlan(
     });
 }
 
-// Config health for the billing UI (public flags, no secrets).
+// Config health for the billing UI (public flags + the PUBLIC key id used to
+// init the Razorpay checkout modal — key ids are safe to expose; the secret
+// never leaves the server).
 billingRouter.get("/health", async (_req, res) => {
     const plansWithoutIds = await client.plan.count({ where: { razorpayPlanId: null } });
     res.json({
@@ -143,6 +151,7 @@ billingRouter.get("/health", async (_req, res) => {
         razorpayWebhookConfigured: Boolean(process.env.RAZORPAY_WEBHOOK_SECRET),
         resendConfigured: Boolean(process.env.RESEND_API_KEY),
         plansMissingRazorpayIds: plansWithoutIds,
+        razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? null,
     });
 });
 
@@ -467,6 +476,104 @@ billingRouter.post("/subscribe", userMiddleware, async (req, res) => {
         }
     } finally {
         subscribeInFlight.delete(req.userId!);
+    }
+});
+
+/**
+ * Verify a pending checkout by asking Razorpay directly (GET /subscriptions/:id).
+ *
+ * Called by the frontend right after the checkout modal reports success (with
+ * the razorpay_payment_id from the handler) and when returning from the hosted
+ * page. This makes the plan activate immediately after payment EVEN IF the
+ * webhook is delayed or not configured — the webhook stays the async backup.
+ */
+billingRouter.post("/verify", userMiddleware, async (req, res) => {
+    const auth = razorpayAuth();
+    if (!auth) {
+        res.status(503).json({ message: "Razorpay not configured. Set RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET." });
+        return;
+    }
+
+    const sub = await client.subscription.findUnique({
+        where: { ownerId: req.userId! },
+        include: { pendingPlan: true },
+    });
+    if (!sub) {
+        res.status(400).json({ message: "No subscription found" });
+        return;
+    }
+
+    // Webhook already flipped the plan before verify ran — nothing to do.
+    if (!sub.pendingRazorpaySubscriptionId) {
+        res.json({ verified: sub.status === "ACTIVE", activated: false, status: sub.status });
+        return;
+    }
+
+    const rzId = sub.pendingRazorpaySubscriptionId;
+    try {
+        const resp = await fetch(`${RAZORPAY_API}/subscriptions/${rzId}`, {
+            headers: { Authorization: auth },
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            console.error("[billing] verify: fetch subscription failed:", resp.status, errText);
+            res.status(502).json({ message: "Couldn't verify payment with Razorpay" });
+            return;
+        }
+        const rz = (await resp.json()) as {
+            status?: string;
+            current_start?: number | null;
+            current_end?: number | null;
+        };
+
+        // The checkout handler gives us the payment id — record the invoice now
+        // (idempotent) instead of waiting for the subscription.charged webhook.
+        const paymentId = typeof req.body?.paymentId === "string" ? req.body.paymentId : null;
+        if (paymentId) {
+            try {
+                const payResp = await fetch(`${RAZORPAY_API}/payments/${paymentId}`, {
+                    headers: { Authorization: auth },
+                });
+                if (payResp.ok) {
+                    const pay = (await payResp.json()) as {
+                        status?: string;
+                        id?: string;
+                        amount?: number;
+                        currency?: string;
+                        created_at?: number | null;
+                    };
+                    if (pay.status === "captured") {
+                        await recordInvoice(sub.id, pay, "paid");
+                    }
+                }
+            } catch (err) {
+                console.warn("[billing] verify: fetch payment error:", err);
+            }
+        }
+
+        if (rz.status === "active") {
+            await activatePendingPlan(sub, fromEpoch(rz.current_start), fromEpoch(rz.current_end));
+            invalidatePlanCache(req.userId!);
+            res.json({ verified: true, activated: true });
+            return;
+        }
+
+        // Checkout is dead on Razorpay's side — clear the local pending state.
+        if (["cancelled", "expired", "halted", "completed"].includes(rz.status ?? "")) {
+            await client.subscription.update({
+                where: { id: sub.id },
+                data: { pendingPlanId: null, pendingRazorpaySubscriptionId: null, pendingShortUrl: null },
+            });
+            invalidatePlanCache(req.userId!);
+            res.json({ verified: true, activated: false, cleared: true, status: rz.status });
+            return;
+        }
+
+        // created / authenticated / pending — customer hasn't paid yet.
+        res.json({ verified: false, activated: false, status: rz.status ?? "unknown" });
+    } catch (err) {
+        console.error("[billing] verify error:", err);
+        res.status(500).json({ message: "Failed to verify payment" });
     }
 });
 
