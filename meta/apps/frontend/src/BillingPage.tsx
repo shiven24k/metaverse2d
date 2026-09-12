@@ -57,7 +57,7 @@ export default function BillingPage() {
     const token = useAuthStore((s) => s.token);
     const clearAuth = useAuthStore((s) => s.clearAuth);
 
-    const { currency, locale, rates, override, setOverride } = useRegion();
+    const { currency, locale, rates, setOverride } = useRegion();
 
     const authHeaders: Record<string, string> = {
         "Content-Type": "application/json",
@@ -129,7 +129,11 @@ export default function BillingPage() {
     };
 
     const handleCancel = async () => {
-        if (!window.confirm("Cancel your subscription? It stays active until the end of the current period.")) return;
+        const status = current?.subscription?.status;
+        const confirmMsg = status === "TRIALING"
+            ? "Cancel your trial? Your plan downgrades to Free right away."
+            : "Cancel your subscription? It stays active until the end of the current period.";
+        if (!window.confirm(confirmMsg)) return;
         setBusy(true);
         setMsg(null);
         try {
@@ -193,10 +197,10 @@ export default function BillingPage() {
                                         </div>
                                     </div>
                                     <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                                        {current.subscription?.status === "ACTIVE" && (
+                                        {current.subscription && ["ACTIVE", "TRIALING", "PAST_DUE"].includes(current.subscription.status) && (
                                             <button onClick={handleCancel} disabled={busy || current.subscription.cancelAtPeriodEnd}
                                                 style={{ padding: "8px 16px", borderRadius: 9, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                                                {current.subscription.cancelAtPeriodEnd ? "Cancels at period end" : busy ? "…" : "Cancel subscription"}
+                                                {current.subscription.cancelAtPeriodEnd ? "Cancels at period end" : busy ? "…" : current.subscription.status === "TRIALING" ? "Cancel trial" : "Cancel subscription"}
                                             </button>
                                         )}
                                     </div>

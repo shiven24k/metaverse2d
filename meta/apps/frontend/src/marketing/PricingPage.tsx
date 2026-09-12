@@ -112,10 +112,10 @@ export default function PricingPage() {
     const periodPlans = plans.filter(p => p.billingPeriod === period);
     const byTier = (t: PlanDef['tier']) => periodPlans.find(p => p.tier === t);
 
-    const cards: { tier: PlanDef['tier']; featured: boolean; highlight: boolean }[] = [
-        { tier: 'FREE', featured: false, highlight: false },
-        { tier: 'STARTER', featured: true, highlight: false },
-        { tier: 'PRO', featured: false, highlight: true },
+    const cards: { tier: PlanDef['tier']; featured: boolean }[] = [
+        { tier: 'FREE', featured: false },
+        { tier: 'STARTER', featured: true },
+        { tier: 'PRO', featured: false },
     ];
 
     const fmtPrice = (p: PlanDef | undefined) => {
@@ -157,7 +157,7 @@ export default function PricingPage() {
                     <p style={{ textAlign: 'center', color: '#8b82a8', fontSize: 14, padding: '40px 0' }}>Loading plans…</p>
                 ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 22, alignItems: 'start' }}>
-                        {cards.map(({ tier, featured, highlight }, idx) => {
+                        {cards.map(({ tier, featured }) => {
                             const p = byTier(tier);
                             const price = fmtPrice(p);
                             const isFree = tier === 'FREE';
