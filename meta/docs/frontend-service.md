@@ -57,7 +57,9 @@ Repo-level files: `vite.config.ts` (Vite build config), `vite-env.d.ts` (Vite am
 | `/admin` | AdminPanelPage | `ProtectedRoute` + API-403 gate (page shows "Admin access required") |
 | `*` | redirect `/` | — |
 
-**`ProtectedRoute`** validates the stored token against `GET /api/v1/user/me` **before** rendering children — a stale/revoked token triggers `clearAuth()` + redirect instead of a burst of 403s. Guests (`isGuest`) bypass validation but cannot reach private areas.
+**`ProtectedRoute`** validates the stored token against `GET /api/v1/user/me` **before** rendering children — a stale/revoked token triggers `clearAuth()` + redirect instead of a burst of 403s. It also **preserves the intended destination**: a logged-out user hitting a protected URL is sent to `/login?redirect=<path>` so login returns them there (e.g. marketing `Upgrade to Pro` → `/billing` → login → `/billing`). Guests (`isGuest`) bypass validation but cannot reach private areas.
+
+**Marketing `/pricing`** is **data-driven**: it fetches `GET /billing/plans` and renders the real FREE/STARTER/PRO tiers (monthly/yearly toggle, yearly ≈ −20%) with currency-localized prices and accurate per-plan feature bullets; paid CTAs link to `/billing`, the free CTA to `/login`.
 
 **`OAuthCallbackPage`** calls `GET /api/v1/user/token` with `credentials: "include"` to exchange the cookie session for a bearer token, then stores it and routes to `/lobby`.
 
@@ -217,6 +219,14 @@ Self-service SaaS billing, reachable from the lobby sidebar (💳 Billing):
 - **Plans grid** with Monthly/Yearly toggle (yearly ≈ −20%): price, limit bullets, feature flags; Upgrade calls `POST /billing/subscribe` then **redirects to the Razorpay hosted `short_url`** (payment + webhook flip; page refetches on return). The current plan shows a ✓ Current pill and disables the button.
 - **Invoices** list (paid/failed pill + date).
 - Mirrors the other pages' auth-failure handling (401/403 → clear + `/login`).
+
+### Currency localization (`lib/currency.ts`)
+
+Prices are stored in **INR paise** (Razorpay charges INR); the UI shows an **approximate local-currency price** and always notes the exact INR charge (`billed ₹X INR`).
+- `fetchRegion()` hits `GET /billing/region` once (session-cached) and returns `{ country, currency, locale, base, rates }` — the server resolves the country from the caller's IP (`CF-IPCountry` header, etc.).
+- `useRegion()` returns the detected `currency`/`locale`/`rates`, plus a **manual override** persisted in `localStorage` (`metaverse_display_currency`; INR = "auto").
+- `convertFromINR(paise, currency, rates)` + `formatMoney(amount, currency, locale)` render prices via `Intl.NumberFormat`.
+- Consumers: `BillingPage` (plans grid + a **Currency** `<select>`), the marketing `PricingPage` (data-driven from `/billing/plans`), and the lobby sidebar (💳 Billing button shows the active currency badge).
 
 ## 6d. Admin panel (`AdminPanelPage.tsx`, `/admin`)
 

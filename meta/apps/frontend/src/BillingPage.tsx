@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
+import { useRegion, convertFromINR, formatMoney } from "./lib/currency";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -55,6 +56,8 @@ export default function BillingPage() {
     const navigate = useNavigate();
     const token = useAuthStore((s) => s.token);
     const clearAuth = useAuthStore((s) => s.clearAuth);
+
+    const { currency, locale, rates, override, setOverride } = useRegion();
 
     const authHeaders: Record<string, string> = {
         "Content-Type": "application/json",
@@ -144,8 +147,22 @@ export default function BillingPage() {
         }
     };
 
-    const formatPrice = (paise: number, periodKey: string) =>
-        paise === 0 ? "Free" : `₹${(paise / 100).toLocaleString("en-IN")}${periodKey === "yearly" ? "/yr" : "/mo"}`;
+    const formatPrice = (paise: number, periodKey: string) => {
+        if (paise === 0) return "Free";
+        const suffix = periodKey === "yearly" ? "/yr" : "/mo";
+        const inr = `₹${(paise / 100).toLocaleString("en-IN")}`;
+        if (currency === "INR") return `${inr}${suffix}`;
+        const local = formatMoney(convertFromINR(paise, currency, rates), currency, locale);
+        return `${local}${suffix}`;
+    };
+
+    const formatBilledNote = (paise: number, periodKey: string) => {
+        if (paise === 0 || currency === "INR") return null;
+        const inr = `₹${(paise / 100).toLocaleString("en-IN")}`;
+        return `billed ${inr} INR${periodKey === "yearly" ? "/yr" : "/mo"}`;
+    };
+
+    const currencyOptions = Object.keys(rates).sort();
 
     const visiblePlans = plans.filter(p => p.billingPeriod === period);
     const activePlanId = current?.subscription?.planId;
@@ -199,7 +216,7 @@ export default function BillingPage() {
                         )}
 
                         {/* Period toggle + plans */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                             <span style={{ fontSize: 15, fontWeight: 700 }}>Plans</span>
                             <div style={{ display: "flex", background: "#f4f3f9", border: "1px solid #ecebf3", borderRadius: 9, padding: 3 }}>
                                 {(["monthly", "yearly"] as const).map(p => (
@@ -209,6 +226,18 @@ export default function BillingPage() {
                                     </button>
                                 ))}
                             </div>
+                            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#6f6b82" }}>
+                                Currency
+                                <select
+                                    value={currency}
+                                    onChange={(e) => setOverride(e.target.value === "INR" ? null : e.target.value)}
+                                    style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #e3e1ee", background: "#fff", color: "#191427", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                                >
+                                    {currencyOptions.map(c => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
+                            </span>
                         </div>
 
                         {msg && (
@@ -227,6 +256,9 @@ export default function BillingPage() {
                                             <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 9px", borderRadius: 10, background: r.bg, color: r.text }}>{p.tier}</span>
                                         </div>
                                         <div style={{ fontSize: 22, fontWeight: 800 }}>{formatPrice(p.priceInPaiseINR, p.billingPeriod)}</div>
+                                        {formatBilledNote(p.priceInPaiseINR, p.billingPeriod) && (
+                                            <div style={{ fontSize: 11, color: "#a3a0b3", marginTop: -6 }}>{formatBilledNote(p.priceInPaiseINR, p.billingPeriod)}</div>
+                                        )}
                                         <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#6f6b82", lineHeight: 1.8 }}>
                                             <li>{p.maxSpaces >= 100000 ? "Unlimited spaces" : `${p.maxSpaces} space${p.maxSpaces > 1 ? "s" : ""}`}</li>
                                             <li>{p.maxConcurrentUsers} concurrent users/space</li>

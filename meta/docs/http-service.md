@@ -205,6 +205,7 @@ Route **ordering matters**: static paths are registered before dynamic `/:spaceI
 ### 3.13 Billing (Razorpay) — `routes/v1/billing.ts`
 
 - `GET /billing/plans` — public plan catalog (id, tier, name, price, billingPeriod, limits).
+- `GET /billing/region` — public **display-currency resolution** from the caller's IP (`lib/geo.ts` → `lib/currency.ts`): returns `{ country, currency, locale, base: "INR", rates }`. Resolution order: `CF-IPCountry` (Cloudflare, free) → `X-Country-Code` (nginx GeoIP) → optional env-gated `ipwho.is` lookup (`GEOIP_FALLBACK=true`, cached 6h) → defaults to India/INR. **Display only** — prices are always charged in INR; this only drives the approximate local-currency price the UI shows.
 - `GET /billing/plan` — current user's **effective plan** (via `getEffectivePlan`) + subscription row (`status`, `currentPeriodEnd`, `cancelAtPeriodEnd`). Drives the billing UI.
 - `GET /billing/invoices` — the user's invoices, newest 20.
 - `POST /billing/subscribe` — `userMiddleware`. Looks up the requested `Plan` by id, requires `plan.razorpayPlanId` to be set, and creates a **Razorpay subscription** via their REST API (Basic auth, `fetch` — no npm SDK). Upserts the local `Subscription` (ownerId unique) as `TRIALING` and returns `{ subscriptionId, shortUrl, localSubscriptionId, plan }`. Returns `409` if the user already has an `ACTIVE` subscription, `503` if `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` are unset (graceful, like `turn.ts`).
@@ -215,7 +216,7 @@ Route **ordering matters**: static paths are registered before dynamic `/:spaceI
 
 `runDunning()` runs on boot and hourly: finds PAST_DUE subscriptions whose `graceEndsAt <= now` (or null — legacy rows) and **downgrades them to Free** (status → EXPIRED, which gating treats as Free), then `invalidatePlanCache(ownerId)` + emails the owner. `lib/email.ts` is a dependency-free **Resend** client (`RESEND_API_KEY`/`RESEND_FROM`), a graceful no-op when unset.
 
-**Env vars:** `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`. Until `Plan.razorpayPlanId` is populated (via the Razorpay dashboard or API), subscribe returns a helpful 400 — nothing goes live by accident.
+**Env vars:** `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`, `GEOIP_FALLBACK` (optional `true` to enable the `ipwho.is` country lookup when not behind Cloudflare/nginx GeoIP). Until `Plan.razorpayPlanId` is populated (via the Razorpay dashboard or API), subscribe returns a helpful 400 — nothing goes live by accident.
 
 ### 3.14 Maps & uploads — `routes/v1/maps.ts`, `routes/v1/upload.ts`
 

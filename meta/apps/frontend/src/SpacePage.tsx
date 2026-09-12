@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
+import { useRegion } from "./lib/currency";
 import { Compass, Home, ShoppingBag, Package, Trophy, Plus, LogOut, Coins, Gift, Bell, Search, User, MessageSquare, LogIn } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
@@ -94,6 +95,7 @@ export default function SpacePage() {
     const bearerToken = useAuthStore((s) => s.token);
     const isGuest = useAuthStore((s) => s.isGuest);
     const clearAuth = useAuthStore((s) => s.clearAuth);
+    const { currency } = useRegion();
 
     const [tab, setTab] = useState<Tab>("all");
     const [allSpaces, setAllSpaces] = useState<Space[]>([]);
@@ -552,6 +554,7 @@ export default function SpacePage() {
                             style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10, border: "1px solid #d4d0e6", cursor: "pointer",
                                 background: "#fff", color: "#4d495f", fontSize: 13, fontWeight: 600, fontFamily: "system-ui,sans-serif", textAlign: "left" }}>
                             💳 Billing
+                            <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, color: "#5b21b6", background: "#f4f0fe", padding: "2px 7px", borderRadius: 8 }}>{currency}</span>
                         </button>
                         {isPlatformAdmin && (
                             <button onClick={() => navigate("/admin")}

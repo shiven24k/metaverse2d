@@ -73,6 +73,8 @@ Route registration order matters in Express. Static paths must be registered bef
 
 **Dunning**: `lib/dunning.ts` (started by `index.ts`, boot + hourly) downgrades PAST_DUE subscriptions whose `Subscription.graceEndsAt` has passed (or is null — legacy) to EXPIRED (gating = Free), clears the plan cache, and emails via `lib/email.ts` (Resend, env-gated). The webhook sets `graceEndsAt = now + 3d` on `payment.failed` and clears it on `activated`/`charged`/re-subscribe.
 
+**Display currency (display-only)**: `GET /billing/region` (`lib/geo.ts` → `lib/currency.ts`) resolves the caller's country/currency from the IP (`CF-IPCountry` → `X-Country-Code` → optional `ipwho.is` when `GEOIP_FALLBACK=true` → default India/INR) and returns `{ country, currency, locale, base, rates }`. **Prices are always charged in INR** (`Plan.priceInPaiseINR`); this only localizes what the UI shows. Frontend: `apps/frontend/src/lib/currency.ts` (`useRegion`, localStorage override `metaverse_display_currency`, `convertFromINR`, `formatMoney`), consumed by `BillingPage` (Currency select + "billed ₹X INR" note), the marketing `PricingPage` (data-driven from `/billing/plans`), and the lobby sidebar Billing badge. Update `INR_RATES` in `lib/currency.ts` to refresh exchange rates.
+
 ### `space.ts` — route ordering (critical)
 
 ```

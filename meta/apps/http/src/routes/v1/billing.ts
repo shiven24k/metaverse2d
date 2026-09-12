@@ -4,6 +4,8 @@ import { userMiddleware } from "../../middleware/user";
 import { getEffectivePlan, invalidatePlanCache } from "../../../../ws/src/lib/planAccess";
 import { sendEmail } from "../../lib/email";
 import { GRACE_DAYS, GRACE_DAYS_MS } from "../../lib/dunning";
+import { resolveRegion } from "../../lib/geo";
+import { INR_RATES } from "../../lib/currency";
 import client from "@repo/db/client";
 
 export const billingRouter = Router();
@@ -28,6 +30,19 @@ billingRouter.get("/plans", async (_req, res) => {
             screenShareEnabled: p.screenShareEnabled,
             broadcastEnabled: p.broadcastEnabled,
         })),
+    });
+});
+
+// Resolve the caller's display currency from their IP (server-side). Public.
+// Prices are always charged in INR; this only localizes what the UI shows.
+billingRouter.get("/region", async (req, res) => {
+    const region = await resolveRegion(req);
+    res.json({
+        country: region.country,
+        currency: region.currency,
+        locale: region.locale,
+        base: "INR",
+        rates: INR_RATES,
     });
 });
 

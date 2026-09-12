@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
@@ -9,6 +9,11 @@ export default function ProtectedRoute() {
     const isGuest = useAuthStore((s) => s.isGuest);
     const setUser = useAuthStore((s) => s.setUser);
     const clearAuth = useAuthStore((s) => s.clearAuth);
+
+    // Preserve where the user was headed so login returns them there
+    // (e.g. a marketing "Upgrade" link → /billing → login → /billing).
+    const location = useLocation();
+    const loginPath = `/login?redirect=${encodeURIComponent(location.pathname + location.search)}`;
 
     const authed = Boolean(token);
 
@@ -61,7 +66,7 @@ export default function ProtectedRoute() {
         };
     }, [authed, token, setUser, clearAuth]);
 
-    if (!token && !isGuest) return <Navigate to="/login" replace />;
+    if (!token && !isGuest) return <Navigate to={loginPath} replace />;
     if (authed && validating) {
         return (
             <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif', background: '#f0f2f5' }}>
@@ -69,6 +74,6 @@ export default function ProtectedRoute() {
             </div>
         );
     }
-    if (!valid) return <Navigate to="/login" replace />;
+    if (!valid) return <Navigate to={loginPath} replace />;
     return <Outlet />;
 }

@@ -187,6 +187,7 @@ A single pm2 app named **`metaverse2d`** running `apps/http/dist/index.js` (the 
 | `METERED_APP_NAME` / `METERED_API_KEY` | — | http (turn-credentials) |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | — | http (billing subscribe) |
 | `RAZORPAY_WEBHOOK_SECRET` | — | http (billing webhook signature) |
+| `GEOIP_FALLBACK` | unset | http (`true` = enable `ipwho.is` country lookup for display currency when not behind Cloudflare) |
 | `RESEND_API_KEY` / `RESEND_FROM` | — | http (transactional email / dunning) |
 | `ACCESS_DECISION_SECRET` | — | http (signed access-request approve/deny links) |
 | `APP_URL` | `http://localhost:5173` | http (email links, dunning) |

@@ -3,6 +3,22 @@ import { Link } from 'react-router-dom';
 import './marketing.css';
 import MarketingNav from './MarketingNav';
 import MarketingFooter from './MarketingFooter';
+import { useRegion, convertFromINR, formatMoney } from '../lib/currency';
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+interface PlanDef {
+    id: string;
+    tier: 'FREE' | 'STARTER' | 'PRO';
+    name: string;
+    priceInPaiseINR: number;
+    billingPeriod: 'monthly' | 'yearly';
+    maxSpaces: number;
+    maxMembersPerSpace: number;
+    maxConcurrentUsers: number;
+    screenShareEnabled: boolean;
+    broadcastEnabled: boolean;
+}
 
 function useReveal(rootRef: React.RefObject<HTMLElement | null>) {
     useEffect(() => {
@@ -39,10 +55,10 @@ const CheckIcon = ({ color = '#16a34a' }: { color?: string }) => (
 );
 
 const PRICING_FAQS = [
-    { q: 'How does per-user billing work?', a: "You're billed only for active members on your floor. Add or remove people any time — we prorate automatically." },
+    { q: 'How does billing work?', a: "Plans are a flat price per space — one charge covers your whole team on that floor. Switch or cancel any time from your billing settings." },
     { q: 'Can I switch plans later?', a: 'Upgrade, downgrade or cancel whenever you like from billing settings. Your spaces and items are always kept.' },
-    { q: 'Is the free plan really free forever?', a: "Yes. Up to 10 teammates and one space, no time limit, no card required. It's how most teams start." },
-    { q: 'Do you offer discounts?', a: 'Yearly billing saves 25%, and we offer additional discounts for students, educators and non-profits — just reach out.' },
+    { q: 'Is the free plan really free forever?', a: "Yes. No time limit, no card required. It's how most teams start." },
+    { q: 'Do you offer discounts?', a: 'Yearly billing saves 20% on every paid plan, and we offer additional discounts for students, educators and non-profits — just reach out.' },
 ];
 
 function FaqItem({ q, a, open, onToggle }: { q: string; a: string; open: boolean; onToggle: () => void }) {
@@ -57,22 +73,62 @@ function FaqItem({ q, a, open, onToggle }: { q: string; a: string; open: boolean
     );
 }
 
+function planFeatures(p: PlanDef): string[] {
+    return [
+        p.maxSpaces >= 100000 ? 'Unlimited spaces' : `${p.maxSpaces} space${p.maxSpaces > 1 ? 's' : ''}`,
+        `Up to ${p.maxMembersPerSpace} members per space`,
+        `${p.maxConcurrentUsers} concurrent users per space`,
+        p.broadcastEnabled ? 'Broadcast / cinema zones' : 'No broadcast zones',
+        p.screenShareEnabled ? 'Screen share' : 'No screen share',
+        'Real-time multiplayer & pixel-art library',
+    ];
+}
+
 export default function PricingPage() {
     const rootRef = useRef<HTMLDivElement>(null);
     const sliderRef = useRef<HTMLDivElement>(null);
     const [yearly, setYearly] = useState(false);
     const [openFaq, setOpenFaq] = useState(-1);
+    const [plans, setPlans] = useState<PlanDef[]>([]);
+    const { currency, locale, rates } = useRegion();
 
     useReveal(rootRef);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetch(`${API}/api/v1/billing/plans`)
+            .then(r => (r.ok ? r.json() : { plans: [] }))
+            .then(d => { if (!cancelled) setPlans(d.plans ?? []); })
+            .catch(() => { if (!cancelled) setPlans([]); });
+        return () => { cancelled = true; };
+    }, []);
 
     const setYear = (y: boolean) => {
         if (sliderRef.current) sliderRef.current.style.transform = `translateX(${y ? '100%' : '0%'})`;
         setYearly(y);
     };
 
-    const proPrice = yearly ? '6' : '8';
-    const teamPrice = yearly ? '11' : '14';
+    const period = yearly ? 'yearly' : 'monthly';
+    const periodPlans = plans.filter(p => p.billingPeriod === period);
+    const byTier = (t: PlanDef['tier']) => periodPlans.find(p => p.tier === t);
+
+    const cards: { tier: PlanDef['tier']; featured: boolean; highlight: boolean }[] = [
+        { tier: 'FREE', featured: false, highlight: false },
+        { tier: 'STARTER', featured: true, highlight: false },
+        { tier: 'PRO', featured: false, highlight: true },
+    ];
+
+    const fmtPrice = (p: PlanDef | undefined) => {
+        if (!p || !p.priceInPaiseINR) return { main: 'Free', per: '/forever', note: null as string | null };
+        const local = formatMoney(convertFromINR(p.priceInPaiseINR, currency, rates), currency, locale);
+        const per = p.billingPeriod === 'yearly' ? '/yr' : '/mo';
+        const inr = `₹${(p.priceInPaiseINR / 100).toLocaleString('en-IN')}`;
+        const note = currency === 'INR' ? null : `billed ${inr} INR${per}`;
+        return { main: local, per, note };
+    };
+
     const billNote = yearly ? 'billed annually' : 'billed monthly';
+    const currencyLabel = currency === 'INR' ? '' : ` · shown in ${currency}`;
 
     return (
         <div ref={rootRef} className="mkt-body" style={{ fontFamily: "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", color: '#211c3b', background: '#faf9ff', overflowX: 'hidden' }}>
@@ -90,71 +146,60 @@ export default function PricingPage() {
                     <div style={{ position: 'relative', display: 'inline-flex', background: '#f3effe', borderRadius: 22, padding: 4, border: '1px solid #e7e2f5' }}>
                         <div ref={sliderRef} style={{ position: 'absolute', top: 4, left: 4, width: 'calc(50% - 4px)', height: 'calc(100% - 8px)', borderRadius: 18, background: '#fff', boxShadow: '0 2px 8px rgba(76,29,149,0.14)', transition: 'transform .25s cubic-bezier(.2,.7,.2,1)', transform: 'translateX(0%)' }} />
                         <button onClick={() => setYear(false)} style={{ position: 'relative', zIndex: 1, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, color: '#211c3b', padding: '9px 24px', borderRadius: 18 }}>Monthly</button>
-                        <button onClick={() => setYear(true)} style={{ position: 'relative', zIndex: 1, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, color: '#211c3b', padding: '9px 22px', borderRadius: 18, display: 'inline-flex', alignItems: 'center', gap: 6 }}>Yearly <span style={{ color: '#16a34a', fontSize: 12, fontWeight: 700 }}>Save 25%</span></button>
+                        <button onClick={() => setYear(true)} style={{ position: 'relative', zIndex: 1, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, color: '#211c3b', padding: '9px 22px', borderRadius: 18, display: 'inline-flex', alignItems: 'center', gap: 6 }}>Yearly <span style={{ color: '#16a34a', fontSize: 12, fontWeight: 700 }}>Save 20%</span></button>
                     </div>
                 </div>
             </section>
 
             {/* ─── TIERS ─── */}
             <section data-reveal style={{ maxWidth: 1080, margin: '0 auto', padding: '34px 28px 20px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 22, alignItems: 'start' }}>
-                    {/* FREE */}
-                    <div style={{ borderRadius: 20, padding: 30, background: '#fff', border: '1px solid #ece9f7', boxShadow: '0 4px 14px rgba(99,102,241,0.07)' }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#8b82a8' }}>Free</div>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, margin: '14px 0 4px' }}>
-                            <span style={{ fontSize: 46, fontWeight: 800, letterSpacing: -1.5 }}>$0</span>
-                            <span style={{ fontSize: 15, color: '#8b82a8' }}>/forever</span>
-                        </div>
-                        <p style={{ fontSize: 14, color: '#4a4368', margin: '0 0 20px', lineHeight: 1.5 }}>For small teams trying on a new kind of office.</p>
-                        <Link to="/login" className="mkt-pricing-free-btn" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', fontSize: 15, fontWeight: 700, color: '#7c3aed', padding: 13, borderRadius: 12, background: '#f3effe', border: '1px solid #e7e2f5', marginBottom: 24, transition: 'background .15s' }}>Start free</Link>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            {['Up to 10 teammates', '1 space, up to 20×20', 'Core furniture & tiles', 'Emotes & proximity chat', 'Daily gifts & quests'].map(f => (
-                                <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, color: '#4a4368', lineHeight: 1.4 }}>
-                                    <CheckIcon />{f}
+                {plans.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: '#8b82a8', fontSize: 14, padding: '40px 0' }}>Loading plans…</p>
+                ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 22, alignItems: 'start' }}>
+                        {cards.map(({ tier, featured, highlight }, idx) => {
+                            const p = byTier(tier);
+                            const price = fmtPrice(p);
+                            const isFree = tier === 'FREE';
+                            const label = p?.name ?? (isFree ? 'Free' : tier.charAt(0) + tier.slice(1).toLowerCase());
+                            const ctaText = isFree ? 'Start free' : `Upgrade to ${label}`;
+                            const ctaTo = isFree ? '/login' : '/billing';
+                            const featureList = p ? planFeatures(p) : [];
+                            return (
+                                <div key={tier} style={featured ? {
+                                    position: 'relative', borderRadius: 22, padding: 30, background: 'linear-gradient(170deg,#ffffff,#f7f3ff)', border: '2px solid #7c3aed', boxShadow: '0 20px 50px rgba(124,58,237,0.22)', transform: 'translateY(-8px)',
+                                } : { borderRadius: 20, padding: 30, background: '#fff', border: '1px solid #ece9f7', boxShadow: '0 4px 14px rgba(99,102,241,0.07)' }}>
+                                    {featured && (
+                                        <div style={{ position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)', fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#fff', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', padding: '5px 14px', borderRadius: 20, boxShadow: '0 6px 16px rgba(124,58,237,0.32)', whiteSpace: 'nowrap' }}>Most popular</div>
+                                    )}
+                                    <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: featured ? '#7c3aed' : '#8b82a8' }}>{label}</div>
+                                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, margin: '14px 0 4px' }}>
+                                        <span style={{ fontSize: 40, fontWeight: 800, letterSpacing: -1.5 }}>{price.main}</span>
+                                        <span style={{ fontSize: 15, color: '#8b82a8' }}>{price.per}</span>
+                                    </div>
+                                    {!isFree && <p style={{ fontSize: 13, color: '#8b82a8', margin: '0 0 8px' }}>{billNote}{currencyLabel}</p>}
+                                    {price.note && <p style={{ fontSize: 11, color: '#a59fc0', margin: '0 0 8px' }}>{price.note}</p>}
+                                    <Link to={ctaTo} className={featured ? 'mkt-pricing-pro-btn' : 'mkt-pricing-free-btn'} style={{
+                                        display: 'block', textAlign: 'center', textDecoration: 'none', fontSize: 15, fontWeight: 700, padding: 14, borderRadius: 12, marginBottom: 24, transition: 'background .15s, transform .15s',
+                                        ...(featured
+                                            ? { color: '#fff', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', boxShadow: '0 10px 24px rgba(124,58,237,0.32)' }
+                                            : isFree
+                                                ? { color: '#7c3aed', background: '#f3effe', border: '1px solid #e7e2f5' }
+                                                : { color: '#211c3b', background: '#fff', border: '1px solid #d6caf8' }),
+                                    }}>{ctaText}</Link>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                        {!isFree && <div style={{ fontSize: 13, fontWeight: 700, color: '#211c3b', marginBottom: -2 }}>Everything in Free, plus:</div>}
+                                        {featureList.map(f => (
+                                            <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, color: '#4a4368', lineHeight: 1.4 }}>
+                                                <CheckIcon color={featured ? '#7c3aed' : '#16a34a'} />{f}
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                            ))}
-                        </div>
+                            );
+                        })}
                     </div>
-
-                    {/* PRO */}
-                    <div style={{ position: 'relative', borderRadius: 22, padding: 30, background: 'linear-gradient(170deg,#ffffff,#f7f3ff)', border: '2px solid #7c3aed', boxShadow: '0 20px 50px rgba(124,58,237,0.22)', transform: 'translateY(-8px)' }}>
-                        <div style={{ position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)', fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#fff', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', padding: '5px 14px', borderRadius: 20, boxShadow: '0 6px 16px rgba(124,58,237,0.32)', whiteSpace: 'nowrap' }}>Most popular</div>
-                        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#7c3aed' }}>Pro</div>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, margin: '14px 0 4px' }}>
-                            <span style={{ fontSize: 46, fontWeight: 800, letterSpacing: -1.5 }}>${proPrice}</span>
-                            <span style={{ fontSize: 15, color: '#8b82a8' }}>/user/mo</span>
-                        </div>
-                        <p style={{ fontSize: 13, color: '#8b82a8', margin: '0 0 16px' }}>{billNote}</p>
-                        <Link to="/login" className="mkt-pricing-pro-btn" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', fontSize: 15, fontWeight: 700, color: '#fff', padding: 14, borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', boxShadow: '0 10px 24px rgba(124,58,237,0.32)', marginBottom: 24, transition: 'transform .15s' }}>Start 14-day trial</Link>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: '#211c3b', marginBottom: -2 }}>Everything in Free, plus:</div>
-                            {['Unlimited teammates', 'Up to 10 spaces, 50×50', 'Voice & video rooms', 'Custom uploads (Creator Studio)', 'Seasonal items & collection', 'Priority support'].map(f => (
-                                <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, color: '#4a4368', lineHeight: 1.4 }}>
-                                    <CheckIcon color="#7c3aed" />{f}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* TEAM */}
-                    <div style={{ borderRadius: 20, padding: 30, background: '#fff', border: '1px solid #ece9f7', boxShadow: '0 4px 14px rgba(99,102,241,0.07)' }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#8b82a8' }}>Team</div>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, margin: '14px 0 4px' }}>
-                            <span style={{ fontSize: 46, fontWeight: 800, letterSpacing: -1.5 }}>${teamPrice}</span>
-                            <span style={{ fontSize: 15, color: '#8b82a8' }}>/user/mo</span>
-                        </div>
-                        <p style={{ fontSize: 13, color: '#8b82a8', margin: '0 0 16px' }}>{billNote}</p>
-                        <Link to="/contact" className="mkt-pricing-team-btn" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', fontSize: 15, fontWeight: 700, color: '#211c3b', padding: 13, borderRadius: 12, background: '#fff', border: '1px solid #d6caf8', marginBottom: 24, transition: 'background .15s, border-color .15s' }}>Contact sales</Link>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: '#211c3b', marginBottom: -2 }}>Everything in Pro, plus:</div>
-                            {['Unlimited spaces', 'Admin & moderation tools', 'SSO & SCIM provisioning', 'Guest access & analytics', 'Dedicated success manager', '99.9% uptime SLA'].map(f => (
-                                <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, color: '#4a4368', lineHeight: 1.4 }}>
-                                    <CheckIcon />{f}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
+                )}
                 <p style={{ textAlign: 'center', fontSize: 13, color: '#8b82a8', margin: '26px 0 0' }}>All plans include real-time multiplayer, the canvas editor, and the full pixel-art library. Education & non-profit discounts available.</p>
             </section>
 
