@@ -98,6 +98,25 @@ const client = {
     avatar: {
         findMany: vi.fn(),
     },
+    subscription: {
+        findUnique: vi.fn(),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        upsert: vi.fn(),
+        delete: vi.fn(),
+        count: vi.fn(),
+    },
+    plan: {
+        findUnique: vi.fn(),
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+    },
+    invoice: {
+        findUnique: vi.fn(),
+        findMany: vi.fn(),
+        create: vi.fn(),
+    },
     $transaction: vi.fn(async (fn: (tx: typeof client) => Promise<unknown>) => fn(client)),
 };
 

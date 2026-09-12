@@ -61,16 +61,16 @@ User (browser)                HTTP API                     Razorpay
 ```
 
 ### Switching / downgrading
-`POST /billing/subscribe` with a **different** plan:
-1. If `ACTIVE` on the *same* plan → `409`.
-2. If there is a live local sub (`TRIALING`/`ACTIVE`/`PAST_DUE`) with a `razorpaySubscriptionId` and the plan differs → the **old Razorpay sub is cancelled at period end** (`cancel_at_cycle_end: true`), then a **new** subscription is created and the local row is overwritten (status `TRIALING`, `cancelAtPeriodEnd: false`).
+`POST /billing/subscribe`:
+1. If already on the same plan in `TRIALING`/`ACTIVE`/`PAST_DUE` → `409` (prevents duplicate Razorpay subscriptions).
+2. If there is a live local sub with a `razorpaySubscriptionId` and the plan differs → the **old Razorpay sub is cancelled** (`cancel_at_cycle_end: true` for `ACTIVE`/`PAST_DUE`, immediate for `TRIALING`), then a **new** subscription is created and the local row is overwritten (status `TRIALING`, `cancelAtPeriodEnd: false`).
 3. The browser is redirected to the new `short_url`.
 
 > No proration — see §9. Downgrades currently take effect immediately (charged now) rather than at period end.
 
 ### Cancel
 `POST /billing/cancel` (optional `reason` in body, logged):
-- `TRIALING` → Razorpay cancel **immediately**; local `cancelAtPeriodEnd = false`.
+- `TRIALING` → Razorpay cancel **immediately**; local status set to `CANCELED` right away.
 - otherwise → `cancel_at_cycle_end: true`; local `cancelAtPeriodEnd = true`; access continues until the period ends, then the `subscription.cancelled` webhook flips it to `CANCELED`.
 
 ### Dunning
@@ -115,7 +115,7 @@ Every state change calls `invalidatePlanCache(ownerId)` so gating reflects immed
 
 One helper: `apps/ws/src/lib/planAccess.ts::getEffectivePlan(userId)` — returns the paid plan for `ACTIVE` **and `PAST_DUE`**, else FREE defaults. 60s cache; `withRetry` on Prisma `P2024`.
 
-FREE defaults (when no FREE row overrides): `maxSpaces 1`, `maxMembersPerSpace 10`, `maxConcurrentUsers 10`, no screen share, no broadcast.
+FREE defaults (when no FREE row overrides): `maxSpaces 1`, `maxMembersPerSpace 5`, `maxConcurrentUsers 5`, no screen share, no broadcast.
 
 | Limit | Enforced at | Mechanism |
 |---|---|---|
@@ -202,8 +202,8 @@ Not yet implemented (documented so behavior isn't mistaken for a bug):
 | **No tax/GST, billing address, invoice PDF** | Only invoice rows are stored. |
 | **`userMiddleware` returns 403** for unauthenticated | Convention is 401 (frontend handles both). |
 | **Subscribe lock is single-node** | In-memory Set; multi-instance needs Redis/DB lock. |
-| **`payment.failed` needs the subscription entity** | Some Razorpay payloads omit it → a missed `PAST_DUE`. |
 | **No customer portal / update card** | Payment method changes go through Razorpay's hosted flow only. |
+| **Frontend polling during TRIALING/PAST_DUE** | BillingPage polls every 5s while checkout is pending/past-due to reflect webhook state without a manual refresh. |
 
 Recent correctness fixes (do not revert): PAST_DUE grace access, timing-safe webhook compare, FREE-plan checkout rejection, per-user subscribe lock, invoice `P2002` guard, `maxMembersPerSpace` enforcement.
 

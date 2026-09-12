@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
 
@@ -86,10 +86,10 @@ export default function AdminPanelPage() {
     const navigate = useNavigate();
     const token = useAuthStore((s) => s.token);
     const clearAuth = useAuthStore((s) => s.clearAuth);
-    const authHeaders: Record<string, string> = {
+    const authHeaders = useMemo(() => ({
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
+    }), [token]);
 
     const [tab, setTab] = useState<Tab>("summary");
     const [forbidden, setForbidden] = useState(false);

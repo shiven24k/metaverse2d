@@ -648,8 +648,8 @@ async function main() {
   // Limits per the billing plan (screen share / broadcast are gating targets;
   // 100000 is a sentinel for "unlimited").
   const PLAN_DEFS = [
-    { tier: "FREE",    billingPeriod: "monthly", price: 0,      maxSpaces: 1,     maxMembersPerSpace: 10,  maxConcurrentUsers: 10,  screenShare: false, broadcast: false },
-    { tier: "FREE",    billingPeriod: "yearly",  price: 0,      maxSpaces: 1,     maxMembersPerSpace: 10,  maxConcurrentUsers: 10,  screenShare: false, broadcast: false },
+    { tier: "FREE",    billingPeriod: "monthly", price: 0,      maxSpaces: 1,     maxMembersPerSpace: 5,   maxConcurrentUsers: 5,   screenShare: false, broadcast: false },
+    { tier: "FREE",    billingPeriod: "yearly",  price: 0,      maxSpaces: 1,     maxMembersPerSpace: 5,   maxConcurrentUsers: 5,   screenShare: false, broadcast: false },
     { tier: "STARTER", billingPeriod: "monthly", price: 29900,  maxSpaces: 3,     maxMembersPerSpace: 30,  maxConcurrentUsers: 30,  screenShare: true,  broadcast: false },
     { tier: "STARTER", billingPeriod: "yearly",  price: 287000, maxSpaces: 3,     maxMembersPerSpace: 30,  maxConcurrentUsers: 30,  screenShare: true,  broadcast: false },
     { tier: "PRO",     billingPeriod: "monthly", price: 99900,  maxSpaces: 100000, maxMembersPerSpace: 100, maxConcurrentUsers: 100, screenShare: true,  broadcast: true },

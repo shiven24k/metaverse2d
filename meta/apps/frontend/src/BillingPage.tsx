@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
 import { useRegion, convertFromINR, formatMoney } from "./lib/currency";
@@ -59,10 +59,10 @@ export default function BillingPage() {
 
     const { currency, locale, rates, setOverride } = useRegion();
 
-    const authHeaders: Record<string, string> = {
+    const authHeaders = useMemo(() => ({
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
+    }), [token]);
 
     const [current, setCurrent] = useState<{ plan: CurrentPlan; subscription: SubscriptionState | null } | null>(null);
     const [plans, setPlans] = useState<PlanDef[]>([]);
@@ -115,6 +115,15 @@ export default function BillingPage() {
     }, [authHeaders, handleAuthFailure]);
 
     useEffect(() => { fetchAll(); }, [fetchAll]);
+
+    // Poll while a checkout is pending or a payment is past-due so the UI
+    // reflects Razorpay webhook updates without requiring a manual refresh.
+    useEffect(() => {
+        if (!current?.subscription) return;
+        if (current.subscription.status !== "TRIALING" && current.subscription.status !== "PAST_DUE") return;
+        const id = setInterval(() => fetchAll(), 5000);
+        return () => clearInterval(id);
+    }, [current?.subscription?.status, fetchAll]);
 
     const handleUpgrade = async (planId: string) => {
         setBusy(true);
@@ -229,6 +238,11 @@ export default function BillingPage() {
                                 {current.subscription?.currentPeriodEnd && !current.subscription.cancelAtPeriodEnd && (
                                     <div style={{ fontSize: 12, color: "#6f6b82", marginTop: 8 }}>
                                         Period ends {new Date(current.subscription.currentPeriodEnd).toLocaleDateString()}
+                                    </div>
+                                )}
+                                {current.subscription?.status === "TRIALING" && (
+                                    <div style={{ fontSize: 12, color: "#b25e09", marginTop: 8, fontWeight: 600 }}>
+                                        Payment pending — complete checkout or wait a few seconds after paying.
                                     </div>
                                 )}
                                 <div style={{ fontSize: 12, color: "#a3a0b3", marginTop: 8, lineHeight: 1.6 }}>

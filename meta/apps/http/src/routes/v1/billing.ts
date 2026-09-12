@@ -54,19 +54,19 @@ async function createRazorpaySubscription(
     return (await resp.json()) as { id: string; short_url?: string | null };
 }
 
-/** Best-effort: cancel an old Razorpay subscription at the end of its cycle. */
-async function cancelRazorpayAtPeriodEnd(rzSubscriptionId: string): Promise<void> {
+/** Best-effort: cancel a Razorpay subscription. */
+async function cancelRazorpay(rzSubscriptionId: string, atPeriodEnd: boolean): Promise<void> {
     const auth = razorpayAuth();
     if (!auth) return;
     try {
         const resp = await fetch(`${RAZORPAY_API}/subscriptions/${rzSubscriptionId}/cancel`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: auth },
-            body: JSON.stringify({ cancel_at_cycle_end: true }),
+            body: JSON.stringify({ cancel_at_cycle_end: atPeriodEnd }),
         });
-        if (!resp.ok) console.warn("[billing] cancel-old-at-period-end failed:", resp.status, await resp.text());
+        if (!resp.ok) console.warn("[billing] cancel-razorpay failed:", resp.status, await resp.text());
     } catch (err) {
-        console.warn("[billing] cancel-old-at-period-end error:", err);
+        console.warn("[billing] cancel-razorpay error:", err);
     }
 }
 
@@ -184,6 +184,10 @@ billingRouter.post("/cancel", userMiddleware, async (req, res) => {
         res.status(400).json({ message: "No Razorpay subscription to cancel" });
         return;
     }
+    if (!["TRIALING", "ACTIVE", "PAST_DUE"].includes(sub.status)) {
+        res.status(409).json({ message: "Subscription is already cancelled or expired" });
+        return;
+    }
 
     const immediate = sub.status === "TRIALING";
     const reason = typeof req.body?.reason === "string" && req.body.reason.trim()
@@ -205,7 +209,10 @@ billingRouter.post("/cancel", userMiddleware, async (req, res) => {
         }
         await client.subscription.update({
             where: { id: sub.id },
-            data: { cancelAtPeriodEnd: !immediate },
+            data: {
+                cancelAtPeriodEnd: !immediate,
+                ...(immediate ? { status: "CANCELED" } : {}),
+            },
         });
         invalidatePlanCache(req.userId!);
         res.json({
@@ -272,12 +279,12 @@ billingRouter.post("/subscribe", userMiddleware, async (req, res) => {
         }
 
         // Switching plans: if the user has a live subscription on a DIFFERENT plan,
-        // cancel the old one at the end of its cycle, then start the new one.
+        // cancel the old one, then start the new one.
         const existing = await client.subscription.findUnique({
             where: { ownerId: req.userId! },
         });
-        if (existing && existing.status === "ACTIVE" && existing.planId === plan.id) {
-            res.status(409).json({ message: "You're already on this plan" });
+        if (existing && existing.planId === plan.id && ["TRIALING", "ACTIVE", "PAST_DUE"].includes(existing.status)) {
+            res.status(409).json({ message: "You already have a subscription for this plan" });
             return;
         }
         const switching = Boolean(
@@ -286,7 +293,10 @@ billingRouter.post("/subscribe", userMiddleware, async (req, res) => {
             ["TRIALING", "ACTIVE", "PAST_DUE"].includes(existing.status)
         );
         if (switching) {
-            await cancelRazorpayAtPeriodEnd(existing!.razorpaySubscriptionId!);
+            // ACTIVE/PAST_DUE: cancel at period end so the customer keeps access until paid-through.
+            // TRIALING: cancel immediately because no payment has been made yet.
+            const atPeriodEnd = existing!.status !== "TRIALING";
+            await cancelRazorpay(existing!.razorpaySubscriptionId!, atPeriodEnd);
         }
 
         try {
@@ -360,20 +370,21 @@ billingRouter.post("/webhook", async (req, res) => {
         event?: string;
         payload?: {
             subscription?: { entity?: { id?: string; current_start?: number | null; current_end?: number | null } };
-            payment?: { entity?: { id?: string; amount?: number; currency?: string; created_at?: number | null } };
+            payment?: { entity?: { id?: string; subscription_id?: string; amount?: number; currency?: string; created_at?: number | null } };
             invoice?: { entity?: { id?: string } };
         };
     };
 
     const event = payload.event;
     const rzSub = payload.payload?.subscription?.entity;
-    if (!event || !rzSub?.id) {
+    const rzSubId = rzSub?.id ?? payload.payload?.payment?.entity?.subscription_id;
+    if (!event || !rzSubId) {
         res.json({ received: true });
         return;
     }
 
     const subscription = await client.subscription.findUnique({
-        where: { razorpaySubscriptionId: rzSub.id },
+        where: { razorpaySubscriptionId: rzSubId },
         include: { plan: true, owner: { select: { email: true, name: true } } },
     });
     if (!subscription) {
