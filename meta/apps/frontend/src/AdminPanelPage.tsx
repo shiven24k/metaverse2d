@@ -11,6 +11,8 @@ interface Summary {
     adminCount: number;
     spaceCount: number;
     mrrPaise: number;
+    totalRevenuePaise: number;
+    paidInvoiceCount: number;
     activeSubscriptionCount: number;
     subsByStatus: Record<string, number>;
     failedInvoices: number;
@@ -37,6 +39,8 @@ interface SubRow {
     planId: string;
     owner: { name: string; username: string | null; email: string };
     plan: { tier: string; name: string };
+    paidInvoiceCount: number;
+    revenuePaise: number;
 }
 
 interface InvoiceRow {
@@ -258,6 +262,8 @@ export default function AdminPanelPage() {
                             ["Admins", summary.adminCount],
                             ["Active subs", summary.activeSubscriptionCount],
                             ["MRR / mo", `₹${(summary.mrrPaise / 100).toLocaleString("en-IN")}`],
+                            ["Total revenue", `₹${(summary.totalRevenuePaise / 100).toLocaleString("en-IN")}`],
+                            ["Paid invoices", summary.paidInvoiceCount],
                             ["Total spaces", summary.spaceCount],
                             ["Live rooms", summary.liveRooms],
                             ["Live users", summary.liveUsers],
@@ -315,15 +321,17 @@ export default function AdminPanelPage() {
                         </div>
                         <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #ecebf3", overflow: "hidden" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                                <thead><tr><th style={th}>Owner</th><th style={th}>Plan</th><th style={th}>Status</th><th style={th}>Period end</th><th style={th}>Cancel@end</th><th style={th}></th></tr></thead>
+                                <thead><tr><th style={th}>Customer</th><th style={th}>Email</th><th style={th}>Plan</th><th style={th}>Status</th><th style={th}>Period end</th><th style={th}>Paid</th><th style={th}>Revenue</th><th style={th}></th></tr></thead>
                                 <tbody>
                                     {subs.map(s => (
                                         <tr key={s.id}>
                                             <td style={td}>{s.owner.name}{s.owner.username ? ` (@${s.owner.username})` : ""}</td>
+                                            <td style={td}>{s.owner.email}</td>
                                             <td style={td}>{s.plan.tier} ({s.plan.name})</td>
                                             <td style={td}>{pill(s.status)}</td>
                                             <td style={td}>{s.currentPeriodEnd ? new Date(s.currentPeriodEnd).toLocaleDateString() : "—"}</td>
-                                            <td style={td}>{s.cancelAtPeriodEnd ? "✓" : "—"}</td>
+                                            <td style={td}>{s.paidInvoiceCount}</td>
+                                            <td style={td}>₹{(s.revenuePaise / 100).toLocaleString("en-IN")}</td>
                                             <td style={td}><button onClick={() => openOverride(s)} style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #e7ddfb", background: "#f4f0fe", color: "#6d28d9", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Override</button></td>
                                         </tr>
                                     ))}

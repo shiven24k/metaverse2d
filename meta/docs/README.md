@@ -17,7 +17,7 @@ Detailed, code-grounded documentation for every service in the Metaverse2D monor
 - **Chest economy** — placed chest items award 10–25 coins with a 1-hour per-chest cooldown.
 - **TURN credentials endpoint** — `GET /api/v1/turn-credentials` dynamically proxies Metered TURN creds to the WebRTC client.
 - **Guest mode** — browse/join without an account (read-only WS identity, no saves).
-- **SaaS billing foundation** — `PlatformRole`, `Plan`, `Subscription`, `Invoice`, `AdminAuditLog` models + `platformRole` session field + `requirePlatformAdmin` middleware + 6 seeded plan rows. **Step 2 wired**: Razorpay `POST /billing/subscribe` + signature-verified `POST /billing/webhook` (dependency-free, env-gated via `RAZORPAY_*`). **Step 3 wired**: plan gating (`planAccess` + `enforcePlanLimit`) enforcing `maxSpaces` (space create), `maxConcurrentUsers` (WS join) and `broadcastEnabled` (WS zone join + metadata write). **Step 4 wired**: self-service `/billing` page (current plan, plans grid, Razorpay checkout redirect, cancel, invoices) + backend `GET /billing/plans|plan|invoices`, `POST /billing/cancel`, and webhook cache invalidation. **Step 5 wired**: platform-admin panel (`/admin`, gated by `requirePlatformAdmin`) — summary/MRR, users, subscriptions + override (→ `AdminAuditLog`), invoices, spaces, audit. **Step 6 wired**: dunning (`Subscription.graceEndsAt`, hourly auto-downgrade of expired-grace PAST_DUE subs → Free + cache invalidation) and Resend transactional email on payment failure/downgrade (`RESEND_API_KEY`).
+- **SaaS billing foundation** — `PlatformRole`, `Plan`, `Subscription`, `Invoice`, `AdminAuditLog` models + `platformRole` session field + `requirePlatformAdmin` middleware + 6 seeded plan rows. **Step 2 wired**: Razorpay `POST /billing/subscribe` + signature-verified `POST /billing/webhook` (dependency-free, env-gated via `RAZORPAY_*`). **Step 3 wired**: plan gating (`planAccess` + `enforcePlanLimit`) enforcing `maxSpaces` (space create), `maxConcurrentUsers` (WS join) and `broadcastEnabled` (WS zone join + metadata write). **Step 4 wired**: self-service `/billing` page (current plan, plans grid, Razorpay checkout redirect, cancel, invoices) + backend `GET /billing/plans|plan|invoices`, `POST /billing/cancel`, and webhook cache invalidation. **Step 5 wired**: platform-admin panel (`/admin`, gated by `requirePlatformAdmin`) — summary/MRR, users, subscriptions + override (→ `AdminAuditLog`), invoices, spaces, audit. **Step 6 wired**: dunning (`Subscription.graceEndsAt`, hourly auto-downgrade of expired-grace PAST_DUE subs → Free + cache invalidation) and Resend transactional email on payment failure/downgrade (`RESEND_API_KEY`). Full reference — flow, gating, webhook events, operations and known gaps — in [billing.md](./billing.md).
 - **Marketing site** — `/`, `/about`, `/pricing`, `/contact` pages served by the same SPA.
 - **OAuth** — optional Google / GitHub social sign-in wired through better-auth.
 
@@ -34,6 +34,7 @@ Current phase on the [ROADMAP](../ROADMAP.md): **Phase 5 (Scale & Polish) in pro
 | [database.md](./database.md) | The **shared DB package** (`packages/db`) — Prisma schema, every model, migrations workflow, seed data |
 | [webrtc.md](./webrtc.md) | WebRTC feature reference (signaling, PeerManager API, ICE/TURN, audio pipeline) |
 | [webrtc-postmortem.md](./webrtc-postmortem.md) | Retrospective of WebRTC bugs and the fixes that shipped |
+| [billing.md](./billing.md) | **SaaS billing** — end-to-end subscription flow, status semantics, endpoints, plan-gating map, webhook events, security protocols, admin panel, going-live checklist, known gaps |
 
 ## Reading guide
 
@@ -42,6 +43,7 @@ Current phase on the [ROADMAP](../ROADMAP.md): **Phase 5 (Scale & Polish) in pro
 - Building/editing a WS message? → [ws-service.md](./ws-service.md)
 - Changing something in the canvas game or UI? → [frontend-service.md](./frontend-service.md)
 - Adding a DB model or migration? → [database.md](./database.md) then `AGENTS.md` at `meta/AGENTS.md`
+- Working on subscriptions/billing/plan limits? → [billing.md](./billing.md)
 
 ## A note on the embedded WebRTC dev-notes
 

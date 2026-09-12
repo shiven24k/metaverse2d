@@ -1,6 +1,7 @@
 import { Router } from "express";
 import client from "@repo/db/client";
 import { userMiddleware } from "../../middleware/user";
+import { getEffectivePlan } from "../../../../ws/src/lib/planAccess";
 
 export const inviteRouter = Router();
 
@@ -43,6 +44,23 @@ inviteRouter.post("/:token/join", userMiddleware, async (req, res) => {
     if (!invite) { res.status(404).json({ message: "Invite not found" }); return; }
     if (invite.expiresAt && invite.expiresAt < new Date()) { res.status(410).json({ message: "Invite expired" }); return; }
     if (invite.maxUses !== null && invite.useCount >= invite.maxUses) { res.status(410).json({ message: "Invite has reached max uses" }); return; }
+
+    // Seat limit: cap members at the space owner's plan `maxMembersPerSpace`.
+    const space = await client.space.findUnique({
+        where: { id: invite.spaceId },
+        select: { creatorId: true, _count: { select: { members: true } } },
+    });
+    const alreadyMember = await client.spaceMember.findUnique({
+        where: { spaceId_userId: { spaceId: invite.spaceId, userId: req.userId! } },
+    });
+    if (space && !alreadyMember) {
+        const ownerPlan = await getEffectivePlan(space.creatorId);
+        const memberCount = space._count?.members ?? 0;
+        if (memberCount >= ownerPlan.maxMembersPerSpace) {
+            res.status(403).json({ message: `This space has reached its member limit (${ownerPlan.maxMembersPerSpace} on the ${ownerPlan.tier} plan).` });
+            return;
+        }
+    }
 
     await client.$transaction(async (tx) => {
         await tx.spaceMember.upsert({

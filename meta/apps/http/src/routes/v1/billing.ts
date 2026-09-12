@@ -12,6 +12,75 @@ export const billingRouter = Router();
 
 const RAZORPAY_API = "https://api.razorpay.com/v1";
 
+// Per-user in-process lock so concurrent subscribe requests can't create two
+// Razorpay subscriptions (double charge). Single-node; a multi-instance deploy
+// should use Redis/DB-level locking instead.
+const subscribeInFlight = new Set<string>();
+
+function razorpayAuth(): string | null {
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keyId || !keySecret) return null;
+    return "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+}
+
+/**
+ * Create a Razorpay subscription for a plan. total_count = 12 auto-charge cycles
+ * (12 months for monthly, 12 years for yearly) so recurring billing keeps running
+ * without manual re-pay; after the 12th cycle `subscription.completed` fires and
+ * the webhook attempts a renewal.
+ */
+async function createRazorpaySubscription(
+    plan: { id: string; razorpayPlanId: string | null; billingPeriod: string },
+    ownerId: string
+): Promise<{ id: string; short_url?: string | null }> {
+    const auth = razorpayAuth();
+    if (!auth || !plan.razorpayPlanId) throw new Error("razorpay not configured");
+    const resp = await fetch(`${RAZORPAY_API}/subscriptions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: JSON.stringify({
+            plan_id: plan.razorpayPlanId,
+            customer_notify: 1,
+            total_count: 12,
+            notes: { planId: plan.id, ownerId },
+        }),
+    });
+    if (!resp.ok) {
+        const errText = await resp.text();
+        console.error("[billing] Razorpay create subscription failed:", resp.status, errText);
+        throw new Error("razorpay create failed");
+    }
+    return (await resp.json()) as { id: string; short_url?: string | null };
+}
+
+/** Best-effort: cancel an old Razorpay subscription at the end of its cycle. */
+async function cancelRazorpayAtPeriodEnd(rzSubscriptionId: string): Promise<void> {
+    const auth = razorpayAuth();
+    if (!auth) return;
+    try {
+        const resp = await fetch(`${RAZORPAY_API}/subscriptions/${rzSubscriptionId}/cancel`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: auth },
+            body: JSON.stringify({ cancel_at_cycle_end: true }),
+        });
+        if (!resp.ok) console.warn("[billing] cancel-old-at-period-end failed:", resp.status, await resp.text());
+    } catch (err) {
+        console.warn("[billing] cancel-old-at-period-end error:", err);
+    }
+}
+
+// Config health for the billing UI (public flags, no secrets).
+billingRouter.get("/health", async (_req, res) => {
+    const plansWithoutIds = await client.plan.count({ where: { razorpayPlanId: null } });
+    res.json({
+        razorpayConfigured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+        razorpayWebhookConfigured: Boolean(process.env.RAZORPAY_WEBHOOK_SECRET),
+        resendConfigured: Boolean(process.env.RESEND_API_KEY),
+        plansMissingRazorpayIds: plansWithoutIds,
+    });
+});
+
 // Public plan catalog for the pricing / billing UI.
 billingRouter.get("/plans", async (_req, res) => {
     const plans = await client.plan.findMany({
@@ -117,6 +186,10 @@ billingRouter.post("/cancel", userMiddleware, async (req, res) => {
     }
 
     const immediate = sub.status === "TRIALING";
+    const reason = typeof req.body?.reason === "string" && req.body.reason.trim()
+        ? req.body.reason.trim()
+        : undefined;
+    if (reason) console.log(`[billing] cancel reason (user ${req.userId}): ${reason}`);
     const auth = "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64");
     try {
         const resp = await fetch(`${RAZORPAY_API}/subscriptions/${sub.razorpaySubscriptionId}/cancel`, {
@@ -163,92 +236,92 @@ billingRouter.post("/subscribe", userMiddleware, async (req, res) => {
         return;
     }
 
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
-    if (!keyId || !keySecret) {
-        res.status(503).json({
-            message: "Razorpay not configured. Set RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET.",
-            url: null,
-        });
+    // Serialize per-user: prevents two rapid clicks from creating two Razorpay
+    // subscriptions (a real double-charge risk).
+    if (subscribeInFlight.has(req.userId!)) {
+        res.status(429).json({ message: "A subscription change is already in progress. Please wait a moment." });
         return;
     }
-
-    const plan = await client.plan.findUnique({ where: { id: planId } });
-    if (!plan) {
-        res.status(404).json({ message: "Plan not found" });
-        return;
-    }
-    if (!plan.razorpayPlanId) {
-        res.status(400).json({
-            message: `Plan ${plan.tier} has no Razorpay plan id configured (set Plan.razorpayPlanId)`,
-        });
-        return;
-    }
-
-    // Don't create a duplicate live subscription for an already-active plan.
-    const existing = await client.subscription.findUnique({
-        where: { ownerId: req.userId! },
-    });
-    if (existing?.status === "ACTIVE") {
-        res.status(409).json({ message: "You already have an active subscription" });
-        return;
-    }
-
-    const auth = "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64");
-    // Charge cycles: yearly = 1 upfront charge; monthly = 12 auto-charges (then
-    // the subscription completes). Long-running recurring plans should handle
-    // `subscription.completed` by creating a renewal, or use a large total_count.
-    const totalCount = plan.billingPeriod === "yearly" ? 1 : 12;
+    subscribeInFlight.add(req.userId!);
 
     try {
-        const resp = await fetch(`${RAZORPAY_API}/subscriptions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: auth },
-            body: JSON.stringify({
-                plan_id: plan.razorpayPlanId,
-                customer_notify: 1,
-                total_count: totalCount,
-                notes: { planId: plan.id, ownerId: req.userId },
-            }),
-        });
-
-        if (!resp.ok) {
-            const errText = await resp.text();
-            console.error("[billing] Razorpay create subscription failed:", resp.status, errText);
-            res.status(502).json({ message: "Failed to create subscription with Razorpay" });
+        const keyId = process.env.RAZORPAY_KEY_ID;
+        const keySecret = process.env.RAZORPAY_KEY_SECRET;
+        if (!keyId || !keySecret) {
+            res.status(503).json({
+                message: "Razorpay not configured. Set RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET.",
+                url: null,
+            });
             return;
         }
 
-        const rzSub = (await resp.json()) as {
-            id: string;
-            short_url?: string | null;
-            status?: string;
-        };
+        const plan = await client.plan.findUnique({ where: { id: planId } });
+        if (!plan) {
+            res.status(404).json({ message: "Plan not found" });
+            return;
+        }
+        if (plan.tier === "FREE") {
+            res.status(400).json({ message: "The Free plan doesn't need checkout — you're already on it." });
+            return;
+        }
+        if (!plan.razorpayPlanId) {
+            res.status(400).json({
+                message: `Plan ${plan.tier} has no Razorpay plan id configured (set Plan.razorpayPlanId)`,
+            });
+            return;
+        }
 
-        const sub = await client.subscription.upsert({
+        // Switching plans: if the user has a live subscription on a DIFFERENT plan,
+        // cancel the old one at the end of its cycle, then start the new one.
+        const existing = await client.subscription.findUnique({
             where: { ownerId: req.userId! },
-            create: {
-                ownerId: req.userId!,
-                planId: plan.id,
-                razorpaySubscriptionId: rzSub.id,
-                status: "TRIALING",
-            },
-            update: {
-                planId: plan.id,
-                razorpaySubscriptionId: rzSub.id,
-                graceEndsAt: null,
-            },
         });
+        if (existing && existing.status === "ACTIVE" && existing.planId === plan.id) {
+            res.status(409).json({ message: "You're already on this plan" });
+            return;
+        }
+        const switching = Boolean(
+            existing?.razorpaySubscriptionId &&
+            existing.planId !== plan.id &&
+            ["TRIALING", "ACTIVE", "PAST_DUE"].includes(existing.status)
+        );
+        if (switching) {
+            await cancelRazorpayAtPeriodEnd(existing!.razorpaySubscriptionId!);
+        }
 
-        res.json({
-            subscriptionId: rzSub.id,
-            shortUrl: rzSub.short_url ?? null,
-            localSubscriptionId: sub.id,
-            plan: { tier: plan.tier, name: plan.name },
-        });
-    } catch (err) {
-        console.error("[billing] subscribe error:", err);
-        res.status(500).json({ message: "Failed to start subscription" });
+        try {
+            const rzSub = await createRazorpaySubscription(plan, req.userId!);
+
+            const sub = await client.subscription.upsert({
+                where: { ownerId: req.userId! },
+                create: {
+                    ownerId: req.userId!,
+                    planId: plan.id,
+                    razorpaySubscriptionId: rzSub.id,
+                    status: "TRIALING",
+                },
+                update: {
+                    planId: plan.id,
+                    razorpaySubscriptionId: rzSub.id,
+                    status: "TRIALING",
+                    cancelAtPeriodEnd: false,
+                    graceEndsAt: null,
+                },
+            });
+
+            res.json({
+                subscriptionId: rzSub.id,
+                shortUrl: rzSub.short_url ?? null,
+                localSubscriptionId: sub.id,
+                plan: { tier: plan.tier, name: plan.name },
+                switchedFrom: switching ? existing!.planId : undefined,
+            });
+        } catch (err) {
+            console.error("[billing] subscribe error:", err);
+            res.status(500).json({ message: "Failed to start subscription" });
+        }
+    } finally {
+        subscribeInFlight.delete(req.userId!);
     }
 });
 
@@ -275,7 +348,9 @@ billingRouter.post("/webhook", async (req, res) => {
     }
 
     const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
-    if (signature !== expected) {
+    const sigBuf = Buffer.from(signature, "utf8");
+    const expBuf = Buffer.from(expected, "utf8");
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
         console.warn("[billing] invalid webhook signature");
         res.status(400).json({ message: "Invalid signature" });
         return;
@@ -331,17 +406,23 @@ billingRouter.post("/webhook", async (req, res) => {
                     where: { razorpayPaymentId: paymentId },
                 });
                 if (!existing) {
-                    await client.invoice.create({
-                        data: {
-                            subscriptionId: subscription.id,
-                            razorpayPaymentId: paymentId,
-                            razorpayInvoiceId: payload.payload?.invoice?.entity?.id ?? undefined,
-                            amountInPaise: payment?.amount ?? 0,
-                            currency: payment?.currency ?? "INR",
-                            status: "paid",
-                            paidAt: fromEpoch(payment?.created_at),
-                        },
-                    });
+                    try {
+                        await client.invoice.create({
+                            data: {
+                                subscriptionId: subscription.id,
+                                razorpayPaymentId: paymentId,
+                                razorpayInvoiceId: payload.payload?.invoice?.entity?.id ?? undefined,
+                                amountInPaise: payment?.amount ?? 0,
+                                currency: payment?.currency ?? "INR",
+                                status: "paid",
+                                paidAt: fromEpoch(payment?.created_at),
+                            },
+                        });
+                    } catch (err) {
+                        // Concurrent webhook delivery already inserted it (P2002 on
+                        // razorpayPaymentId/razorpayInvoiceId) — safe to ignore.
+                        if ((err as { code?: string }).code !== "P2002") throw err;
+                    }
                 }
             }
             await client.subscription.update({
@@ -384,12 +465,52 @@ billingRouter.post("/webhook", async (req, res) => {
             break;
         }
 
-        case "subscription.halted":
-        case "subscription.completed": {
+        case "subscription.halted": {
+            // Payment failed repeatedly — stop charging, drop to Free.
             await client.subscription.update({
                 where: { id: subscription.id },
                 data: { status: "EXPIRED" },
             });
+            break;
+        }
+
+        case "subscription.completed": {
+            // A finite subscription (total_count=12) reached its last cycle.
+            // Try to auto-renew paid plans into a fresh subscription; if that
+            // fails, drop to Free rather than leave the user on a dead plan.
+            let renewed = false;
+            if (subscription.plan.tier !== "FREE" && subscription.plan.razorpayPlanId) {
+                try {
+                    const rz = await createRazorpaySubscription(subscription.plan, subscription.ownerId);
+                    await client.subscription.update({
+                        where: { id: subscription.id },
+                        data: {
+                            razorpaySubscriptionId: rz.id,
+                            status: "TRIALING",
+                            cancelAtPeriodEnd: false,
+                            graceEndsAt: null,
+                        },
+                    });
+                    if (subscription.owner.email && rz.short_url) {
+                        await sendEmail(
+                            subscription.owner.email,
+                            "Renew your plan",
+                            `<p>Hi ${subscription.owner.name},</p>` +
+                                `<p>Your plan period ended — renew here to keep your paid features:</p>` +
+                                `<p><a href="${rz.short_url}">${rz.short_url}</a></p>`
+                        );
+                    }
+                    renewed = true;
+                } catch (err) {
+                    console.error("[billing] renewal failed:", err);
+                }
+            }
+            if (!renewed) {
+                await client.subscription.update({
+                    where: { id: subscription.id },
+                    data: { status: "EXPIRED" },
+                });
+            }
             break;
         }
     }

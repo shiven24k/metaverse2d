@@ -72,6 +72,10 @@ export default function BillingPage() {
     const [plansError, setPlansError] = useState<string | null>(null);
     const [msg, setMsg] = useState<{ text: string; isError: boolean } | null>(null);
     const [busy, setBusy] = useState(false);
+    const [health, setHealth] = useState<{ razorpayConfigured: boolean; plansMissingRazorpayIds: number } | null>(null);
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [cancelReason, setCancelReason] = useState("");
+    const [cancelNote, setCancelNote] = useState("");
 
     const handleAuthFailure = useCallback(() => {
         clearAuth();
@@ -81,10 +85,11 @@ export default function BillingPage() {
     const fetchAll = useCallback(async () => {
         setPlansError(null);
         try {
-            const [planRes, plansRes, invRes] = await Promise.all([
+            const [planRes, plansRes, invRes, healthRes] = await Promise.all([
                 fetch(`${API}/api/v1/billing/plan`, { headers: authHeaders }),
                 fetch(`${API}/api/v1/billing/plans`),
                 fetch(`${API}/api/v1/billing/invoices`, { headers: authHeaders }),
+                fetch(`${API}/api/v1/billing/health`),
             ]);
             if (planRes.status === 401 || planRes.status === 403) { handleAuthFailure(); return; }
             if (planRes.ok) setCurrent(await planRes.json());
@@ -97,6 +102,10 @@ export default function BillingPage() {
             if (invRes.ok) {
                 const d = await invRes.json();
                 setInvoices(d.invoices ?? []);
+            }
+            if (healthRes.ok) {
+                const d = await healthRes.json();
+                setHealth(d);
             }
         } catch {
             setPlansError("Couldn't load plans. Make sure the API is reachable.");
@@ -132,21 +141,20 @@ export default function BillingPage() {
         }
     };
 
-    const handleCancel = async () => {
-        const status = current?.subscription?.status;
-        const confirmMsg = status === "TRIALING"
-            ? "Cancel your trial? Your plan downgrades to Free right away."
-            : "Cancel your subscription? It stays active until the end of the current period.";
-        if (!window.confirm(confirmMsg)) return;
+    const doCancel = async () => {
+        setShowCancelModal(false);
         setBusy(true);
         setMsg(null);
         try {
             const res = await fetch(`${API}/api/v1/billing/cancel`, {
                 method: "POST",
                 headers: authHeaders,
+                body: JSON.stringify({ reason: cancelReason || cancelNote || undefined }),
             });
             const d = await res.json();
             setMsg({ text: d.message ?? "Cancel request failed", isError: !res.ok });
+            setCancelReason("");
+            setCancelNote("");
             fetchAll();
         } catch {
             setMsg({ text: "Network error cancelling subscription", isError: true });
@@ -206,14 +214,19 @@ export default function BillingPage() {
                                     </div>
                                     <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                                         {current.subscription && ["ACTIVE", "TRIALING", "PAST_DUE"].includes(current.subscription.status) && (
-                                            <button onClick={handleCancel} disabled={busy || current.subscription.cancelAtPeriodEnd}
+                                            <button onClick={() => setShowCancelModal(true)} disabled={busy || current.subscription.cancelAtPeriodEnd}
                                                 style={{ padding: "8px 16px", borderRadius: 9, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                                                 {current.subscription.cancelAtPeriodEnd ? "Cancels at period end" : busy ? "…" : current.subscription.status === "TRIALING" ? "Cancel trial" : "Cancel subscription"}
                                             </button>
                                         )}
                                     </div>
                                 </div>
-                                {current.subscription?.currentPeriodEnd && (
+                                {current.subscription?.cancelAtPeriodEnd && current.subscription.currentPeriodEnd && (
+                                    <div style={{ fontSize: 12, color: "#b25e09", marginTop: 8, fontWeight: 600 }}>
+                                        Your subscription cancels on {new Date(current.subscription.currentPeriodEnd).toLocaleDateString()}.
+                                    </div>
+                                )}
+                                {current.subscription?.currentPeriodEnd && !current.subscription.cancelAtPeriodEnd && (
                                     <div style={{ fontSize: 12, color: "#6f6b82", marginTop: 8 }}>
                                         Period ends {new Date(current.subscription.currentPeriodEnd).toLocaleDateString()}
                                     </div>
@@ -230,6 +243,13 @@ export default function BillingPage() {
                                         {onFree ? `Upgrade from Free to ${nextTierName}` : `Upgrade to ${nextTierName}`} →
                                     </button>
                                 )}
+                            </div>
+                        )}
+
+                        {health && !health.razorpayConfigured && (
+                            <div style={{ padding: "12px 16px", borderRadius: 10, border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e", fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
+                                ⚠️ Checkout isn't enabled yet — the server has no Razorpay keys. Ask the admin to set <code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: 5 }}>RAZORPAY_KEY_ID/SECRET</code>{" "}
+                                {health.plansMissingRazorpayIds > 0 && <>and fill <code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: 5 }}>Plan.razorpayPlanId</code> for {health.plansMissingRazorpayIds} plan(s).</>}
                             </div>
                         )}
 
@@ -327,6 +347,42 @@ export default function BillingPage() {
                     </>
                 )}
             </div>
+
+            {/* Cancel subscription modal */}
+            {showCancelModal && (
+                <div style={{ position: "fixed", inset: 0, background: "rgba(25,20,39,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
+                    <div style={{ background: "#fff", borderRadius: 16, maxWidth: 440, width: "100%", padding: 24, boxShadow: "0 20px 60px rgba(25,20,39,0.35)" }}>
+                        <h2 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 800, color: "#191427" }}>
+                            {current?.subscription?.status === "TRIALING" ? "Cancel your trial?" : "Cancel your subscription?"}
+                        </h2>
+                        <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6f6b82", lineHeight: 1.5 }}>
+                            {current?.subscription?.status === "TRIALING"
+                                ? "Your plan downgrades to Free right away."
+                                : "Your plan stays active until the end of the current period, then downgrades to Free."}
+                        </p>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#4d495f", marginBottom: 6 }}>Why are you cancelling? (optional)</label>
+                        <select value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} style={{ width: "100%", padding: "9px 12px", borderRadius: 9, border: "1.5px solid #e3e1ee", fontSize: 13, color: "#191427", background: "#fff", marginBottom: 10 }}>
+                            <option value="">Select a reason…</option>
+                            <option>Too expensive</option>
+                            <option>Switching to another tool</option>
+                            <option>Not using it enough</option>
+                            <option>Missing features</option>
+                            <option>Other</option>
+                        </select>
+                        <textarea value={cancelNote} onChange={(e) => setCancelNote(e.target.value)} placeholder="Anything else? (optional)" rows={3} style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 9, border: "1.5px solid #e3e1ee", fontSize: 13, color: "#191427", fontFamily: "inherit", resize: "vertical", marginBottom: 18 }} />
+                        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                            <button onClick={() => { setShowCancelModal(false); setCancelReason(""); setCancelNote(""); }}
+                                style={{ padding: "9px 16px", borderRadius: 9, border: "1.5px solid #e3e1ee", background: "#fff", color: "#4d495f", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                                Keep my plan
+                            </button>
+                            <button onClick={doCancel} disabled={busy}
+                                style={{ padding: "9px 16px", borderRadius: 9, border: "none", background: "#dc2626", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                                {busy ? "Cancelling…" : current?.subscription?.status === "TRIALING" ? "Cancel trial" : "Cancel subscription"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

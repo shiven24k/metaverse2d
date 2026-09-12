@@ -18,12 +18,13 @@ const VALID_STATUS = new Set(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXP
 
 // Revenue + system snapshot: MRR, counts by tier/status, live room usage.
 adminPanelRouter.get("/panel/summary", async (req, res) => {
-    const [userCount, adminCount, spaceCount, activeSubs, subsByStatus] = await Promise.all([
+    const [userCount, adminCount, spaceCount, activeSubs, subsByStatus, paidInvoices] = await Promise.all([
         client.user.count(),
         client.user.count({ where: { platformRole: "PLATFORM_ADMIN" } }),
         client.space.count(),
         client.subscription.findMany({ where: { status: "ACTIVE" }, include: { plan: true } }),
         client.subscription.groupBy({ by: ["status"], _count: true }),
+        client.invoice.findMany({ where: { status: "paid" }, select: { amountInPaise: true } }),
     ]);
 
     // MRR in paise: yearly plans are converted to a monthly-equivalent.
@@ -31,6 +32,7 @@ adminPanelRouter.get("/panel/summary", async (req, res) => {
         (sum, s) => sum + (s.plan.billingPeriod === "yearly" ? Math.round(s.plan.priceInPaiseINR / 12) : s.plan.priceInPaiseINR),
         0
     );
+    const totalRevenuePaise = paidInvoices.reduce((sum, i) => sum + i.amountInPaise, 0);
 
     const failedInvoices = await client.invoice.count({ where: { status: "failed" } });
 
@@ -49,6 +51,8 @@ adminPanelRouter.get("/panel/summary", async (req, res) => {
         adminCount,
         spaceCount,
         mrrPaise,
+        totalRevenuePaise,
+        paidInvoiceCount: paidInvoices.length,
         activeSubscriptionCount: activeSubs.length,
         subsByStatus: Object.fromEntries(subsByStatus.map((s) => [s.status, s._count])),
         failedInvoices,
@@ -96,11 +100,18 @@ adminPanelRouter.get("/panel/subscriptions", async (req, res) => {
         include: {
             owner: { select: { name: true, username: true, email: true } },
             plan: { select: { tier: true, name: true } },
+            invoices: { where: { status: "paid" }, select: { amountInPaise: true } },
         },
         orderBy: { updatedAt: "desc" },
         take: 100,
     });
-    res.json({ subscriptions });
+    res.json({
+        subscriptions: subscriptions.map(({ invoices, ...s }) => ({
+            ...s,
+            paidInvoiceCount: invoices.length,
+            revenuePaise: invoices.reduce((sum, i) => sum + i.amountInPaise, 0),
+        })),
+    });
 });
 
 // Manual plan/status override — writes an AdminAuditLog and clears the plan cache.

@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import client from "@repo/db/client";
 import { userMiddleware } from "../../middleware/user";
 import { enforcePlanLimit } from "../../middleware/enforcePlanLimit";
-import { isBroadcastAllowed } from "../../../../ws/src/lib/planAccess";
+import { isBroadcastAllowed, getEffectivePlan } from "../../../../ws/src/lib/planAccess";
 import { getRoomManager } from "../../../../ws/src/getRoomManager";
 import { sendEmail } from "../../lib/email";
 import { AddElementSchema, CreateSpaceSchema, DeleteElementSchema, BatchAddElementSchema, BatchPlaceItemSchema, BatchDeleteElementSchema, BatchDeleteItemSchema } from "../../types";
@@ -973,7 +973,7 @@ spaceRouter.get("/access-request/decide", async (req, res) => {
     const request = await client.accessRequest.findUnique({
         where: { id: payload.arId },
         include: {
-            space: { select: { name: true } },
+            space: { select: { name: true, creatorId: true, _count: { select: { members: true } } } },
             requester: { select: { email: true, name: true } },
         },
     });
@@ -988,6 +988,21 @@ spaceRouter.get("/access-request/decide", async (req, res) => {
     const baseUrl = process.env.APP_URL ?? "http://localhost:5173";
 
     if (payload.decision === "approve") {
+        // Seat limit: cap members at the space owner's plan `maxMembersPerSpace`
+        // (a real SaaS keeps gate counts tied to the billed plan).
+        const alreadyMember = await client.spaceMember.findUnique({
+            where: { spaceId_userId: { spaceId: request.spaceId, userId: request.requesterId } },
+        });
+        if (!alreadyMember && request.space?.creatorId) {
+            const ownerPlan = await getEffectivePlan(request.space.creatorId);
+            const memberCount = request.space._count?.members ?? 0;
+            if (memberCount >= ownerPlan.maxMembersPerSpace) {
+                res.status(403).type("html").send(
+                    `<html><body style="font-family:system-ui;padding:48px;text-align:center"><h2>This space is full</h2><p>It has reached its member limit (${ownerPlan.maxMembersPerSpace} on the ${ownerPlan.tier} plan). Ask the owner to upgrade, then approve again.</p></body></html>`
+                );
+                return;
+            }
+        }
         await client.$transaction(async (tx) => {
             await tx.spaceMember.upsert({
                 where: { spaceId_userId: { spaceId: request.spaceId, userId: request.requesterId } },

@@ -108,7 +108,10 @@ export async function getEffectivePlan(userId: string): Promise<EffectivePlan> {
 
     const status = await getActiveSubscriptionStatus(userId);
     let plan: EffectivePlan = FREE_DEFAULTS;
-    if (status === "ACTIVE") {
+    // Grant the paid plan while ACTIVE, and during the dunning grace window
+    // (PAST_DUE). Dunning flips PAST_DUE -> EXPIRED once `graceEndsAt` passes,
+    // after which gating correctly falls back to Free.
+    if (status === "ACTIVE" || status === "PAST_DUE") {
         try {
             const sub = await withRetry(() =>
                 client.subscription.findUnique({
