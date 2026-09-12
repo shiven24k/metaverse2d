@@ -96,6 +96,17 @@ export default function SpacePage() {
     const isGuest = useAuthStore((s) => s.isGuest);
     const clearAuth = useAuthStore((s) => s.clearAuth);
     const { currency } = useRegion();
+    const [planTier, setPlanTier] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!bearerToken || isGuest) return;
+        let cancelled = false;
+        fetch(`${API}/api/v1/billing/plan`, { headers: { Authorization: `Bearer ${bearerToken}` } })
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => { if (!cancelled && d?.plan?.tier) setPlanTier(d.plan.tier); })
+            .catch(() => { /* non-fatal */ });
+        return () => { cancelled = true; };
+    }, [bearerToken, isGuest]);
 
     const [tab, setTab] = useState<Tab>("all");
     const [allSpaces, setAllSpaces] = useState<Space[]>([]);
@@ -556,6 +567,13 @@ export default function SpacePage() {
                             💳 Billing
                             <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, color: "#5b21b6", background: "#f4f0fe", padding: "2px 7px", borderRadius: 8 }}>{currency}</span>
                         </button>
+                        {planTier && planTier !== "PRO" && (
+                            <button onClick={() => navigate("/billing")}
+                                style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 10, border: "none", cursor: "pointer",
+                                    background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: "system-ui,sans-serif", textAlign: "left" }}>
+                                ⚡ Upgrade {planTier === "FREE" ? "Free" : planTier} → {planTier === "FREE" ? "Starter" : "Pro"}
+                            </button>
+                        )}
                         {isPlatformAdmin && (
                             <button onClick={() => navigate("/admin")}
                                 style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10, border: "1px solid #e7ddfb", cursor: "pointer",

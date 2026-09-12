@@ -170,6 +170,10 @@ export default function BillingPage() {
 
     const visiblePlans = plans.filter(p => p.billingPeriod === period);
     const activePlanId = current?.subscription?.planId;
+    const tierRank: Record<string, number> = { FREE: 0, STARTER: 1, PRO: 2 };
+    const currentTier = current?.plan.tier ?? "FREE";
+    const onFree = currentTier === "FREE";
+    const nextTierName = currentTier === "FREE" ? "Starter" : currentTier === "STARTER" ? "Pro" : null;
 
     return (
         <div style={{ minHeight: "100vh", background: "#f6f6fb", fontFamily: "system-ui,-apple-system,sans-serif", color: "#191427" }}>
@@ -216,12 +220,19 @@ export default function BillingPage() {
                                     {current.plan.broadcastEnabled ? " · Broadcast zones ✓" : " · Broadcast zones ✗"}
                                     {current.plan.screenShareEnabled ? " · Screen share ✓" : " · Screen share ✗"}
                                 </div>
+                                {nextTierName && (
+                                    <button onClick={() => document.getElementById("plans-grid")?.scrollIntoView({ behavior: "smooth" })}
+                                        style={{ marginTop: 16, padding: "11px 18px", borderRadius: 10, border: "none", cursor: "pointer", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 14, fontWeight: 700 }}>
+                                        {onFree ? `Upgrade from Free to ${nextTierName}` : `Upgrade to ${nextTierName}`} →
+                                    </button>
+                                )}
                             </div>
                         )}
 
                         {/* Period toggle + plans */}
                         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                            <span style={{ fontSize: 15, fontWeight: 700 }}>Plans</span>
+                            <span style={{ fontSize: 15, fontWeight: 700 }}>Choose a plan</span>
+                            <span style={{ fontSize: 12, color: "#a3a0b3" }}>{onFree ? "You're on Free — pick a paid plan to unlock more." : `You're on ${currentTier}.`}</span>
                             <div style={{ display: "flex", background: "#f4f3f9", border: "1px solid #ecebf3", borderRadius: 9, padding: 3 }}>
                                 {(["monthly", "yearly"] as const).map(p => (
                                     <button key={p} onClick={() => setPeriod(p)}
@@ -248,11 +259,14 @@ export default function BillingPage() {
                             <div style={{ padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: msg.isError ? "#fee2e2" : "#dcfce7", color: msg.isError ? "#dc2626" : "#15a34a" }}>{msg.text}</div>
                         )}
 
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 }}>
+                        <div id="plans-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 }}>
                             {visiblePlans.map(p => {
                                 const r = RARITY_COLOR[p.tier] ?? RARITY_COLOR.FREE;
                                 const isCurrent = activePlanId === p.id;
                                 const isFree = p.tier === "FREE";
+                                const rank = tierRank[p.tier] ?? 0;
+                                const curRank = tierRank[currentTier] ?? 0;
+                                const actionLabel = isCurrent || isFree ? "Free" : rank > curRank ? "Upgrade" : rank < curRank ? "Downgrade" : "Upgrade";
                                 return (
                                     <div key={p.id} style={{ background: "#fff", borderRadius: 16, border: `2px solid ${isCurrent ? "#6d28d9" : "#ecebf3"}`, padding: "18px 18px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -274,7 +288,7 @@ export default function BillingPage() {
                                         ) : (
                                             <button onClick={() => handleUpgrade(p.id)} disabled={busy || isFree}
                                                 style={{ padding: "9px", borderRadius: 9, border: "none", background: isFree ? "#e3e1ee" : "linear-gradient(135deg,#7c3aed,#a78bfa)", color: isFree ? "#a3a0b3" : "#fff", fontSize: 13, fontWeight: 700, cursor: isFree ? "not-allowed" : "pointer" }}>
-                                                {isFree ? "Free" : busy ? "Starting…" : "Upgrade"}
+                                                {isFree ? "Free" : busy ? "Starting…" : actionLabel}
                                             </button>
                                         )}
                                     </div>
