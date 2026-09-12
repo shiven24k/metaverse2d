@@ -90,18 +90,29 @@ export default function PricingPage() {
     const [yearly, setYearly] = useState(false);
     const [openFaq, setOpenFaq] = useState(-1);
     const [plans, setPlans] = useState<PlanDef[]>([]);
+    const [loadingPlans, setLoadingPlans] = useState(true);
+    const [plansError, setPlansError] = useState<string | null>(null);
+    const [reloadKey, setReloadKey] = useState(0);
     const { currency, locale, rates } = useRegion();
 
     useReveal(rootRef);
 
     useEffect(() => {
         let cancelled = false;
-        fetch(`${API}/api/v1/billing/plans`)
-            .then(r => (r.ok ? r.json() : { plans: [] }))
-            .then(d => { if (!cancelled) setPlans(d.plans ?? []); })
-            .catch(() => { if (!cancelled) setPlans([]); });
-        return () => { cancelled = true; };
-    }, []);
+        setLoadingPlans(true);
+        setPlansError(null);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        fetch(`${API}/api/v1/billing/plans`, { signal: controller.signal })
+            .then(async (r) => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const d = await r.json();
+                if (!cancelled) setPlans(d.plans ?? []);
+            })
+            .catch(() => { if (!cancelled) setPlansError("Couldn't load plans."); })
+            .finally(() => { clearTimeout(timer); if (!cancelled) setLoadingPlans(false); });
+        return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
+    }, [reloadKey]);
 
     const setYear = (y: boolean) => {
         if (sliderRef.current) sliderRef.current.style.transform = `translateX(${y ? '100%' : '0%'})`;
@@ -153,8 +164,15 @@ export default function PricingPage() {
 
             {/* ─── TIERS ─── */}
             <section data-reveal style={{ maxWidth: 1080, margin: '0 auto', padding: '34px 28px 20px' }}>
-                {plans.length === 0 ? (
+                {loadingPlans ? (
                     <p style={{ textAlign: 'center', color: '#8b82a8', fontSize: 14, padding: '40px 0' }}>Loading plans…</p>
+                ) : plansError ? (
+                    <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                        <p style={{ color: '#dc2626', fontSize: 14, fontWeight: 600, margin: '0 0 14px' }}>{plansError} Make sure the API is reachable (VITE_API_URL is configured).</p>
+                        <button onClick={() => setReloadKey(k => k + 1)} style={{ padding: '10px 22px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', color: '#fff', fontSize: 14, fontWeight: 700 }}>Retry</button>
+                    </div>
+                ) : plans.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: '#8b82a8', fontSize: 14, padding: '40px 0' }}>No plans available yet.</p>
                 ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 22, alignItems: 'start' }}>
                         {cards.map(({ tier, featured }) => {

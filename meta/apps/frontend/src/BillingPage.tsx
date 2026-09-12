@@ -69,6 +69,7 @@ export default function BillingPage() {
     const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
     const [period, setPeriod] = useState<"monthly" | "yearly">("monthly");
     const [loading, setLoading] = useState(true);
+    const [plansError, setPlansError] = useState<string | null>(null);
     const [msg, setMsg] = useState<{ text: string; isError: boolean } | null>(null);
     const [busy, setBusy] = useState(false);
 
@@ -78,6 +79,7 @@ export default function BillingPage() {
     }, [clearAuth, navigate]);
 
     const fetchAll = useCallback(async () => {
+        setPlansError(null);
         try {
             const [planRes, plansRes, invRes] = await Promise.all([
                 fetch(`${API}/api/v1/billing/plan`, { headers: authHeaders }),
@@ -89,13 +91,15 @@ export default function BillingPage() {
             if (plansRes.ok) {
                 const d = await plansRes.json();
                 setPlans(d.plans ?? []);
+            } else {
+                setPlansError(`Couldn't load plans (HTTP ${plansRes.status})`);
             }
             if (invRes.ok) {
                 const d = await invRes.json();
                 setInvoices(d.invoices ?? []);
             }
         } catch {
-            setMsg({ text: "Failed to load billing info", isError: true });
+            setPlansError("Couldn't load plans. Make sure the API is reachable.");
         } finally {
             setLoading(false);
         }
@@ -257,6 +261,13 @@ export default function BillingPage() {
 
                         {msg && (
                             <div style={{ padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: msg.isError ? "#fee2e2" : "#dcfce7", color: msg.isError ? "#dc2626" : "#15a34a" }}>{msg.text}</div>
+                        )}
+
+                        {plansError && (
+                            <div style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                {plansError}
+                                <button onClick={() => fetchAll()} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", background: "#dc2626", color: "#fff", fontSize: 12, fontWeight: 700 }}>Retry</button>
+                            </div>
                         )}
 
                         <div id="plans-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 }}>
