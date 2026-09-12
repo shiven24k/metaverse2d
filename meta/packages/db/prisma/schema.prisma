@@ -493,28 +493,33 @@ model Plan {
   razorpayPlanId     String?        // maps to Razorpay's Plan object
   createdAt          DateTime       @default(now())
   subscriptions      Subscription[]
+  pendingSubscriptions Subscription[] @relation("PendingPlan")
 
   @@unique([tier, billingPeriod])
 }
 
 model Subscription {
-  id                      String             @id @default(cuid())
-  ownerId                 String             @unique
-  owner                   User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  organizationId          String?            // future-proofing, unused for now
-  planId                  String
-  plan                    Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
-  status                  SubscriptionStatus @default(TRIALING)
-  razorpaySubscriptionId  String?            @unique
-  razorpayCustomerId      String?
-  currentPeriodStart      DateTime?
-  currentPeriodEnd        DateTime?
-  trialEndsAt             DateTime?
-  cancelAtPeriodEnd       Boolean            @default(false)
-  graceEndsAt             DateTime?          // dunning: grace end after a failed payment
-  createdAt               DateTime           @default(now())
-  updatedAt               DateTime           @updatedAt
-  invoices                Invoice[]
+  id                            String             @id @default(cuid())
+  ownerId                       String             @unique
+  owner                         User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  organizationId                String?            // future-proofing, unused for now
+  planId                        String
+  plan                          Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  status                        SubscriptionStatus @default(TRIALING)
+  razorpaySubscriptionId        String?            @unique
+  razorpayCustomerId            String?
+  currentPeriodStart            DateTime?
+  currentPeriodEnd              DateTime?
+  trialEndsAt                   DateTime?
+  cancelAtPeriodEnd             Boolean            @default(false)
+  graceEndsAt                   DateTime?          // dunning: grace end after a failed payment
+  pendingPlanId                 String?            // checkout in progress; not active until webhook confirms payment
+  pendingPlan                   Plan?              @relation("PendingPlan", fields: [pendingPlanId], references: [id])
+  pendingRazorpaySubscriptionId String?            @unique
+  pendingShortUrl               String?            // Razorpay hosted checkout URL for the pending subscription
+  createdAt                     DateTime           @default(now())
+  updatedAt                     DateTime           @updatedAt
+  invoices                      Invoice[]
 }
 
 model Invoice {

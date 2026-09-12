@@ -70,6 +70,71 @@ async function cancelRazorpay(rzSubscriptionId: string, atPeriodEnd: boolean): P
     }
 }
 
+async function findSubscriptionByRazorpayId(rzSubscriptionId: string) {
+    return client.subscription.findFirst({
+        where: {
+            OR: [
+                { razorpaySubscriptionId: rzSubscriptionId },
+                { pendingRazorpaySubscriptionId: rzSubscriptionId },
+            ],
+        },
+        include: { plan: true, pendingPlan: true, owner: { select: { email: true, name: true } } },
+    });
+}
+
+const fromEpoch = (s?: number | null): Date | null => (s ? new Date(s * 1000) : null);
+
+async function recordInvoice(
+    subscriptionId: string,
+    payment: { id?: string; amount?: number; currency?: string; created_at?: number | null } | undefined,
+    status: "paid" | "failed",
+    invoiceId?: string
+) {
+    const paymentId = payment?.id;
+    if (!paymentId) return;
+    const existing = await client.invoice.findUnique({ where: { razorpayPaymentId: paymentId } });
+    if (existing) return;
+    try {
+        await client.invoice.create({
+            data: {
+                subscriptionId,
+                razorpayPaymentId: paymentId,
+                razorpayInvoiceId: invoiceId ?? undefined,
+                amountInPaise: payment?.amount ?? 0,
+                currency: payment?.currency ?? "INR",
+                status,
+                paidAt: status === "paid" ? fromEpoch(payment?.created_at) : null,
+            },
+        });
+    } catch (err) {
+        // Concurrent webhook delivery already inserted it (P2002) — safe to ignore.
+        if ((err as { code?: string }).code !== "P2002") throw err;
+    }
+}
+
+async function activatePendingPlan(
+    subscription: Awaited<ReturnType<typeof findSubscriptionByRazorpayId>>,
+    periodStart: Date | null,
+    periodEnd: Date | null
+) {
+    if (!subscription || !subscription.pendingPlanId || !subscription.pendingRazorpaySubscriptionId) return;
+    await client.subscription.update({
+        where: { id: subscription.id },
+        data: {
+            planId: subscription.pendingPlanId,
+            status: "ACTIVE",
+            razorpaySubscriptionId: subscription.pendingRazorpaySubscriptionId,
+            pendingPlanId: null,
+            pendingRazorpaySubscriptionId: null,
+            pendingShortUrl: null,
+            cancelAtPeriodEnd: false,
+            graceEndsAt: null,
+            currentPeriodStart: periodStart ?? subscription.currentPeriodStart,
+            currentPeriodEnd: periodEnd ?? subscription.currentPeriodEnd,
+        },
+    });
+}
+
 // Config health for the billing UI (public flags, no secrets).
 billingRouter.get("/health", async (_req, res) => {
     const plansWithoutIds = await client.plan.count({ where: { razorpayPlanId: null } });
@@ -120,12 +185,16 @@ billingRouter.get("/plan", userMiddleware, async (req, res) => {
     const plan = await getEffectivePlan(req.userId!);
     const sub = await client.subscription.findUnique({
         where: { ownerId: req.userId! },
-        select: {
-            status: true,
-            currentPeriodEnd: true,
-            cancelAtPeriodEnd: true,
-            razorpaySubscriptionId: true,
-            planId: true,
+        include: {
+            pendingPlan: {
+                select: {
+                    id: true,
+                    tier: true,
+                    name: true,
+                    priceInPaiseINR: true,
+                    billingPeriod: true,
+                },
+            },
         },
     });
     res.json({
@@ -139,7 +208,25 @@ billingRouter.get("/plan", userMiddleware, async (req, res) => {
             screenShareEnabled: plan.screenShareEnabled,
             broadcastEnabled: plan.broadcastEnabled,
         },
-        subscription: sub ?? null,
+        subscription: sub
+            ? {
+                status: sub.status,
+                currentPeriodEnd: sub.currentPeriodEnd,
+                cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+                razorpaySubscriptionId: sub.razorpaySubscriptionId,
+                planId: sub.planId,
+            }
+            : null,
+        pendingPlan: sub?.pendingPlan
+            ? {
+                id: sub.pendingPlan.id,
+                tier: sub.pendingPlan.tier,
+                name: sub.pendingPlan.name,
+                priceInPaiseINR: sub.pendingPlan.priceInPaiseINR,
+                billingPeriod: sub.pendingPlan.billingPeriod,
+                shortUrl: sub.pendingShortUrl,
+            }
+            : null,
     });
 });
 
@@ -170,7 +257,7 @@ billingRouter.get("/invoices", userMiddleware, async (req, res) => {
     });
 });
 
-// Cancel at period end (self-service). TRIALING subscriptions cancel immediately.
+// Cancel a pending checkout, or cancel an active subscription at period end.
 billingRouter.post("/cancel", userMiddleware, async (req, res) => {
     const keyId = process.env.RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -180,22 +267,54 @@ billingRouter.post("/cancel", userMiddleware, async (req, res) => {
     }
 
     const sub = await client.subscription.findUnique({ where: { ownerId: req.userId! } });
-    if (!sub?.razorpaySubscriptionId) {
-        res.status(400).json({ message: "No Razorpay subscription to cancel" });
-        return;
-    }
-    if (!["TRIALING", "ACTIVE", "PAST_DUE"].includes(sub.status)) {
-        res.status(409).json({ message: "Subscription is already cancelled or expired" });
+    if (!sub) {
+        res.status(400).json({ message: "No subscription to cancel" });
         return;
     }
 
-    const immediate = sub.status === "TRIALING";
     const reason = typeof req.body?.reason === "string" && req.body.reason.trim()
         ? req.body.reason.trim()
         : undefined;
     if (reason) console.log(`[billing] cancel reason (user ${req.userId}): ${reason}`);
     const auth = "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+
     try {
+        // Cancel a pending checkout first (user hasn't paid yet).
+        if (sub.pendingRazorpaySubscriptionId) {
+            const resp = await fetch(`${RAZORPAY_API}/subscriptions/${sub.pendingRazorpaySubscriptionId}/cancel`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: auth },
+                body: JSON.stringify({ cancel_at_cycle_end: false }),
+            });
+            if (!resp.ok) {
+                const errText = await resp.text();
+                console.error("[billing] Razorpay cancel pending failed:", resp.status, errText);
+                res.status(502).json({ message: "Failed to cancel pending checkout with Razorpay" });
+                return;
+            }
+            await client.subscription.update({
+                where: { id: sub.id },
+                data: {
+                    pendingPlanId: null,
+                    pendingRazorpaySubscriptionId: null,
+                    pendingShortUrl: null,
+                },
+            });
+            invalidatePlanCache(req.userId!);
+            res.json({ message: "Checkout cancelled" });
+            return;
+        }
+
+        if (!sub.razorpaySubscriptionId) {
+            res.status(400).json({ message: "No Razorpay subscription to cancel" });
+            return;
+        }
+        if (!["TRIALING", "ACTIVE", "PAST_DUE"].includes(sub.status)) {
+            res.status(409).json({ message: "Subscription is already cancelled or expired" });
+            return;
+        }
+
+        const immediate = sub.status === "TRIALING";
         const resp = await fetch(`${RAZORPAY_API}/subscriptions/${sub.razorpaySubscriptionId}/cancel`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: auth },
@@ -283,39 +402,55 @@ billingRouter.post("/subscribe", userMiddleware, async (req, res) => {
         const existing = await client.subscription.findUnique({
             where: { ownerId: req.userId! },
         });
-        if (existing && existing.planId === plan.id && ["TRIALING", "ACTIVE", "PAST_DUE"].includes(existing.status)) {
-            res.status(409).json({ message: "You already have a subscription for this plan" });
+        if (existing && existing.planId === plan.id && ["ACTIVE", "PAST_DUE"].includes(existing.status)) {
+            res.status(409).json({ message: "You already have an active subscription for this plan" });
             return;
         }
+        if (existing?.pendingPlanId === plan.id) {
+            res.status(409).json({ message: "You already have a pending checkout for this plan" });
+            return;
+        }
+
+        // Cancel an abandoned pending checkout so we don't leave orphan Razorpay subs.
+        if (existing?.pendingRazorpaySubscriptionId) {
+            await cancelRazorpay(existing.pendingRazorpaySubscriptionId, false);
+        }
+
+        // ACTIVE/PAST_DUE: cancel old Razorpay sub at period end so the customer
+        // keeps paid access until the new plan is confirmed by payment.
         const switching = Boolean(
             existing?.razorpaySubscriptionId &&
             existing.planId !== plan.id &&
-            ["TRIALING", "ACTIVE", "PAST_DUE"].includes(existing.status)
+            ["ACTIVE", "PAST_DUE"].includes(existing.status)
         );
         if (switching) {
-            // ACTIVE/PAST_DUE: cancel at period end so the customer keeps access until paid-through.
-            // TRIALING: cancel immediately because no payment has been made yet.
-            const atPeriodEnd = existing!.status !== "TRIALING";
-            await cancelRazorpay(existing!.razorpaySubscriptionId!, atPeriodEnd);
+            await cancelRazorpay(existing!.razorpaySubscriptionId!, true);
         }
 
         try {
             const rzSub = await createRazorpaySubscription(plan, req.userId!);
 
+            // For a brand-new user, keep the current plan as FREE until payment confirms.
+            const freePlan = await client.plan.findFirst({
+                where: { tier: "FREE", billingPeriod: "monthly" },
+            });
+
             const sub = await client.subscription.upsert({
                 where: { ownerId: req.userId! },
                 create: {
                     ownerId: req.userId!,
-                    planId: plan.id,
-                    razorpaySubscriptionId: rzSub.id,
-                    status: "TRIALING",
+                    planId: freePlan?.id ?? plan.id,
+                    razorpaySubscriptionId: null,
+                    status: "EXPIRED",
+                    pendingPlanId: plan.id,
+                    pendingRazorpaySubscriptionId: rzSub.id,
+                    pendingShortUrl: rzSub.short_url ?? null,
                 },
                 update: {
-                    planId: plan.id,
-                    razorpaySubscriptionId: rzSub.id,
-                    status: "TRIALING",
-                    cancelAtPeriodEnd: false,
-                    graceEndsAt: null,
+                    pendingPlanId: plan.id,
+                    pendingRazorpaySubscriptionId: rzSub.id,
+                    pendingShortUrl: rzSub.short_url ?? null,
+                    // Do not touch planId/status — current plan stays active until webhook confirms payment.
                 },
             });
 
@@ -323,7 +458,7 @@ billingRouter.post("/subscribe", userMiddleware, async (req, res) => {
                 subscriptionId: rzSub.id,
                 shortUrl: rzSub.short_url ?? null,
                 localSubscriptionId: sub.id,
-                plan: { tier: plan.tier, name: plan.name },
+                pendingPlan: { tier: plan.tier, name: plan.name },
                 switchedFrom: switching ? existing!.planId : undefined,
             });
         } catch (err) {
@@ -383,112 +518,130 @@ billingRouter.post("/webhook", async (req, res) => {
         return;
     }
 
-    const subscription = await client.subscription.findUnique({
-        where: { razorpaySubscriptionId: rzSubId },
-        include: { plan: true, owner: { select: { email: true, name: true } } },
-    });
+    const subscription = await findSubscriptionByRazorpayId(rzSubId);
     if (!subscription) {
-        console.warn("[billing] webhook for unknown subscription:", rzSub.id);
+        console.warn("[billing] webhook for unknown subscription:", rzSubId);
         res.json({ received: true });
         return;
     }
 
-    const fromEpoch = (s?: number | null): Date | null => (s ? new Date(s * 1000) : null);
+    const isPending = subscription.pendingRazorpaySubscriptionId === rzSubId;
 
     switch (event) {
         case "subscription.activated": {
-            await client.subscription.update({
-                where: { id: subscription.id },
-                data: {
-                    status: "ACTIVE",
-                    graceEndsAt: null,
-                    currentPeriodStart: fromEpoch(rzSub.current_start) ?? subscription.currentPeriodStart,
-                    currentPeriodEnd: fromEpoch(rzSub.current_end) ?? subscription.currentPeriodEnd,
-                },
-            });
+            if (isPending) {
+                await activatePendingPlan(subscription, fromEpoch(rzSub?.current_start), fromEpoch(rzSub?.current_end));
+            } else {
+                await client.subscription.update({
+                    where: { id: subscription.id },
+                    data: {
+                        status: "ACTIVE",
+                        graceEndsAt: null,
+                        currentPeriodStart: fromEpoch(rzSub?.current_start) ?? subscription.currentPeriodStart,
+                        currentPeriodEnd: fromEpoch(rzSub?.current_end) ?? subscription.currentPeriodEnd,
+                    },
+                });
+            }
             break;
         }
 
         case "subscription.charged": {
             const payment = payload.payload?.payment?.entity;
-            const paymentId = payment?.id;
-            if (paymentId) {
-                const existing = await client.invoice.findUnique({
-                    where: { razorpayPaymentId: paymentId },
+            const invoiceEntity = payload.payload?.invoice?.entity;
+            await recordInvoice(subscription.id, payment, "paid", invoiceEntity?.id);
+            if (isPending) {
+                await activatePendingPlan(subscription, fromEpoch(rzSub?.current_start), fromEpoch(rzSub?.current_end));
+            } else {
+                await client.subscription.update({
+                    where: { id: subscription.id },
+                    data: {
+                        status: "ACTIVE",
+                        graceEndsAt: null,
+                        currentPeriodStart: fromEpoch(rzSub?.current_start) ?? subscription.currentPeriodStart,
+                        currentPeriodEnd: fromEpoch(rzSub?.current_end) ?? subscription.currentPeriodEnd,
+                    },
                 });
-                if (!existing) {
-                    try {
-                        await client.invoice.create({
-                            data: {
-                                subscriptionId: subscription.id,
-                                razorpayPaymentId: paymentId,
-                                razorpayInvoiceId: payload.payload?.invoice?.entity?.id ?? undefined,
-                                amountInPaise: payment?.amount ?? 0,
-                                currency: payment?.currency ?? "INR",
-                                status: "paid",
-                                paidAt: fromEpoch(payment?.created_at),
-                            },
-                        });
-                    } catch (err) {
-                        // Concurrent webhook delivery already inserted it (P2002 on
-                        // razorpayPaymentId/razorpayInvoiceId) — safe to ignore.
-                        if ((err as { code?: string }).code !== "P2002") throw err;
-                    }
-                }
             }
-            await client.subscription.update({
-                where: { id: subscription.id },
-                data: {
-                    status: "ACTIVE",
-                    graceEndsAt: null,
-                    currentPeriodStart: fromEpoch(rzSub.current_start) ?? subscription.currentPeriodStart,
-                    currentPeriodEnd: fromEpoch(rzSub.current_end) ?? subscription.currentPeriodEnd,
-                },
-            });
             break;
         }
 
         case "payment.failed": {
-            await client.subscription.update({
-                where: { id: subscription.id },
-                data: {
-                    status: "PAST_DUE",
-                    graceEndsAt: new Date(Date.now() + GRACE_DAYS_MS),
-                },
-            });
-            if (subscription.owner.email) {
-                await sendEmail(
-                    subscription.owner.email,
-                    "Payment failed — action needed",
-                    `<p>Hi ${subscription.owner.name},</p>` +
-                        `<p>Your payment failed. Update your payment method within ${GRACE_DAYS} days, or your plan will be downgraded to Free.</p>` +
-                        `<p><a href="${process.env.APP_URL ?? "http://localhost:5173"}/billing">Manage billing</a></p>`
-                );
+            const payment = payload.payload?.payment?.entity;
+            await recordInvoice(subscription.id, payment, "failed");
+            if (isPending) {
+                // Checkout failed before payment — clear the pending plan but leave current plan untouched.
+                await client.subscription.update({
+                    where: { id: subscription.id },
+                    data: {
+                        pendingPlanId: null,
+                        pendingRazorpaySubscriptionId: null,
+                        pendingShortUrl: null,
+                    },
+                });
+            } else {
+                await client.subscription.update({
+                    where: { id: subscription.id },
+                    data: {
+                        status: "PAST_DUE",
+                        graceEndsAt: new Date(Date.now() + GRACE_DAYS_MS),
+                    },
+                });
+                if (subscription.owner.email) {
+                    await sendEmail(
+                        subscription.owner.email,
+                        "Payment failed — action needed",
+                        `<p>Hi ${subscription.owner.name},</p>` +
+                            `<p>Your payment failed. Update your payment method within ${GRACE_DAYS} days, or your plan will be downgraded to Free.</p>` +
+                            `<p><a href="${process.env.APP_URL ?? "http://localhost:5173"}/billing">Manage billing</a></p>`
+                    );
+                }
             }
             break;
         }
 
         case "subscription.cancelled": {
-            await client.subscription.update({
-                where: { id: subscription.id },
-                data: { status: "CANCELED" },
-            });
+            if (isPending) {
+                await client.subscription.update({
+                    where: { id: subscription.id },
+                    data: {
+                        pendingPlanId: null,
+                        pendingRazorpaySubscriptionId: null,
+                        pendingShortUrl: null,
+                    },
+                });
+            } else {
+                await client.subscription.update({
+                    where: { id: subscription.id },
+                    data: { status: "CANCELED" },
+                });
+            }
             break;
         }
 
         case "subscription.halted": {
-            // Payment failed repeatedly — stop charging, drop to Free.
-            await client.subscription.update({
-                where: { id: subscription.id },
-                data: { status: "EXPIRED" },
-            });
+            if (isPending) {
+                await client.subscription.update({
+                    where: { id: subscription.id },
+                    data: {
+                        pendingPlanId: null,
+                        pendingRazorpaySubscriptionId: null,
+                        pendingShortUrl: null,
+                    },
+                });
+            } else {
+                // Payment failed repeatedly — stop charging, drop to Free.
+                await client.subscription.update({
+                    where: { id: subscription.id },
+                    data: { status: "EXPIRED" },
+                });
+            }
             break;
         }
 
         case "subscription.completed": {
             // A finite subscription (total_count=12) reached its last cycle.
-            // Try to auto-renew paid plans into a fresh subscription; if that
-            // fails, drop to Free rather than leave the user on a dead plan.
+            // Should only apply to active subscriptions, not pending checkouts.
+            if (isPending) break;
             let renewed = false;
             if (subscription.plan.tier !== "FREE" && subscription.plan.razorpayPlanId) {
                 try {

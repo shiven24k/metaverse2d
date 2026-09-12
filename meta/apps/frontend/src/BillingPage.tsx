@@ -37,6 +37,15 @@ interface SubscriptionState {
     planId: string;
 }
 
+interface PendingPlan {
+    id: string;
+    tier: string;
+    name: string;
+    priceInPaiseINR: number;
+    billingPeriod: "monthly" | "yearly";
+    shortUrl: string | null;
+}
+
 interface InvoiceRow {
     id: string;
     amountInPaise: number;
@@ -64,7 +73,7 @@ export default function BillingPage() {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
     }), [token]);
 
-    const [current, setCurrent] = useState<{ plan: CurrentPlan; subscription: SubscriptionState | null } | null>(null);
+    const [current, setCurrent] = useState<{ plan: CurrentPlan; subscription: SubscriptionState | null; pendingPlan: PendingPlan | null } | null>(null);
     const [plans, setPlans] = useState<PlanDef[]>([]);
     const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
     const [period, setPeriod] = useState<"monthly" | "yearly">("monthly");
@@ -119,11 +128,15 @@ export default function BillingPage() {
     // Poll while a checkout is pending or a payment is past-due so the UI
     // reflects Razorpay webhook updates without requiring a manual refresh.
     useEffect(() => {
-        if (!current?.subscription) return;
-        if (current.subscription.status !== "TRIALING" && current.subscription.status !== "PAST_DUE") return;
+        if (!current?.subscription && !current?.pendingPlan) return;
+        const needsPoll =
+            current?.subscription?.status === "TRIALING" ||
+            current?.subscription?.status === "PAST_DUE" ||
+            !!current?.pendingPlan;
+        if (!needsPoll) return;
         const id = setInterval(() => fetchAll(), 5000);
         return () => clearInterval(id);
-    }, [current?.subscription?.status, fetchAll]);
+    }, [current?.subscription?.status, current?.pendingPlan?.id, fetchAll]);
 
     const handleUpgrade = async (planId: string) => {
         setBusy(true);
@@ -222,7 +235,12 @@ export default function BillingPage() {
                                         </div>
                                     </div>
                                     <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                                        {current.subscription && ["ACTIVE", "TRIALING", "PAST_DUE"].includes(current.subscription.status) && (
+                                        {current.pendingPlan ? (
+                                            <button onClick={() => setShowCancelModal(true)} disabled={busy}
+                                                style={{ padding: "8px 16px", borderRadius: 9, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                                                {busy ? "…" : "Cancel checkout"}
+                                            </button>
+                                        ) : current.subscription && ["ACTIVE", "TRIALING", "PAST_DUE"].includes(current.subscription.status) && (
                                             <button onClick={() => setShowCancelModal(true)} disabled={busy || current.subscription.cancelAtPeriodEnd}
                                                 style={{ padding: "8px 16px", borderRadius: 9, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                                                 {current.subscription.cancelAtPeriodEnd ? "Cancels at period end" : busy ? "…" : current.subscription.status === "TRIALING" ? "Cancel trial" : "Cancel subscription"}
@@ -251,12 +269,36 @@ export default function BillingPage() {
                                     {current.plan.broadcastEnabled ? " · Broadcast zones ✓" : " · Broadcast zones ✗"}
                                     {current.plan.screenShareEnabled ? " · Screen share ✓" : " · Screen share ✗"}
                                 </div>
-                                {nextTierName && (
+                                {nextTierName && !current.pendingPlan && (
                                     <button onClick={() => document.getElementById("plans-grid")?.scrollIntoView({ behavior: "smooth" })}
                                         style={{ marginTop: 16, padding: "11px 18px", borderRadius: 10, border: "none", cursor: "pointer", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 14, fontWeight: 700 }}>
                                         {onFree ? `Upgrade from Free to ${nextTierName}` : `Upgrade to ${nextTierName}`} →
                                     </button>
                                 )}
+                            </div>
+                        )}
+
+                        {current?.pendingPlan && (
+                            <div style={{ background: "#fffbeb", borderRadius: 16, border: "1px solid #fde68a", padding: "18px 24px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                                    <div>
+                                        <div style={{ fontSize: 12, color: "#92400e", fontWeight: 600, marginBottom: 2 }}>Pending checkout</div>
+                                        <div style={{ fontSize: 18, fontWeight: 800 }}>{current.pendingPlan.name}</div>
+                                        <div style={{ fontSize: 13, color: "#b45309", marginTop: 2 }}>{formatPrice(current.pendingPlan.priceInPaiseINR, current.pendingPlan.billingPeriod)}</div>
+                                    </div>
+                                    <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                        {current.pendingPlan.shortUrl && (
+                                            <a href={current.pendingPlan.shortUrl} target="_blank" rel="noreferrer"
+                                                style={{ padding: "8px 16px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#7c3aed,#a78bfa)", color: "#fff", fontSize: 13, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+                                                Complete checkout →
+                                            </a>
+                                        )}
+                                        <button onClick={() => setShowCancelModal(true)} disabled={busy}
+                                            style={{ padding: "8px 16px", borderRadius: 9, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                                            {busy ? "…" : "Cancel checkout"}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
@@ -308,6 +350,7 @@ export default function BillingPage() {
                             {visiblePlans.map(p => {
                                 const r = RARITY_COLOR[p.tier] ?? RARITY_COLOR.FREE;
                                 const isCurrent = activePlanId === p.id;
+                                const isPending = current?.pendingPlan?.id === p.id;
                                 const isFree = p.tier === "FREE";
                                 const rank = tierRank[p.tier] ?? 0;
                                 const curRank = tierRank[currentTier] ?? 0;
@@ -328,7 +371,9 @@ export default function BillingPage() {
                                             <li>{p.broadcastEnabled ? "Broadcast / cinema zones" : "No broadcast zones"}</li>
                                             <li>{p.screenShareEnabled ? "Screen share" : "No screen share"}</li>
                                         </ul>
-                                        {isCurrent ? (
+                                        {isPending ? (
+                                            <div style={{ padding: "9px", borderRadius: 9, textAlign: "center", background: "#fef3c7", color: "#92400e", fontSize: 13, fontWeight: 700 }}>Checkout pending</div>
+                                        ) : isCurrent ? (
                                             <div style={{ padding: "9px", borderRadius: 9, textAlign: "center", background: "#f4f0fe", color: "#6d28d9", fontSize: 13, fontWeight: 700 }}>✓ Current</div>
                                         ) : (
                                             <button onClick={() => handleUpgrade(p.id)} disabled={busy || isFree}
@@ -367,12 +412,18 @@ export default function BillingPage() {
                 <div style={{ position: "fixed", inset: 0, background: "rgba(25,20,39,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
                     <div style={{ background: "#fff", borderRadius: 16, maxWidth: 440, width: "100%", padding: 24, boxShadow: "0 20px 60px rgba(25,20,39,0.35)" }}>
                         <h2 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 800, color: "#191427" }}>
-                            {current?.subscription?.status === "TRIALING" ? "Cancel your trial?" : "Cancel your subscription?"}
+                            {current?.pendingPlan
+                                ? "Cancel your checkout?"
+                                : current?.subscription?.status === "TRIALING"
+                                    ? "Cancel your trial?"
+                                    : "Cancel your subscription?"}
                         </h2>
                         <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6f6b82", lineHeight: 1.5 }}>
-                            {current?.subscription?.status === "TRIALING"
-                                ? "Your plan downgrades to Free right away."
-                                : "Your plan stays active until the end of the current period, then downgrades to Free."}
+                            {current?.pendingPlan
+                                ? "You haven't completed payment yet. Cancelling removes this pending upgrade."
+                                : current?.subscription?.status === "TRIALING"
+                                    ? "Your plan downgrades to Free right away."
+                                    : "Your plan stays active until the end of the current period, then downgrades to Free."}
                         </p>
                         <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#4d495f", marginBottom: 6 }}>Why are you cancelling? (optional)</label>
                         <select value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} style={{ width: "100%", padding: "9px 12px", borderRadius: 9, border: "1.5px solid #e3e1ee", fontSize: 13, color: "#191427", background: "#fff", marginBottom: 10 }}>
@@ -391,7 +442,13 @@ export default function BillingPage() {
                             </button>
                             <button onClick={doCancel} disabled={busy}
                                 style={{ padding: "9px 16px", borderRadius: 9, border: "none", background: "#dc2626", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                                {busy ? "Cancelling…" : current?.subscription?.status === "TRIALING" ? "Cancel trial" : "Cancel subscription"}
+                                {busy
+                                    ? "Cancelling…"
+                                    : current?.pendingPlan
+                                        ? "Cancel checkout"
+                                        : current?.subscription?.status === "TRIALING"
+                                            ? "Cancel trial"
+                                            : "Cancel subscription"}
                             </button>
                         </div>
                     </div>
