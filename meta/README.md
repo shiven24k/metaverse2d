@@ -107,7 +107,7 @@ Guest mode: connect to the WebSocket with an empty `token` field to join as a re
 | GET | `/api/v1/space/:id` | — | Space data: elements, placed items, portals |
 | POST | `/api/v1/space` | ✓ | Create space (auto-seeds 3 default NPCs) |
 | DELETE | `/api/v1/space/:id` | ✓ owner | Delete space |
-| PUT | `/api/v1/space/:id/resize` | ✓ owner | Resize space (5–100 tiles per dimension) |
+| PUT | `/api/v1/space/:id/resize` | ✓ owner | Resize/expand space (5–200 tiles per dimension; shifts elements, items, and NPCs) |
 
 ### Elements (tiles placed in spaces)
 
@@ -304,7 +304,7 @@ Activate by clicking **Edit** in the header (owner only). Press **Exit Edit** to
 | ↩ Undo | `Ctrl+Z` | Revert last change (50-step history) |
 | ↪ Redo | `Ctrl+Shift+Z` | Re-apply undone change |
 | + New Map | — | Create a new space (name + dimensions) |
-| ↔ Resize | — | Change space width/height (5–100) |
+| ↔ Resize | — | Change space width/height (5–200) |
 | 🌀 Portal | — | Click canvas to place a portal at any tile |
 | 🧹 Eraser | `E` | Click/drag to erase elements and items |
 | Delete | `Del` / `Backspace` | Delete the currently selected item |

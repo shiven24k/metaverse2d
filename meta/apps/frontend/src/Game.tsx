@@ -14,6 +14,7 @@ import { PeerManager } from './webrtc/PeerManager';
 import { VOICE_RADIUS, VIDEO_RADIUS } from './webrtc/constants';
 import { VoiceToolbar } from './components/game/VoiceToolbar';
 import { ConferenceMeetingGrid } from './components/game/ConferenceMeetingGrid';
+import { MeetingRoomOverlay } from './components/game/MeetingRoomOverlay';
 
 // ── PixelAvatar — CSS pixel art character, ported from design system ──────────
 
@@ -180,12 +181,13 @@ interface EmoteBubble {
 
 
 
-function RemoteVideoTile({ peerId, stream, username, connectionState, sharing }: {
+function RemoteVideoTile({ peerId, stream, username, connectionState, sharing, onExpand }: {
     peerId: string;
     stream: MediaStream;
     username?: string;
     connectionState?: RTCPeerConnectionState;
     sharing?: boolean;
+    onExpand?: () => void;
 }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [overlayVisible, setOverlayVisible] = useState(true);
@@ -240,7 +242,8 @@ function RemoteVideoTile({ peerId, stream, username, connectionState, sharing }:
             pointerEvents: 'auto',
             boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
             flexShrink: 0,
-        }}>
+            cursor: onExpand ? 'pointer' : 'default',
+        }} onClick={onExpand}>
             {sharing && (
                 <div style={{
                     position: 'absolute', top: 4, left: 4, zIndex: 2,
@@ -250,6 +253,20 @@ function RemoteVideoTile({ peerId, stream, username, connectionState, sharing }:
                 }}>
                     🖥 SCREEN
                 </div>
+            )}
+            {onExpand && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onExpand(); }}
+                    title="Open large view (or click the tile)"
+                    style={{
+                        position: 'absolute', top: 4, right: 4, zIndex: 2,
+                        width: 22, height: 22, borderRadius: 6,
+                        border: 'none', cursor: 'pointer',
+                        background: 'rgba(0,0,0,0.55)', color: '#fff',
+                        fontSize: 12, lineHeight: 1, display: 'flex',
+                        alignItems: 'center', justifyContent: 'center',
+                    }}
+                >⛶</button>
             )}
             <video
                 ref={videoRef}
@@ -332,6 +349,8 @@ const ArenaInner = () => {
     const [screenSharing, setScreenSharing] = useState(false);
     const [screenSharers, setScreenSharers] = useState<Set<string>>(() => new Set());
     const [canScreenShare, setCanScreenShare] = useState(false);
+    const [meetingOpen, setMeetingOpen] = useState(false);
+    const [meetingFocus, setMeetingFocus] = useState<string | null>(null);
     const [deafened, setDeafened] = useState(false);
     const [connectedPeers, setConnectedPeers] = useState(0);
     const [cameraError, setCameraError] = useState<string | null>(null);
@@ -1791,6 +1810,11 @@ const ArenaInner = () => {
         else if (direction === 'south') { newHeight = height + 10; }
         else if (direction === 'west') { newWidth = width + 10; offX = 10; }
         else if (direction === 'east') { newWidth = width + 10; }
+        if (newWidth > 200 || newHeight > 200) {
+            addToast('Cannot expand beyond 200×200', 'warning');
+            setShowExpandModal(false);
+            return;
+        }
         try {
             const res = await fetch(`${API}/api/v1/space/${spaceId}/resize`, {
                 method: 'PUT',
@@ -2125,6 +2149,7 @@ const ArenaInner = () => {
                     next.delete(message.payload.userId);
                     return next;
                 });
+                setMeetingFocus(f => f === message.payload.userId ? null : f);
                 if (leftUser) addToast(`${leftUser.username} left`, 'warning');
                 runProximityCheck();
                 break;
@@ -2362,6 +2387,7 @@ const ArenaInner = () => {
                     next.delete(message.peerId as string);
                     return next;
                 });
+                setMeetingFocus(f => f === message.peerId ? null : f);
                 break;
 
             case 'rtc:screen-share-state': {
@@ -3883,11 +3909,90 @@ const ArenaInner = () => {
                                         username={usersRef.current.get(peerId)?.username}
                                         connectionState={peerConnectionStates.get(peerId)}
                                         sharing={screenSharers.has(peerId)}
+                                        onExpand={() => { setMeetingFocus(peerId); setMeetingOpen(true); }}
                                     />
                                 );
                             })}
                         </div>
                     )}
+
+                    {meetingOpen && (() => {
+                        const me = currentUser;
+                        const othersList = remotePeerIds.map(peerId => ({
+                            peerId,
+                            username: usersRef.current.get(peerId)?.username ?? peerId.slice(0, 8),
+                            stream: remoteStreamsRef.current.get(peerId),
+                            isSelf: false as const,
+                            sharing: screenSharers.has(peerId),
+                            cameraOn: !!remoteStreamsRef.current.get(peerId)?.getVideoTracks()[0],
+                            micOn: true,
+                            speaking: speakingPeerIds.has(peerId),
+                            connectionState: peerConnectionStates.get(peerId),
+                        }));
+                        const meParticipant = me ? {
+                            peerId: me.userId,
+                            username: me.username,
+                            stream: localVideoStreamRef.current ?? undefined,
+                            isSelf: true as const,
+                            sharing: false,
+                            cameraOn: cameraEnabled,
+                            micOn: micEnabled,
+                            speaking: false,
+                        } : null;
+                        return (
+                            <MeetingRoomOverlay
+                                participants={meParticipant ? [meParticipant, ...othersList] : othersList}
+                                initialFocusPeerId={meetingFocus}
+                                micEnabled={micEnabled}
+                                cameraEnabled={cameraEnabled}
+                                deafened={deafened}
+                                screenSharing={screenSharing}
+                                canScreenShare={canScreenShare}
+                                onToggleMic={() => {
+                                    const next = !micEnabled;
+                                    setMicEnabled(next);
+                                    peerManagerRef.current?.toggleMic(next);
+                                }}
+                                onToggleCamera={() => {
+                                    const next = !cameraEnabled;
+                                    if (next) {
+                                        navigator.mediaDevices.getUserMedia({ video: true }).then(async (stream) => {
+                                            localVideoStreamRef.current = stream;
+                                            await peerManagerRef.current?.enableCamera(stream);
+                                            setCameraEnabled(true);
+                                            setCameraError(null);
+                                        }).catch((err) => {
+                                            const msg = err instanceof Error && err.name === 'NotAllowedError'
+                                                ? 'Camera permission denied' : 'Camera not supported on this device';
+                                            setCameraError(msg);
+                                            setTimeout(() => setCameraError(null), 5000);
+                                        });
+                                    } else {
+                                        peerManagerRef.current?.toggleCamera(false);
+                                        localVideoStreamRef.current = null;
+                                        setCameraEnabled(false);
+                                    }
+                                }}
+                                onToggleDeafen={() => {
+                                    const next = !deafened;
+                                    setDeafened(next);
+                                    peerManagerRef.current?.setDeafen(next);
+                                    if (next) setMicEnabled(false);
+                                }}
+                                onToggleScreenShare={async () => {
+                                    const pm = peerManagerRef.current;
+                                    if (!pm) return;
+                                    if (pm.getScreenSharing()) {
+                                        await pm.stopScreenShare();
+                                    } else {
+                                        const ok = await pm.startScreenShare();
+                                        if (!ok) addToast('Screen share was cancelled', 'warning');
+                                    }
+                                }}
+                                onClose={() => setMeetingOpen(false)}
+                            />
+                        );
+                    })()}
 
                     {/* ── Proximity Chat Panel ── */}
                     {!editMode && showProximityChat && (
@@ -4369,11 +4474,11 @@ const ArenaInner = () => {
                         <div style={{ fontSize: 16, fontWeight: 700, color: '#191427', marginBottom: 16 }}>↔ Resize Space</div>
                         <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
                             <div style={{ flex: 1 }}>
-                                <label style={{ display: 'block', fontSize: 11, color: '#6f6b82', marginBottom: 4 }}>Width (5–100)</label>
+                                <label style={{ display: 'block', fontSize: 11, color: '#6f6b82', marginBottom: 4 }}>Width (5–200)</label>
                                 <input value={resizeW} onChange={e => setResizeW(e.target.value)} placeholder={String(spaceDims.width)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                             </div>
                             <div style={{ flex: 1 }}>
-                                <label style={{ display: 'block', fontSize: 11, color: '#6f6b82', marginBottom: 4 }}>Height (5–100)</label>
+                                <label style={{ display: 'block', fontSize: 11, color: '#6f6b82', marginBottom: 4 }}>Height (5–200)</label>
                                 <input value={resizeH} onChange={e => setResizeH(e.target.value)} placeholder={String(spaceDims.height)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #ecebf3', background: '#fff', color: '#191427', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                             </div>
                         </div>
@@ -4409,15 +4514,17 @@ const ArenaInner = () => {
                 {showExpandModal && (
                     <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: '#fff', border: '1px solid #ecebf3', borderRadius: 14, padding: '24px 28px', width: 300, zIndex: 1200, boxShadow: '0 24px 60px rgba(22,15,52,0.22)' }}>
                         <div style={{ fontSize: 16, fontWeight: 700, color: '#191427', marginBottom: 6 }}>⊕ Expand Space</div>
-                        <p style={{ margin: '0 0 18px', fontSize: 12, color: '#6f6b82', lineHeight: 1.5 }}>Adds 10 tiles in the chosen direction. Existing elements shift when expanding North or West.</p>
+                        <p style={{ margin: '0 0 18px', fontSize: 12, color: '#6f6b82', lineHeight: 1.5 }}>Adds 10 tiles in the chosen direction. Existing elements, items, and NPCs shift when expanding North or West. Max size is 200×200.</p>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
                             {(['north', 'south', 'west', 'east'] as const).map(dir => {
                                 const icons: Record<string, string> = { north: '▲ North', south: '▼ South', west: '◀ West', east: '▶ East' };
+                                const blocked = dir === 'north' || dir === 'south' ? spaceDims.height >= 200 : spaceDims.width >= 200;
                                 return (
                                     <button
                                         key={dir}
                                         onClick={() => handleExpand(dir)}
-                                        style={{ padding: '10px', borderRadius: 8, border: '1px solid #ecebf3', background: '#f9f8fd', color: '#059669', fontSize: 13, cursor: 'pointer', fontWeight: 700, transition: 'all 0.15s' }}
+                                        disabled={blocked}
+                                        style={{ padding: '10px', borderRadius: 8, border: '1px solid #ecebf3', background: blocked ? '#f3f2f7' : '#f9f8fd', color: blocked ? '#a3a0b3' : '#059669', fontSize: 13, cursor: blocked ? 'not-allowed' : 'pointer', fontWeight: 700, transition: 'all 0.15s' }}
                                         onMouseEnter={e => { e.currentTarget.style.background = '#d1fae5'; e.currentTarget.style.borderColor = '#059669'; }}
                                         onMouseLeave={e => { e.currentTarget.style.background = '#f9f8fd'; e.currentTarget.style.borderColor = '#ecebf3'; }}
                                     >
@@ -5366,6 +5473,7 @@ const ArenaInner = () => {
                             onToggleScreenShare={confToggleScreenShare}
                             onToggleDeafen={confToggleDeafen}
                             onLeaveCall={confLeave}
+                            onExpandMeeting={(focus) => { setMeetingFocus(focus); setMeetingOpen(true); }}
                         />
                     );
                 })()}

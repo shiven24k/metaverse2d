@@ -112,7 +112,7 @@ Route **ordering matters**: static paths are registered before dynamic `/:spaceI
 | `PUT /space/:id` | ✓ owner | Update name / `visibility` (or legacy `isPrivate` boolean → mapped to PRIVATE/PUBLIC) |
 | `DELETE /space/:spaceId` | ✓ owner | Cascade-delete spaceElements + space |
 | `DELETE /space/:spaceId/clear` | ✓ owner | Delete all elements + placedItems (items returned to inventory), keep the space |
-| `PUT /space/:spaceId/resize` | ✓ owner | Change width/height (5–200) and optionally shift all content by `offsetX/offsetY` |
+| `PUT /space/:spaceId/resize` | ✓ owner | Change width/height (5–200) and optionally shift all content by `offsetX/offsetY` — elements, placed items, **and NPCs** (position + patrolPath) move together |
 | `GET /space/:spaceId` | — | Full space payload: elements (with element types), placedItems (with item types + layer + metadata), portals |
 
 **Element placement** (`POST /element`, `POST /element/batch`, `PUT /element/:id/move`, `DELETE /element`, batch delete):
@@ -215,7 +215,7 @@ Route **ordering matters**: static paths are registered before dynamic `/:spaceI
 - `GET /billing/invoices` — the user's invoices, newest 20.
 - `POST /billing/subscribe` — `userMiddleware`. Looks up the requested `Plan` by id, requires `plan.razorpayPlanId` to be set, and creates a **Razorpay subscription** via their REST API (Basic auth, `fetch` — no npm SDK). Upserts the local `Subscription` (ownerId unique) as `TRIALING` and returns `{ subscriptionId, shortUrl, localSubscriptionId, plan }`. Returns `409` if the user already has an `ACTIVE` subscription, `503` if `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` are unset (graceful, like `turn.ts`).
 - `POST /billing/cancel` — self-service cancel-at-period-end (immediate for TRIALING) via Razorpay's cancel endpoint; sets `cancelAtPeriodEnd` and clears the plan cache.
-- `POST /billing/webhook` — **no session middleware** (Razorpay hits it directly; the `index.ts` json `verify` captures `req.rawBody`). Authenticated solely by the **Razorpay HMAC-SHA256 signature** (`X-Razorpay-Signature` vs `crypto.createHmac('sha256', RAZORPAY_WEBHOOK_SECRET).update(rawBody)`). Invalid/unsigned → **400** (so Razorpay retries). Handles `subscription.activated` (→ ACTIVE + period, clears grace), `subscription.charged` (→ Invoice row, idempotent via `razorpayPaymentId` unique + extends period + clears grace), `payment.failed` (→ **PAST_DUE + `graceEndsAt = now + 3d`** + emails the owner), `subscription.cancelled` (→ CANCELED), `subscription.halted`/`completed` (→ EXPIRED). Unknown subscription ids are 200-acked so Razorpay stops retrying. On any state change it calls `invalidatePlanCache(ownerId)` so gating reflects immediately.
+- `POST /billing/webhook` — **no session middleware** (Razorpay hits it directly; the `index.ts` json `verify` captures `req.rawBody`). Authenticated solely by the **Razorpay HMAC-SHA256 signature** (`X-Razorpay-Signature` vs `crypto.createHmac('sha256', RAZORPAY_WEBHOOK_SECRET).update(rawBody)`). Invalid/unsigned/malformed → **400** (so Razorpay retries). Processing failures (DB errors etc.) → **500** so Razorpay retries. Handles `subscription.activated` (→ ACTIVE + period, clears grace), `subscription.charged` (→ Invoice row, idempotent via `razorpayPaymentId` unique + extends period + clears grace), `payment.captured`/`payment.authorized` (subscription charges via payment events → Invoice + ACTIVE), `invoice.paid` (→ Invoice row), `payment.failed`/`invoice.payment_failed` (→ **PAST_DUE + `graceEndsAt = now + 3d`** + emails the owner), `subscription.cancelled` (→ CANCELED), `subscription.halted`/`completed` (→ EXPIRED). `subscription.pending`/`authenticated`/`updated` are acknowledged no-ops; any other event is logged. Unknown subscription ids are 200-acked so Razorpay stops retrying. On any state change it calls `invalidatePlanCache(ownerId)` so gating reflects immediately.
 
 ### Dunning — `lib/dunning.ts` (wired in `index.ts`)
 
@@ -271,7 +271,7 @@ The **shared gating layer** lives in `ws/src/lib/planAccess.ts` (imported by htt
 | `maxSpaces` | `POST /space` (HTTP, via `enforcePlanLimit`) |
 | `maxConcurrentUsers` | WS `join` (room capacity) |
 | `broadcastEnabled` | WS `rtc:broadcast-zone-join` (soft toast deny) + `PUT /placed/:id/metadata` when setting `broadcastZoneId` |
-| `screenShareEnabled` | gate-ready, feature not built yet |
+| `screenShareEnabled` | `startScreenShare`/`stopScreenShare` gated client-side + WS metadata gate — **built** (STARTER+) |
 
 ### 3.21 Platform admin panel — `routes/v1/adminPanel.ts`
 

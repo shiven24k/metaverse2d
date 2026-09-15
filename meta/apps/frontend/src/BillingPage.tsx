@@ -81,7 +81,8 @@ export default function BillingPage() {
     const [plansError, setPlansError] = useState<string | null>(null);
     const [msg, setMsg] = useState<{ text: string; isError: boolean } | null>(null);
     const [busy, setBusy] = useState(false);
-    const [health, setHealth] = useState<{ razorpayConfigured: boolean; plansMissingRazorpayIds: number; razorpayKeyId: string | null } | null>(null);
+    const [verifying, setVerifying] = useState(false);
+    const [health, setHealth] = useState<{ razorpayConfigured: boolean; razorpayWebhookConfigured: boolean; plansMissingRazorpayIds: number; razorpayKeyId: string | null } | null>(null);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState("");
     const [cancelNote, setCancelNote] = useState("");
@@ -143,6 +144,7 @@ export default function BillingPage() {
     // delayed or missing. `paymentId` (from the checkout handler) also records
     // the invoice immediately.
     const verifyPayment = useCallback(async (paymentId?: string) => {
+        setVerifying(true);
         try {
             const res = await fetch(`${API}/api/v1/billing/verify`, {
                 method: "POST",
@@ -155,10 +157,23 @@ export default function BillingPage() {
                     setMsg({ text: "Payment successful — your plan is now active! 🎉", isError: false });
                 } else if (d.cleared) {
                     setMsg({ text: "The pending checkout is no longer valid (cancelled or expired).", isError: true });
+                } else if (d.verified === false) {
+                    const status = d.status ?? "pending";
+                    setMsg({
+                        text: status === "created" || status === "authenticated" || status === "pending"
+                            ? "Checking payment… if you've paid, it will activate automatically within a few seconds."
+                            : `Checkout state: ${status}. Use “Complete checkout” if you haven't paid yet.`,
+                        isError: false,
+                    });
                 }
+            } else {
+                const d = await res.json().catch(() => ({}));
+                setMsg({ text: d.message ?? `Verification failed (HTTP ${res.status}) — we'll keep checking automatically.`, isError: true });
             }
         } catch {
-            // Non-fatal — the 5s polling will pick up webhook updates anyway.
+            setMsg({ text: "Couldn't reach the billing server to verify payment — we'll keep checking automatically.", isError: true });
+        } finally {
+            setVerifying(false);
         }
         await fetchAll();
     }, [authHeaders, fetchAll]);
@@ -349,9 +364,9 @@ export default function BillingPage() {
                                         <div style={{ fontSize: 13, color: "#b45309", marginTop: 2 }}>{formatPrice(current.pendingPlan.priceInPaiseINR, current.pendingPlan.billingPeriod)}</div>
                                     </div>
                                     <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                        <button onClick={() => verifyPayment()} disabled={busy}
-                                            style={{ padding: "8px 16px", borderRadius: 9, border: "1px solid #c4b5fd", background: "#f4f0fe", color: "#6d28d9", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                                            {busy ? "…" : "I've paid — verify"}
+                                        <button onClick={() => verifyPayment()} disabled={busy || verifying}
+                                            style={{ padding: "8px 16px", borderRadius: 9, border: "1px solid #c4b5fd", background: "#f4f0fe", color: "#6d28d9", fontSize: 13, fontWeight: 600, cursor: (busy || verifying) ? "progress" : "pointer" }}>
+                                            {verifying ? "⏳ Checking…" : "I've paid — verify"}
                                         </button>
                                         {current.pendingPlan.shortUrl && (
                                             <a href={current.pendingPlan.shortUrl} target="_blank" rel="noreferrer"
@@ -372,6 +387,12 @@ export default function BillingPage() {
                             <div style={{ padding: "12px 16px", borderRadius: 10, border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e", fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
                                 ⚠️ Checkout isn't enabled yet — the server has no Razorpay keys. Ask the admin to set <code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: 5 }}>RAZORPAY_KEY_ID/SECRET</code>{" "}
                                 {health.plansMissingRazorpayIds > 0 && <>and fill <code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: 5 }}>Plan.razorpayPlanId</code> for {health.plansMissingRazorpayIds} plan(s).</>}
+                            </div>
+                        )}
+
+                        {health && health.razorpayConfigured && health.razorpayWebhookConfigured === false && (
+                            <div style={{ padding: "12px 16px", borderRadius: 10, border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e", fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
+                                ⚠️ Webhook isn't configured — payments are confirmed on this page via manual verification, but automatic updates (like payment failures) won't be applied. Ask the admin to set <code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: 5 }}>RAZORPAY_WEBHOOK_SECRET</code> and point Razorpay's webhook URL at the server.
                             </div>
                         )}
 

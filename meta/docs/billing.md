@@ -101,10 +101,10 @@ User (browser)                HTTP API                     Razorpay
 | `GET /billing/invoices` | User's invoices (newest 20). |
 | `POST /billing/subscribe` | `{ planId }`. Rejects FREE, requires `razorpayPlanId`, serialized per-user (429 if a change is in flight), handles switching. Returns `{ subscriptionId, shortUrl, pendingPlan, ... }` — the app opens the Razorpay checkout modal with `subscriptionId` (hosted `shortUrl` is only the fallback). |
 | `POST /billing/cancel` | `{ reason? }` self-service cancel (see §3). |
-| `POST /billing/verify` | `{ paymentId? }` — fetches `GET /subscriptions/:id` directly from Razorpay: `active` → **activates the pending plan immediately** (+ records the paid Invoice from `paymentId` when captured); dead states (`cancelled/expired/halted/completed`) → clears the pending fields; still-pending → no-op. Called after the checkout modal reports success and when returning to `/billing` with a pending card, so the plan flips **even if the webhook is delayed or unconfigured**. |
+| `POST /billing/verify` | `{ paymentId? }` — fetches `GET /subscriptions/:id` directly from Razorpay: `active` → **activates the pending plan immediately** (+ records the paid Invoice from `paymentId` when captured); dead states (`cancelled/expired/halted/completed`) → clears the pending fields; still-pending → returns `{ verified: false, status }`. Called after the checkout modal reports success and when returning to `/billing` with a pending card, so the plan flips **even if the webhook is delayed or unconfigured**. If Razorpay reports `active` but no pending plan row exists, it returns **409** (instead of a fabricated success). |
 
 ### Webhook (no session — signature only)
-`POST /billing/webhook` — verified with `X-Razorpay-Signature` against `RAZORPAY_WEBHOOK_SECRET` using **`crypto.timingSafeEqual`**. Invalid/unsigned → **400** (so Razorpay retries). Unknown subscription ids are **200-acked** (stop retrying).
+`POST /billing/webhook` — verified with `X-Razorpay-Signature` against `RAZORPAY_WEBHOOK_SECRET` using **`crypto.timingSafeEqual`**. Invalid/unsigned/malformed → **400** (so Razorpay retries). Unknown subscription ids are **200-acked** (stop retrying). Processing failures (DB errors, etc.) → **500** so Razorpay retries the event. The switch handles `subscription.activated/charged/cancelled/halted/completed`, `payment.captured/authorized/failed`, and `invoice.paid/payment_failed`; `subscription.pending/authenticated/updated` are acknowledged no-ops; any other event is logged (`[billing] unhandled webhook event`).
 
 | Event | Effect |
 |---|---|
@@ -215,7 +215,7 @@ Not yet implemented (documented so behavior isn't mistaken for a bug):
 | **No customer portal / update card** | Payment method changes go through Razorpay's hosted flow only. |
 | **Frontend polling during TRIALING/PAST_DUE** | BillingPage polls every 5s while checkout is pending/past-due to reflect webhook state without a manual refresh. |
 
-Recent correctness fixes (do not revert): PAST_DUE grace access, timing-safe webhook compare, FREE-plan checkout rejection, per-user subscribe lock, invoice `P2002` guard, `maxMembersPerSpace` enforcement, **checkout modal + `POST /billing/verify`** (no hosted-page redirect, plan activates without the webhook), **owner-plan gates** for `maxConcurrentUsers`/broadcast zones, **screen share (STARTER+)**.
+Recent correctness fixes (do not revert): PAST_DUE grace access, timing-safe webhook compare, FREE-plan checkout rejection, per-user subscribe lock, invoice `P2002` guard, `maxMembersPerSpace` enforcement, **checkout modal + `POST /billing/verify`** (no hosted-page redirect, plan activates without the webhook), **owner-plan gates** for `maxConcurrentUsers`/broadcast zones, **screen share (STARTER+)**, **webhook try/catch + unhandled-event logging + payment/invoice event handling**, and **progress UI on the billing page** (verify spinner, "still processing" messaging, missing-webhook banner, `razorpayWebhookConfigured` surfaced).
 
 ---
 

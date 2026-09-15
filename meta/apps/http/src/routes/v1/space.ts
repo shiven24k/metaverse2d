@@ -1,5 +1,6 @@
 import { Router } from "express";
 import jwt from "jsonwebtoken";
+import type { Prisma } from "@prisma/client";
 import client from "@repo/db/client";
 import { userMiddleware } from "../../middleware/user";
 import { enforcePlanLimit } from "../../middleware/enforcePlanLimit";
@@ -797,6 +798,28 @@ spaceRouter.put("/:spaceId/resize", userMiddleware, async (req, res) => {
     const dX = offsetX ?? 0;
     const dY = offsetY ?? 0;
 
+    // Expanding north/west adds a strip on the opposite edge, so existing
+    // tiles/items shift. NPCs must shift too or they detach from their tiles.
+    const shiftNpcs = async (tx: Prisma.TransactionClient, spaceId: string) => {
+        const npcs = await tx.nPC.findMany({ where: { spaceId } });
+        for (const npc of npcs) {
+            const path = Array.isArray(npc.patrolPath)
+                ? (npc.patrolPath as { x?: number; y?: number }[])
+                : [];
+            await tx.nPC.update({
+                where: { id: npc.id },
+                data: {
+                    x: npc.x + dX,
+                    y: npc.y + dY,
+                    patrolPath: path.map((p) => ({
+                        x: (Number(p.x) || 0) + dX,
+                        y: (Number(p.y) || 0) + dY,
+                    })),
+                },
+            });
+        }
+    };
+
     await client.$transaction(async (tx) => {
         await tx.space.update({ where: { id: req.params.spaceId }, data: { width, height } });
         if (dX !== 0) {
@@ -818,6 +841,9 @@ spaceRouter.put("/:spaceId/resize", userMiddleware, async (req, res) => {
                 where: { spaceId: req.params.spaceId },
                 data: { y: { increment: dY } },
             });
+        }
+        if (dX !== 0 || dY !== 0) {
+            await shiftNpcs(tx, req.params.spaceId);
         }
     });
 

@@ -148,6 +148,16 @@ All `rtc:*` messages are relayed verbatim by the server. Direction is from the s
 
 **Mesh topology:** Every member connects to every other member directly (full mesh). Recommended max: 6 peers (15 connections total). Beyond that, CPU and bandwidth degrade significantly.
 
+### Meeting room overlay (Google-Meet / Discord-style popup)
+
+`MeetingRoomOverlay` (`components/game/MeetingRoomOverlay.tsx`) is a full-screen meeting popup reachable from the **⛶ button on any `RemoteVideoTile`** (proximity calls) or from **`ConferenceMeetingGrid`** (each tile's ⛶ badge, or the toolbar ⛶ button):
+
+- **Stage**: a large video for the focused participant. It **auto-picks the screen sharer** first, then the active speaker, then the last-pinned selection, then the first remote, then you.
+- **Strip**: a right-hand column of 160×90 face tiles for every participant (including screen-share badges, mic-off, and speaking indicators). Clicking a tile pins it to the stage.
+- **Controls**: mic, deafen, camera, screen share, fullscreen (whole overlay via `requestFullscreen`), and ✕/📵 close. `Esc` exits fullscreen first, then closes the overlay.
+- The stage labels the presenter ("🖥 you are presenting" / "<name>'s screen") and mirrors your camera unless you're sharing.
+- Local stream comes from `localVideoStreamRef`, remote streams from `remoteStreamsRef`; the component re-renders because the parent rebuilds its `participants` array from live state/refs on every `rtc:*` update.
+
 ---
 
 ### 4. Broadcast Zones
@@ -261,8 +271,11 @@ Each pair negotiates independently. There is no MCU or SFU — all media flows p
 |--------|-------------|
 | `toggleMic(enabled)` | Enable/disable all audio tracks on `localStream`. |
 | `setDeafen(deafened)` | Mute all `audioEl` instances + auto-mute mic. |
-| `enableCamera(videoStream)` | Store `localVideoStream`, call `addTrack` on all active PCs. `onnegotiationneeded` fires and sends upgrade offer to each peer. |
-| `disableCamera()` | Stop video tracks, call `removeTrack` on all video senders across all PCs. |
+| `enableCamera(videoStream)` | Store `localVideoStream`, call `replaceTrack` (or `addTrack`) on all active PCs. `onnegotiationneeded` fires and sends upgrade offer to each peer. |
+| `toggleCamera(enabled)` | Toggle `track.enabled` on the camera video track (never `track.stop()` mid-call — that permanently kills the track). |
+| `startScreenShare()` | `getDisplayMedia({ video: true, audio: true })` — replaces the **video sender with the screen track and the audio sender with the tab/system audio** on every peer via `replaceTrack` (single sender per kind, so no renegotiation). The camera/mic tracks stay alive locally and are restored on stop. Dispatches `rtc:screenShareToggled { sharing }`. |
+| `stopScreenShare()` | Restores the camera (if enabled) on the video sender and the mic on the audio sender via `replaceTrack`, then stops the screen stream. |
+| `getScreenSharing()` | `true` when the local user is sharing their screen. |
 
 ### Conference / Broadcast
 

@@ -333,6 +333,7 @@ Writes 128×96 sprite sheets to `apps/http/uploads/defaults/avatar-*.png`.
 - `gift.ts`: `wallet.coins + 50` non-atomic. Fixed to `{ coins: { increment: 50 } }` upsert.
 - `economy.ts`: cooldown check outside transaction. Fixed: check moved inside `$transaction`, throws typed error caught outside.
 - `space.ts`: move boundary used `x >= width` ignoring element footprint. Fixed to `x + ew > width`.
+- `space.ts` resize/expand: only shifted `spaceElements` + `placedItem` — NPCs (position + patrolPath) were left behind and visually detached from the shifted tiles. Fixed with a `shiftNpcs` helper inside the same transaction; expand also now clamps at the 200×200 cap (buttons disable) instead of 400ing near the limit.
 - `ws/index.ts`: NPC patrolIndex not clamped before array access. Fixed: `state.patrolIndex % patrol.length`.
 - `ws/User.ts`: `destroy()` called before `spaceId` set. Fixed with `if (!this.spaceId) return` guard.
 - `ws/User.ts`: second `join` added user to new room without removing from old room (ghost). Fixed with re-join cleanup block.

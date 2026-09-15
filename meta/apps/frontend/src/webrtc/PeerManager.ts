@@ -208,12 +208,17 @@ export class PeerManager {
         if (!receiveOnly) {
             // Adding tracks triggers onnegotiationneeded asynchronously.
             // localStream may be null if mic permission was denied — skip audio tracks gracefully.
-            this.localStream?.getAudioTracks().forEach(t => pc.addTrack(t, this.localStream!));
-            // One video track on the wire: the screen while sharing, else the camera.
+            // One video track and one audio track on the wire: while screen
+            // sharing, the screen's video + tab/system audio replace the
+            // camera + mic (single sender per kind → no renegotiation).
             if (this.screenSharing && this.screenStream) {
                 this.screenStream.getVideoTracks().forEach(t => pc.addTrack(t, this.screenStream!));
-            } else if (this.localVideoStream) {
-                this.localVideoStream.getVideoTracks().forEach(t => pc.addTrack(t, this.localVideoStream!));
+                this.screenStream.getAudioTracks().forEach(t => pc.addTrack(t, this.screenStream!));
+            } else {
+                this.localStream?.getAudioTracks().forEach(t => pc.addTrack(t, this.localStream!));
+                if (this.localVideoStream) {
+                    this.localVideoStream.getVideoTracks().forEach(t => pc.addTrack(t, this.localVideoStream!));
+                }
             }
         }
         // receiveOnly (broadcast listener): no local tracks added; speaker sends the offer.
@@ -364,12 +369,14 @@ export class PeerManager {
     async startScreenShare(): Promise<boolean> {
         if (this.screenSharing) return true;
         try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+            // audio: true shares the tab/system audio too (browser checkbox).
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
             const screenTrack = stream.getVideoTracks()[0];
             if (!screenTrack) {
                 stream.getTracks().forEach(t => t.stop());
                 return false;
             }
+            const screenAudio = stream.getAudioTracks()[0];
             this.screenStream = stream;
             this.screenSharing = true;
 
@@ -377,12 +384,24 @@ export class PeerManager {
             screenTrack.onended = () => { void this.stopScreenShare(); };
 
             for (const [peerId, peer] of this.peers.entries()) {
-                const videoSender = peer.connection.getSenders().find(s => s.track?.kind === 'video');
+                const senders = peer.connection.getSenders();
+                const videoSender = senders.find(s => s.track?.kind === 'video');
+                const audioSender = senders.find(s => s.track?.kind === 'audio');
                 try {
                     if (videoSender) {
                         await videoSender.replaceTrack(screenTrack);
                     } else {
                         peer.connection.addTrack(screenTrack, stream);
+                    }
+                    // Tab/system audio replaces the mic on the wire (single audio
+                    // sender per peer → no renegotiation). The mic track stays
+                    // alive locally and is restored on stop.
+                    if (screenAudio) {
+                        if (audioSender) {
+                            await audioSender.replaceTrack(screenAudio);
+                        } else {
+                            peer.connection.addTrack(screenAudio, stream);
+                        }
                     }
                 } catch (err) {
                     console.warn('[PM] screen share track failed for', peerId, err);
@@ -405,18 +424,33 @@ export class PeerManager {
         const cameraTrack = this.cameraEnabled
             ? this.localVideoStream?.getVideoTracks()[0] ?? null
             : null;
+        const micAudio = this.localStream?.getAudioTracks()[0] ?? null;
 
         for (const [peerId, peer] of this.peers.entries()) {
-            const videoSender = peer.connection.getSenders().find(s => s.track?.kind === 'video');
-            if (!videoSender) continue;
-            try {
-                if (cameraTrack) {
-                    await videoSender.replaceTrack(cameraTrack);
-                } else {
-                    await videoSender.replaceTrack(null);
+            const senders = peer.connection.getSenders();
+            const videoSender = senders.find(s => s.track?.kind === 'video');
+            const audioSender = senders.find(s => s.track?.kind === 'audio');
+            if (videoSender) {
+                try {
+                    if (cameraTrack) {
+                        await videoSender.replaceTrack(cameraTrack);
+                    } else {
+                        await videoSender.replaceTrack(null);
+                    }
+                } catch (err) {
+                    console.warn('[PM] screen share video restore failed for', peerId, err);
                 }
-            } catch (err) {
-                console.warn('[PM] screen share restore failed for', peerId, err);
+            }
+            if (audioSender) {
+                try {
+                    if (micAudio) {
+                        await audioSender.replaceTrack(micAudio);
+                    } else {
+                        await audioSender.replaceTrack(null);
+                    }
+                } catch (err) {
+                    console.warn('[PM] screen share audio restore failed for', peerId, err);
+                }
             }
         }
 

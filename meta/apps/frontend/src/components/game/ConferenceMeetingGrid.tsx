@@ -23,6 +23,7 @@ interface Props {
     onToggleScreenShare: () => void;
     onToggleDeafen: () => void;
     onLeaveCall: () => void;
+    onExpandMeeting?: (focusPeerId: string | null) => void;
 }
 
 function gridCols(count: number): string {
@@ -32,7 +33,7 @@ function gridCols(count: number): string {
     return 'repeat(3, minmax(0,1fr))';
 }
 
-function MeetingTile({ p }: { p: ConferenceParticipant }) {
+function MeetingTile({ p, onExpand }: { p: ConferenceParticipant; onExpand?: (peerId: string) => void }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const hasVideo = p.isSelf ? p.cameraEnabled : !!(p.stream?.getVideoTracks()[0]);
 
@@ -62,7 +63,18 @@ function MeetingTile({ p }: { p: ConferenceParticipant }) {
             transition: 'border-color 0.12s',
             aspectRatio: '16 / 9',
             minHeight: 80,
-        }}>
+            cursor: onExpand ? 'pointer' : 'default',
+        }} onClick={onExpand ? () => onExpand(p.peerId) : undefined}>
+            {onExpand && (
+                <div style={{
+                    position: 'absolute', top: 6, right: 6, zIndex: 3,
+                    width: 26, height: 26, borderRadius: 8,
+                    background: 'rgba(0,0,0,0.55)', color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 13, cursor: 'pointer',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                }} title="Open large view">⛶</div>
+            )}
             {hasVideo ? (
                 <video
                     ref={videoRef}
@@ -161,6 +173,7 @@ export function ConferenceMeetingGrid({
     participants,
     micEnabled, cameraEnabled, screenSharing, canScreenShare, deafened,
     onToggleMic, onToggleCamera, onToggleScreenShare, onToggleDeafen, onLeaveCall,
+    onExpandMeeting,
 }: Props) {
     const count = participants.length;
     const cols = gridCols(count);
@@ -184,7 +197,8 @@ export function ConferenceMeetingGrid({
                 alignContent: count <= 4 ? 'center' : 'start',
             }}>
                 {participants.map(p => (
-                    <MeetingTile key={p.peerId} p={p} />
+                    <MeetingTile key={p.peerId} p={p}
+                        onExpand={onExpandMeeting ? (peerId) => onExpandMeeting(peerId) : undefined} />
                 ))}
             </div>
 
@@ -211,6 +225,14 @@ export function ConferenceMeetingGrid({
                         title={screenSharing ? 'Stop sharing screen' : 'Share your screen'}
                         active={screenSharing}
                         icon="🖥️"
+                    />
+                )}
+                {onExpandMeeting && (
+                    <TbBtn
+                        onClick={() => onExpandMeeting(null)}
+                        title="Open large meeting view (Google Meet style)"
+                        active={false}
+                        icon="⛶"
                     />
                 )}
                 <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />

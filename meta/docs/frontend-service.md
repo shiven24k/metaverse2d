@@ -124,12 +124,13 @@ TILE_SIZE = 50            // canvas pixels per tile
 - **NPC editor**: modal (name, sprite grid, motion type cards, wander-radius slider for WANDER, x/y or 📍 pick-on-canvas with blocked-tile validation, 3 dialogue lines); rows in the NPCs tab select (amber ring) and drag-to-reposition.
 - **Portal tool**: list existing portals (delete), and a create form (from-edge, to-edge, destination space, label) → `POST /:spaceId/portal`.
 - **Conference room & broadcast zone marking**: with an item selected, the sidebar has **+ Conf Room** / **+ Broadcast Zone** buttons that write `metadata.conferenceRoomId` / `metadata.broadcastZoneId` (uuid) via `PUT /placed/:id/metadata`. Walking onto an item bearing that metadata triggers `rtc:join-room` (or the zone join) — see below.
-- **Space management**: New Map modal (name/dims/template), Resize modal (5–100 in the UI), Expand modal (+10 tiles in a direction, shifting content via `offsetX/Y`), Clear All (wipes tiles, returns items to inventory), Space Settings modal (name/privacy/invite/members).
+- **Space management**: New Map modal (name/dims/template), Resize modal (5–200 in the UI), Expand modal (+10 tiles in a direction; elements, items **and NPCs** shift via `offsetX/Y`; buttons disable at the 200×200 cap), Clear All (wipes tiles, returns items to inventory), Space Settings modal (name/privacy/invite/members).
 
 ### Conference rooms, broadcast zones & video UI
 - After every local move the rAF tick calls `checkConferenceRoom` / `checkBroadcastZone`: they find a placed item under the player whose `metadata` carries a room/zone id, and on change send `rtc:join-room` / `rtc:broadcast-zone-join` (space **owner is the speaker** for broadcast zones). Leaving the tile sends `rtc:leave-room` / `leaveBroadcastZone`.
 - `rtc:room-peers` → `pm.joinConferencePeer()` per peer → full mesh; the canvas shrinks to a **240×150 PiP** with a `2D WORLD` label and a full-screen `ConferenceMeetingGrid` (16:9 tiles, initials avatar fallback, speaking dot, connecting overlay, name+mute row, docked toolbar) takes over.
 - Outside conference rooms, video appears as **140×80 tiles** centered at the top of the canvas: a mirrored self-view (when camera on + ≥1 peer) plus one `RemoteVideoTile` per peer (connection-state overlay).
+- **Meeting room popup** (`MeetingRoomOverlay`): the ⛶ button on any `RemoteVideoTile` (or any conference-grid tile/toolbar) opens a Google-Meet-style overlay — large **stage** that auto-follows the screen sharer/active speaker, a side strip of face tiles, fullscreen, and the full call control bar. See `webrtc.md`.
 - Hidden `<video>` elements (`avatarVideoElsRef`, `localAvatarVideoElRef`) are still created to hold streams, but **canvas camera bubbles were removed** (see `webrtc-postmortem` git history) — these refs are now vestigial scaffolding.
 
 ### Interactable items
@@ -179,8 +180,9 @@ Full board editor (owner): create board, add/rename/delete columns, add/edit/mov
 ### UI components
 - `VoiceToolbar` — mic / camera / deafen / leave + connected peer count.
 - `ProximityChatPanel` — nearby chat + knock/call buttons (voice call, video call, group call).
-- `RemoteVideoTile` — 140×80 tile with connection overlay ("Connecting… / ✓ Connected / ✗ Failed").
-- `ConferenceMeetingGrid` — grid of meeting participants with controls.
+- `RemoteVideoTile` — 140×80 tile with connection overlay ("Connecting… / ✓ Connected / ✗ Failed") + ⛶ expand-to-meeting button.
+- `ConferenceMeetingGrid` — grid of meeting participants with controls; tiles/toolbar expand into the meeting overlay.
+- `MeetingRoomOverlay` — Google-Meet/Discord-style popup: large stage (auto-follows screen share/speaker), side face-tile strip, fullscreen, full controls.
 - `GameDock`, `EmotePicker`, `NotificationPanel` — HUD accessories.
 
 ---
