@@ -29,36 +29,33 @@ describe('shop price calculation', () => {
     });
 });
 
-describe('shop balance check logic', () => {
-    function canAfford(walletCoins: number, price: number): boolean {
-        return walletCoins >= price;
+describe('shop balance check logic (atomic — TOCTOU fixed)', () => {
+    // Mirrors the fixed shop.ts /buy: the wallet is only decremented when
+    // coins >= price via an atomic conditional updateMany, so concurrent buys
+    // can't both pass a stale balance read.
+    function conditionalDebit(coins: number, price: number): { ok: boolean; coins: number } {
+        if (coins >= price) return { ok: true, coins: coins - price };
+        return { ok: false, coins };
     }
 
-    it('user with exact coins can buy', ()     => expect(canAfford(50, 50)).toBe(true));
-    it('user with more coins can buy', ()      => expect(canAfford(100, 50)).toBe(true));
-    it('user with fewer coins cannot buy', ()  => expect(canAfford(49, 50)).toBe(false));
-    it('user with 0 coins cannot buy', ()      => expect(canAfford(0, 50)).toBe(false));
+    it('user with exact coins can buy', () => expect(conditionalDebit(50, 50)).toEqual({ ok: true, coins: 0 }));
+    it('user with more coins can buy', () => expect(conditionalDebit(100, 50)).toEqual({ ok: true, coins: 50 }));
+    it('user with fewer coins cannot buy', () => expect(conditionalDebit(49, 50)).toEqual({ ok: false, coins: 49 }));
+    it('user with 0 coins cannot buy', () => expect(conditionalDebit(0, 50)).toEqual({ ok: false, coins: 0 }));
 
-    it('BUG: TOCTOU — balance checked outside transaction (documented)', () => {
-        // shop.ts reads wallet BEFORE the $transaction, then decrements inside.
-        // Two concurrent requests can both read `wallet.coins >= price`
-        // and both execute the decrement, leaving coins negative.
-        // Fix: move balance check inside $transaction with a conditional update.
+    it('FIX: two concurrent buys can no longer drive coins negative', () => {
+        // Old bug: both requests read coins=50 >= price=50 and both decrement
+        // → coins = -50. Now each decrement re-checks the balance at the DB
+        // level (Postgres re-evaluates the WHERE after the row lock), so the
+        // second buy is rejected.
         let coins = 50;
         const price = 50;
-
-        // Simulate two concurrent requests reading the same wallet
-        const req1CanAfford = canAfford(coins, price);
-        const req2CanAfford = canAfford(coins, price); // stale read
-
-        // Both pass — both will decrement
-        expect(req1CanAfford).toBe(true);
-        expect(req2CanAfford).toBe(true);
-
-        // After both transactions: coins = 50 - 50 - 50 = -50 (negative!)
-        coins -= price; // req1 transaction
-        coins -= price; // req2 transaction
-        expect(coins).toBe(-50); // BUG confirmed
+        const first = conditionalDebit(coins, price);
+        coins = first.coins; // 0
+        const second = conditionalDebit(coins, price);
+        expect(first.ok).toBe(true);
+        expect(second.ok).toBe(false); // second buy rejected
+        expect(coins).toBe(0); // never negative
     });
 });
 

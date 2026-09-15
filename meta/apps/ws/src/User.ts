@@ -82,6 +82,9 @@ export class User {
     public lastActivityAt: number = Date.now();
     private ws: WebSocket;
     private lastMove: Promise<void> = Promise.resolve();
+    private spaceWidth?: number;
+    private spaceHeight?: number;
+    private isJoining = false;
 
     constructor(ws: WebSocket) {
         this.id = getRandomString(10);
@@ -117,180 +120,194 @@ export class User {
 
             switch (parsedData.type) {
                 case "join": {
-                    // Guard against re-join: clean up old room membership first
-                    if (this.spaceId) {
-                        getRoomManager().removeUser(this, this.spaceId);
-                        this.spaceId = undefined;
-                        this.currentRoomKey = null;
-                    }
-
-                    const spaceId = parsedData.payload.spaceId;
-                    const token = parsedData.payload.token;
-
-                    // Guard at the source: never let a missing/malformed spaceId
-                    // reach a Prisma call. Prisma drops `undefined` filter keys, so
-                    // findFirst({ where: { id: undefined } }) would match an arbitrary
-                    // space and addUser(undefined) would poison the room map and crash
-                    // the NPC ticker ~500ms later.
-                    if (typeof spaceId !== "string" || spaceId.trim() === "") {
-                        this.failWith('not-found', 'Missing or invalid spaceId');
+                    // Serialise joins: a second `join` arriving while the first is
+                    // still awaiting auth/DB (spaceId not yet set) would skip the
+                    // re-join guard and double-add the user → ghost users.
+                    if (this.isJoining) {
+                        this.failWith('forbidden', 'Join already in progress');
                         return;
                     }
+                    this.isJoining = true;
+                    try {
+                        // Guard against re-join: clean up old room membership first
+                        if (this.spaceId) {
+                            getRoomManager().removeUser(this, this.spaceId);
+                            this.spaceId = undefined;
+                            this.currentRoomKey = null;
+                        }
 
-                    if (!token) {
-                        // Guest: no token → assign temp identity, skip DB auth
-                        this.isGuest = true;
-                        this.userId = `guest-${this.id}`;
-                        this.username = `Guest-${getRandomString(4)}`;
-                        this.avatarId = 'avatar-intern';
-                    } else {
-                        let userId: string | undefined;
-                        try {
-                            const session = await auth.api.getSession({
-                                headers: new Headers({
-                                    authorization: `Bearer ${token}`,
-                                }),
+                        const spaceId = parsedData.payload.spaceId;
+                        const token = parsedData.payload.token;
+
+                        // Guard at the source: never let a missing/malformed spaceId
+                        // reach a Prisma call. Prisma drops `undefined` filter keys, so
+                        // findFirst({ where: { id: undefined } }) would match an arbitrary
+                        // space and addUser(undefined) would poison the room map and crash
+                        // the NPC ticker ~500ms later.
+                        if (typeof spaceId !== "string" || spaceId.trim() === "") {
+                            this.failWith('not-found', 'Missing or invalid spaceId');
+                            return;
+                        }
+
+                        if (!token) {
+                            // Guest: no token → assign temp identity, skip DB auth
+                            this.isGuest = true;
+                            this.userId = `guest-${this.id}`;
+                            this.username = `Guest-${getRandomString(4)}`;
+                            this.avatarId = 'avatar-intern';
+                        } else {
+                            let userId: string | undefined;
+                            try {
+                                const session = await auth.api.getSession({
+                                    headers: new Headers({
+                                        authorization: `Bearer ${token}`,
+                                    }),
+                                });
+                                userId = session?.user?.id;
+                            } catch {
+                                this.failWith('unauthorized', 'Session expired, please sign in again');
+                                return;
+                            }
+
+                            if (!userId) {
+                                this.failWith('unauthorized', 'Session expired, please sign in again');
+                                return;
+                            }
+
+                            this.userId = userId;
+
+                            const banned = await client.bannedUser.findUnique({
+                                where: { userId },
                             });
-                            userId = session?.user?.id;
-                        } catch {
-                            this.failWith('unauthorized', 'Session expired, please sign in again');
-                            return;
+                            if (banned) {
+                                this.failWith('banned', 'This account is banned');
+                                return;
+                            }
+
+                            const userRecord = await client.user.findUnique({
+                                where: { id: userId },
+                                select: { name: true, avatarId: true, role: true },
+                            });
+                            this.username = userRecord?.name ?? 'Unknown';
+                            this.avatarId = userRecord?.avatarId ?? undefined;
+                            this.role = userRecord?.role ?? 'User';
                         }
 
-                        if (!userId) {
-                            this.failWith('unauthorized', 'Session expired, please sign in again');
-                            return;
-                        }
-
-                        this.userId = userId;
-
-                        const banned = await client.bannedUser.findUnique({
-                            where: { userId },
+                        const space = await client.space.findFirst({
+                            where: { id: spaceId },
                         });
-                        if (banned) {
-                            this.failWith('banned', 'This account is banned');
+
+                        if (!space) {
+                            this.failWith('not-found', 'Space not found');
                             return;
                         }
 
-                        const userRecord = await client.user.findUnique({
-                            where: { id: userId },
-                            select: { name: true, avatarId: true, role: true },
-                        });
-                        this.username = userRecord?.name ?? 'Unknown';
-                        this.avatarId = userRecord?.avatarId ?? undefined;
-                        this.role = userRecord?.role ?? 'User';
-                    }
-
-                    const space = await client.space.findFirst({
-                        where: { id: spaceId },
-                    });
-
-                    if (!space) {
-                        this.failWith('not-found', 'Space not found');
-                        return;
-                    }
-
-                    if (space.visibility !== 'PUBLIC') {
-                        if (this.isGuest || !this.userId) {
-                            this.failWith('forbidden', 'You do not have access to this space');
-                            return;
-                        }
-                        const member = await client.spaceMember.findUnique({
-                            where: { spaceId_userId: { spaceId, userId: this.userId } },
-                        });
-                        if (!member) {
-                            // Authenticated non-member: tell the client it may request
-                            // access (guests can't — they have no account to approve for).
-                            this.failWith('forbidden', 'You are not a member of this space', { canRequestAccess: true, spaceId });
-                            return;
-                        }
-                    }
-
-                    this.spaceId = spaceId;
-                    this.spaceOwnerId = space.creatorId;
-
-                    // Evict any stale session for the same userId (reconnect scenario).
-                    // Clearing spaceId prevents the stale session's destroy() from
-                    // broadcasting user-left, since this is a reconnect not a real leave.
-                    if (this.userId) {
-                        const roomUsers = getRoomManager().rooms.get(spaceId);
-                        if (roomUsers) {
-                            const staleIdx = roomUsers.findIndex(u => u.userId === this.userId && u.id !== this.id);
-                            if (staleIdx !== -1) {
-                                console.log('[WS] evicting stale session for userId', this.userId, 'on reconnect');
-                                roomUsers[staleIdx].spaceId = undefined;
-                                roomUsers.splice(staleIdx, 1);
+                        if (space.visibility !== 'PUBLIC') {
+                            if (this.isGuest || !this.userId) {
+                                this.failWith('forbidden', 'You do not have access to this space');
+                                return;
+                            }
+                            const member = await client.spaceMember.findUnique({
+                                where: { spaceId_userId: { spaceId, userId: this.userId } },
+                            });
+                            if (!member) {
+                                // Authenticated non-member: tell the client it may request
+                                // access (guests can't — they have no account to approve for).
+                                this.failWith('forbidden', 'You are not a member of this space', { canRequestAccess: true, spaceId });
+                                return;
                             }
                         }
-                    }
 
-                    // Plan-gated room capacity (maxConcurrentUsers) — the SPACE
-                    // OWNER's plan defines the room's capacity (that's what they
-                    // paid for: "N concurrent users per space"). Guests and Free
-                    // members must not shrink a paid owner's room.
-                    // Counted AFTER stale-session eviction so reconnects don't
-                    // count against themselves.
-                    const ownerPlan = await getEffectivePlan(space.creatorId);
-                    const roomCount = getRoomManager().rooms.get(spaceId)?.length ?? 0;
-                    if (roomCount >= ownerPlan.maxConcurrentUsers) {
-                        this.failWith(
-                            'forbidden',
-                            `This space is full (${ownerPlan.maxConcurrentUsers} concurrent users on the ${ownerPlan.tier} plan)`
-                        );
-                        return;
-                    }
+                        this.spaceId = spaceId;
+                        this.spaceOwnerId = space.creatorId;
+                        this.spaceWidth = space.width;
+                        this.spaceHeight = space.height;
 
-                    getRoomManager().addUser(spaceId, this);
-                    this.x = Math.floor(Math.random() * space.width);
-                    this.y = Math.floor(Math.random() * space.height);
+                        // Evict any stale session for the same userId (reconnect scenario).
+                        // Clearing spaceId prevents the stale session's destroy() from
+                        // broadcasting user-left, since this is a reconnect not a real leave.
+                        if (this.userId) {
+                            const roomUsers = getRoomManager().rooms.get(spaceId);
+                            if (roomUsers) {
+                                const staleIdx = roomUsers.findIndex(u => u.userId === this.userId && u.id !== this.id);
+                                if (staleIdx !== -1) {
+                                    console.log('[WS] evicting stale session for userId', this.userId, 'on reconnect');
+                                    roomUsers[staleIdx].spaceId = undefined;
+                                    roomUsers.splice(staleIdx, 1);
+                                }
+                            }
+                        }
 
-                    const safePos = await findNearestWalkable(this.x, this.y, spaceId, space.width, space.height);
-                    this.x = safePos.x;
-                    this.y = safePos.y;
+                        // Plan-gated room capacity (maxConcurrentUsers) — the SPACE
+                        // OWNER's plan defines the room's capacity (that's what they
+                        // paid for: "N concurrent users per space"). Guests and Free
+                        // members must not shrink a paid owner's room.
+                        // Counted AFTER stale-session eviction so reconnects don't
+                        // count against themselves.
+                        const ownerPlan = await getEffectivePlan(space.creatorId);
+                        const roomCount = getRoomManager().rooms.get(spaceId)?.length ?? 0;
+                        if (roomCount >= ownerPlan.maxConcurrentUsers) {
+                            this.failWith(
+                                'forbidden',
+                                `This space is full (${ownerPlan.maxConcurrentUsers} concurrent users on the ${ownerPlan.tier} plan)`
+                            );
+                            return;
+                        }
 
-                    const allUsers =
-                        getRoomManager()
-                            .rooms.get(spaceId)
-                            ?.filter((u) => u.id !== this.id && u.userId !== this.userId)
-                            ?.map((u) => ({ userId: u.userId ?? u.id, x: u.x, y: u.y, username: u.username, avatarId: u.avatarId })) ?? [];
+                        getRoomManager().addUser(spaceId, this);
+                        this.x = Math.floor(Math.random() * space.width);
+                        this.y = Math.floor(Math.random() * space.height);
 
-                    this.send({
-                        type: "space-joined",
-                        payload: {
-                            spawn: { x: this.x, y: this.y },
-                            userId: this.userId!,
-                            username: this.username,
-                            avatarId: this.avatarId,
-                            users: allUsers,
-                        },
-                    });
+                        const safePos = await findNearestWalkable(this.x, this.y, spaceId, space.width, space.height);
+                        this.x = safePos.x;
+                        this.y = safePos.y;
 
-                    getRoomManager().broadcast(
-                        {
-                            type: "user-joined",
-                            payload: { userId: this.userId!, x: this.x, y: this.y, username: this.username, avatarId: this.avatarId },
-                        },
-                        this,
-                        this.spaceId!
-                    );
-                    getRoomManager().broadcast(
-                        {
-                            type: 'notification',
+                        const allUsers =
+                            getRoomManager()
+                                .rooms.get(spaceId)
+                                ?.filter((u) => u.id !== this.id && u.userId !== this.userId)
+                                ?.map((u) => ({ userId: u.userId ?? u.id, x: u.x, y: u.y, username: u.username, avatarId: u.avatarId })) ?? [];
+
+                        this.send({
+                            type: "space-joined",
                             payload: {
-                                id: randomUUID(),
-                                notifType: 'user-joined',
-                                title: `${this.username} joined the space`,
-                                message: '',
-                                priority: 'normal',
-                                fromUserId: this.userId ?? this.id,
-                                fromUserName: this.username,
-                                timestamp: Date.now(),
+                                spawn: { x: this.x, y: this.y },
+                                userId: this.userId!,
+                                username: this.username,
+                                avatarId: this.avatarId,
+                                users: allUsers,
                             },
-                        },
-                        this,
-                        this.spaceId!
-                    );
-                    this.broadcastRoomUpdates(spaceId);
+                        });
+
+                        getRoomManager().broadcast(
+                            {
+                                type: "user-joined",
+                                payload: { userId: this.userId!, x: this.x, y: this.y, username: this.username, avatarId: this.avatarId },
+                            },
+                            this,
+                            this.spaceId!
+                        );
+                        getRoomManager().broadcast(
+                            {
+                                type: 'notification',
+                                payload: {
+                                    id: randomUUID(),
+                                    notifType: 'user-joined',
+                                    title: `${this.username} joined the space`,
+                                    message: '',
+                                    priority: 'normal',
+                                    fromUserId: this.userId ?? this.id,
+                                    fromUserName: this.username,
+                                    timestamp: Date.now(),
+                                },
+                            },
+                            this,
+                            this.spaceId!
+                        );
+                        this.broadcastRoomUpdates(spaceId);
+                    } finally {
+                        this.isJoining = false;
+                    }
                     break;
                 }
 
@@ -340,6 +357,7 @@ export class User {
                 }
 
                 case "avatar-changed": {
+                    if (this.isGuest) break; // read-only — guests keep their temp avatar
                     const { avatarId } = parsedData.payload;
                     if (typeof avatarId === "string" && avatarId.length > 0) {
                         this.avatarId = avatarId;
@@ -361,6 +379,7 @@ export class User {
                 case "item-deleted":
                 case "element-moved":
                 case "item-moved": {
+                    if (this.isGuest) break; // read-only — no editor relay for guests
                     if (this.spaceId) invalidateBlockingCache(this.spaceId);
                     getRoomManager().broadcast(
                         {
@@ -374,6 +393,7 @@ export class User {
                 }
 
                 case "gift": {
+                    if (this.isGuest) break; // read-only — no gift announcements
                     const { itemName, recipientUsername } = parsedData.payload;
                     if (itemName && recipientUsername && this.userId) {
                         getRoomManager().broadcast(
@@ -404,6 +424,8 @@ export class User {
                 }
 
                 case "chat-message": {
+                    // Guests are read-only — no DB persistence of their messages.
+                    if (this.isGuest) break;
                     const { content } = parsedData.payload;
                     if (!content || typeof content !== 'string' || !content.trim() || !this.spaceId) break;
                     this.lastActivityAt = Date.now();
@@ -707,6 +729,18 @@ export class User {
     }
 
     private async processMove(moveX: number, moveY: number): Promise<void> {
+        // Space boundary check — reject moves into negative coords or beyond the
+        // space edge before adjacency/blocking validation.
+        if (
+            !Number.isInteger(moveX) || !Number.isInteger(moveY) ||
+            moveX < 0 || moveY < 0 ||
+            (this.spaceWidth !== undefined && moveX >= this.spaceWidth) ||
+            (this.spaceHeight !== undefined && moveY >= this.spaceHeight)
+        ) {
+            this.send({ type: "movement-rejected", payload: { x: this.x, y: this.y } });
+            return;
+        }
+
         const xDisplacement = Math.abs(this.x - moveX);
         const yDisplacement = Math.abs(this.y - moveY);
 

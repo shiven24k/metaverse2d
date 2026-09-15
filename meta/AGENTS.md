@@ -167,7 +167,7 @@ if ((xDisp === 1 && yDisp === 0) || (xDisp === 0 && yDisp === 1)) {
 }
 ```
 
-⚠️ **Known gap**: No space boundary check on movement (user can move to negative coords or beyond width/height). Fix: add `newX >= 0 && newY >= 0 && newX < space.width && newY < space.height`.
+Movement validation is adjacency + blocking + **space boundary** (negative or beyond width/height coords are rejected via `spaceWidth`/`spaceHeight` stored on join — see the `processMove` bounds check).
 
 ### NPC Tick (`index.ts`)
 
@@ -322,10 +322,8 @@ Writes 128×96 sprite sheets to `apps/http/uploads/defaults/avatar-*.png`.
 
 | Location | Bug | Status |
 |----------|-----|--------|
-| `ws/User.ts:243` | No space-boundary check on movement (can go to x=-1, y=-1) | **Open** — server validates adjacency but not bounds |
-| `ws/User.ts` | No deduplication if two `join` messages arrive concurrently (async gap) | **Mitigated** — synchronous re-join guard added, but race during auth await remains |
-| `shop.ts:50` | Balance check outside transaction (TOCTOU) | **Open** — concurrent buys can go negative |
-| `gift.ts:56` | Claim check outside transaction (TOCTOU) | **Open** — concurrent claims could double-grant |
+| `ws/User.ts` | Guest mode is read-only on the client, but the server doesn't enforce it (guests can still move/emote/chat-bubble on PUBLIC spaces). `chat-message` (persisted), editor relays, gift, and avatar-changed are now gated; moves/emotes remain allowed | **Mitigated** — server gates writes, ephemeral actions still allowed |
+| `billing` | Webhook events the dashboard doesn't subscribe to are just logged (unknown events acked 200 so Razorpay stops retrying) — a misconfigured dashboard can silently skip events | **Open** — configure Razorpay to send subscription/payment/invoice events |
 
 **Fixed bugs (do not revert):**
 - `gift.ts`: `setUTCHours(24,...)` + `setUTCDate(+1)` → double advance (was 48h lockout). Fixed to `setUTCDate(+1)` + `setUTCHours(0,0,0,0)`.
@@ -337,6 +335,11 @@ Writes 128×96 sprite sheets to `apps/http/uploads/defaults/avatar-*.png`.
 - `ws/index.ts`: NPC patrolIndex not clamped before array access. Fixed: `state.patrolIndex % patrol.length`.
 - `ws/User.ts`: `destroy()` called before `spaceId` set. Fixed with `if (!this.spaceId) return` guard.
 - `ws/User.ts`: second `join` added user to new room without removing from old room (ghost). Fixed with re-join cleanup block.
+- `ws/User.ts` movement: no space-boundary check → players could reach `x=-1`/out-of-range. Fixed: `processMove` now rejects non-integer/negative/out-of-bounds coords using `spaceWidth`/`spaceHeight` stored on join. Tests in `tests/unit/movement.test.ts` assert the fixed behaviour.
+- `ws/User.ts` join race: two concurrent `join` messages during the auth await could both skip the re-join guard and double-add. Fixed with an `isJoining` flag set at join start and cleared in `finally`.
+- `shop.ts` TOCTOU: wallet balance read outside the `$transaction` → concurrent buys could go negative. Fixed with an atomic conditional `wallet.updateMany({ where: { coins: { gte: price } } })` — the decrement only happens when funds are sufficient (Postgres re-checks WHERE after the row lock).
+- `gift.ts` TOCTOU: claim/cooldown check outside the transaction → concurrent claims could double-grant. Fixed with an atomic conditional `dailyGift.updateMany({ where: { lastClaim: { lt: todayUTC } } })` that only matches when the last claim was on a previous UTC day.
+- `apps/http` type errors (previously shipped silently — esbuild skips typecheck): `index.ts` webhook rawBody capture (typed the verify `req` as `express.Request & { rawBody?: Buffer }`), `adminPanel.ts` (subscription `status` now typed as the `SubStatus` union; the spaces list ordered by `id` because **Space has no `createdAt`** — the old `orderBy createdAt` would throw at runtime), `space.ts` access-request decide (decoded the JWT into a validated `{ arId?, decision? }` payload). `npx tsc --noEmit` on `apps/http` is now clean.
 
 ---
 
@@ -350,7 +353,7 @@ Mock infrastructure: `tests/__mocks__/db.ts` — a full `vi.fn()` stub of the Pr
 
 Integration tests use `supertest` + `express` with the actual route handlers. Auth middleware is mocked to inject `req.userId = 'test-user-id'`.
 
-Tests document expected-but-open bugs (e.g. movement bounds, TOCTOU races) as passing `expect` assertions that describe the current (buggy) behavior, so regressions on fixes are immediately visible.
+Tests assert the current behaviour — including the fixed movement-bounds, join-race, and shop/gift TOCTOU fixes — so a regression on any of those shows up immediately as a failing test.
 
 ---
 

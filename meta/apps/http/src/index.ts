@@ -43,8 +43,9 @@ app.use(express.json({
     // Capture the raw body for the billing webhook so the Razorpay HMAC
     // signature can be verified against the exact bytes that were sent.
     verify: (req, _res, buf) => {
-        if (req.originalUrl?.includes("/billing/webhook")) {
-            req.rawBody = buf;
+        const r = req as express.Request & { rawBody?: Buffer };
+        if (r.originalUrl?.includes("/billing/webhook")) {
+            r.rawBody = buf;
         }
     },
 }));

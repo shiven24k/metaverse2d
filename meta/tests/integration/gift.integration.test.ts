@@ -86,22 +86,23 @@ describe('POST /gift/claim', () => {
     });
 
     it('returns 400 when gift already claimed today', async () => {
-        db.dailyGift.findUnique.mockResolvedValue({
-            lastClaim: new Date(), // just claimed
-        });
+        db.item.findMany.mockResolvedValue([{ id: 'item-sofa', name: 'Sofa', rarity: 'Common' }]);
+        db.dailyGift.updateMany.mockResolvedValue({ count: 0 }); // no row matched
+        db.dailyGift.findUnique.mockResolvedValue({ lastClaim: new Date() }); // exists → claimed today
         const res = await request(app).post('/gift/claim');
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/already claimed/i);
     });
 
     it('grants coins and item on first claim', async () => {
-        db.dailyGift.findUnique.mockResolvedValue(null); // never claimed
+        db.dailyGift.updateMany.mockResolvedValue({ count: 0 }); // no row matched → first claim
+        db.dailyGift.findUnique.mockResolvedValue(null); // no existing row
+        db.dailyGift.create.mockResolvedValue({ userId: 'user-abc', streak: 1 });
         db.item.findMany.mockResolvedValue([
             { id: 'item-sofa', name: 'Sofa', rarity: 'Common' },
         ]);
         db.$transaction.mockImplementation(async (fn: any) => fn(db));
-        db.dailyGift.upsert.mockResolvedValue({ userId: 'user-abc', streak: 1 });
-        db.wallet.upsert.mockResolvedValue({ coins: 50 }); // fixed: uses upsert not find+create+update
+        db.wallet.upsert.mockResolvedValue({ coins: 50 }); // atomic upsert
         db.item.findFirst.mockResolvedValue(null); // no milestone
         db.inventoryItem.upsert.mockResolvedValue({});
 
@@ -110,6 +111,7 @@ describe('POST /gift/claim', () => {
         expect(res.body.coins).toBe(50);
         expect(res.body.streak).toBe(1);
         expect(res.body.milestone).toBeNull();
+        expect(db.dailyGift.updateMany).toHaveBeenCalled(); // atomic conditional claim
     });
 });
 

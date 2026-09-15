@@ -432,10 +432,20 @@ Pending
 ## Known Issues
 
 - Avatar change requires a page refresh or WS reconnect for other users to see the update.
-- No guest/anonymous mode — most features require auth.
+- Guest mode is read-only server-side (no persisted chat, editor edits, gifts, or avatar changes) but guests can still walk and emote on PUBLIC spaces.
 - "Load Demo Items" (`POST /api/v1/inventory/demo`) is a dev/testing shortcut, not intended for production.
 - WS server uses `any` types for message payloads — no runtime schema validation.
 - Server-side collision detection is grid-cell-level only (no sub-tile precision).
+
+> Note: this root README predates several shipped features (WebRTC voice/video, proximity chat, NPCs, portals, Kanban, SaaS billing, marketing site). See [`meta/docs/`](./meta/docs/README.md) for the current, code-grounded documentation.
+
+### Recently hardened (Sept 2026)
+
+- **Movement bounds** — `processMove` rejects non-integer / negative / out-of-bounds coordinates (was adjacency-only).
+- **Concurrent join race** — `isJoining` flag serialises joins (no ghost users).
+- **Shop TOCTOU** — atomic conditional wallet decrement (concurrent buys can't go negative).
+- **Gift TOCTOU** — atomic conditional daily-gift claim (concurrent claims can't double-grant).
+- **Guest read-only** — persisted chat, editor relays, gifts, and avatar changes are ignored for guests.
 
 ---
 

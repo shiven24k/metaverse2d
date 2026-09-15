@@ -118,7 +118,7 @@ Browser                          WS server                          Other browse
    │  { "type": "move",          │                                     │
    │    "payload": {x,y} }       │                                     │
    │─────────────────────────────>│  User.processMove()                 │
-   │                              │   adjacency check                   │
+   │                              │   adjacency + bounds check            │
    │                              │   blocking-cell check (cache)       │
    │                              │   update this.x/y                   │
    │                              │  broadcast {movement} ─────────────>│
@@ -220,11 +220,11 @@ pnpm test                       # vitest (Prisma mocked)
 
 Prisma is **mocked** (`tests/__mocks__/db.ts` aliased to `@repo/db/client`), so `pnpm test` needs no database. The vitest runner config lives at `meta/vitest.config.ts` (aliases `@repo/db/client` → the mock).
 
-- `tests/unit/` — pure-logic tests: `roomManager` (add/remove/broadcast), `movement` (adjacency + the known-bounds bug documented as a passing assertion), `gift` (cooldown + streak milestones), `economy` (chest cooldown/TOCTOU), `shop` (pricing + daily seed), `spaceCollision` (AABB/boundary/batch), `npcTick` (stepToward + patrol index clamp).
+- `tests/unit/` — pure-logic tests: `roomManager` (add/remove/broadcast), `movement` (adjacency + bounds + integer validation), `gift` (cooldown + streak milestones + atomic claim), `economy` (chest cooldown/TOCTOU), `shop` (pricing + daily seed + atomic debit), `spaceCollision` (AABB/boundary/batch), `npcTick` (stepToward + patrol index clamp).
 - `tests/integration/` — supertest against the real Express route handlers with auth middleware mocked: `economy.integration.test.ts` (chest interact), `gift.integration.test.ts` (status/claim/send), `space.integration.test.ts` (move/portal/resize/get).
 - `tests/__mocks__/db.ts` — the `vi.fn()` Prisma stub.
 
-Tests intentionally encode **expected-but-open bugs** (movement bounds, TOCTOU races) as passing assertions, so a regression-fix shows up immediately as a failing test.
+Tests assert the current behaviour — including the movement-bounds, join-race, and shop/gift TOCTOU fixes — so a regression on any of those surfaces immediately as a failing test.
 
 ### Shared packages (`meta/packages/`)
 

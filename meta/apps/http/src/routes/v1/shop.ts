@@ -47,35 +47,34 @@ shopRouter.post("/buy", userMiddleware, async (req, res) => {
         return;
     }
 
-    let wallet = await client.wallet.findUnique({
-        where: { userId: req.userId },
-    });
-    if (!wallet) {
-        wallet = await client.wallet.create({
-            data: { userId: req.userId! },
-        });
-    }
-
     const price = item.rarity === "Common" ? 50 : item.rarity === "Uncommon" ? 150 : item.rarity === "Rare" ? 500 : 100;
 
-    if (wallet.coins < price) {
-        res.status(400).json({ message: "Not enough coins" });
-        return;
+    // Atomic buy: the conditional updateMany only decrements when the balance is
+    // sufficient, so concurrent buys can't drive coins negative (TOCTOU fix).
+    try {
+        await client.$transaction(async (tx) => {
+            const result = await tx.wallet.updateMany({
+                where: { userId: req.userId!, coins: { gte: price } },
+                data: { coins: { decrement: price } },
+            });
+            if (result.count === 0) {
+                throw new Error("INSUFFICIENT_FUNDS");
+            }
+            await tx.inventoryItem.upsert({
+                where: {
+                    userId_itemId: { userId: req.userId!, itemId },
+                },
+                create: { userId: req.userId!, itemId, quantity: 1 },
+                update: { quantity: { increment: 1 } },
+            });
+        });
+    } catch (err) {
+        if (err instanceof Error && err.message === "INSUFFICIENT_FUNDS") {
+            res.status(400).json({ message: "Not enough coins" });
+            return;
+        }
+        throw err;
     }
-
-    await client.$transaction(async (tx) => {
-        await tx.wallet.update({
-            where: { userId: req.userId },
-            data: { coins: { decrement: price } },
-        });
-        await tx.inventoryItem.upsert({
-            where: {
-                userId_itemId: { userId: req.userId!, itemId },
-            },
-            create: { userId: req.userId!, itemId, quantity: 1 },
-            update: { quantity: { increment: 1 } },
-        });
-    });
 
     res.json({ message: "Item purchased", itemId, price });
 });

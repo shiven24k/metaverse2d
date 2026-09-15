@@ -992,7 +992,13 @@ spaceRouter.get("/access-request/decide", async (req, res) => {
 
     let payload: { arId?: string; decision?: string } | null = null;
     try {
-        payload = jwt.verify(token, process.env.ACCESS_DECISION_SECRET ?? "") as typeof payload;
+        const decoded = jwt.verify(token, process.env.ACCESS_DECISION_SECRET ?? "") as jwt.JwtPayload;
+        if (decoded && typeof decoded === "object" && typeof decoded.arId === "string") {
+            payload = {
+                arId: decoded.arId,
+                decision: typeof decoded.decision === "string" ? decoded.decision : undefined,
+            };
+        }
     } catch {
         res.status(400).send("Invalid or expired decision link");
         return;

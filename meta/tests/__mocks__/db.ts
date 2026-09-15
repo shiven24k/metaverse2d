@@ -55,6 +55,7 @@ const client = {
         findUnique: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
+        updateMany: vi.fn(),
         upsert: vi.fn(),
     },
     user: {
@@ -69,6 +70,7 @@ const client = {
     dailyGift: {
         findUnique: vi.fn(),
         create: vi.fn(),
+        updateMany: vi.fn(),
         upsert: vi.fn(),
     },
     chestInteraction: {

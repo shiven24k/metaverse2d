@@ -29,20 +29,8 @@ giftRouter.get("/status", userMiddleware, async (req, res) => {
 
 giftRouter.post("/claim", userMiddleware, async (req, res) => {
     const now = new Date();
-
-    const existing = await client.dailyGift.findUnique({
-        where: { userId: req.userId },
-    });
-
-    if (existing) {
-        const nextClaim = new Date(existing.lastClaim);
-        nextClaim.setUTCDate(nextClaim.getUTCDate() + 1);
-        nextClaim.setUTCHours(0, 0, 0, 0);
-        if (now < nextClaim) {
-            res.status(400).json({ message: "Gift already claimed today" });
-            return;
-        }
-    }
+    const todayUTC = new Date();
+    todayUTC.setUTCHours(0, 0, 0, 0);
 
     const commonItems = await client.item.findMany({
         where: { rarity: "Common" },
@@ -53,64 +41,84 @@ giftRouter.post("/claim", userMiddleware, async (req, res) => {
         randomItem = commonItems[Math.floor(Math.random() * commonItems.length)];
     }
 
-    const [gift, milestoneItem] = await client.$transaction(async (tx) => {
-        const gift = await tx.dailyGift.upsert({
-            where: { userId: req.userId! },
-            create: { userId: req.userId!, lastClaim: now, streak: 1 },
-            update: {
-                lastClaim: now,
-                streak: { increment: 1 },
-            },
+    // Atomic claim (TOCTOU fix): the conditional updateMany only matches when
+    // the last claim was on a previous UTC day, so two concurrent claims can't
+    // both pass the cooldown check and double-grant. Postgres re-checks the
+    // WHERE clause against the updated row after the row lock is released.
+    let streak = 0;
+    let milestoneItem: { id: string; name: string; rarity: string } | null = null;
+    try {
+        const result = await client.$transaction(async (tx) => {
+            const claimed = await tx.dailyGift.updateMany({
+                where: { userId: req.userId!, lastClaim: { lt: todayUTC } },
+                data: { lastClaim: now, streak: { increment: 1 } },
+            });
+            if (claimed.count === 0) {
+                // Either already claimed today, or this is the first-ever claim.
+                const existing = await tx.dailyGift.findUnique({ where: { userId: req.userId! } });
+                if (existing) throw new Error("GIFT_ALREADY_CLAIMED");
+                await tx.dailyGift.create({ data: { userId: req.userId!, lastClaim: now, streak: 1 } });
+            }
+
+            const giftRow = await tx.dailyGift.findUnique({ where: { userId: req.userId! } });
+            streak = giftRow?.streak ?? 1;
+
+            await tx.wallet.upsert({
+                where: { userId: req.userId! },
+                create: { userId: req.userId!, coins: 50 },
+                update: { coins: { increment: 50 } },
+            });
+
+            if (streak === 7 || streak === 14 || streak === 21) {
+                milestoneItem = await tx.item.findFirst({
+                    where: { rarity: "Rare" },
+                    orderBy: { id: "asc" },
+                });
+            } else if (streak >= 28 && streak % 28 === 0) {
+                milestoneItem = await tx.item.findFirst({
+                    where: { rarity: "Legacy" },
+                    orderBy: { id: "asc" },
+                });
+            }
+
+            if (milestoneItem) {
+                await tx.inventoryItem.upsert({
+                    where: {
+                        userId_itemId: { userId: req.userId!, itemId: milestoneItem.id },
+                    },
+                    create: { userId: req.userId!, itemId: milestoneItem.id, quantity: 1 },
+                    update: { quantity: { increment: 1 } },
+                });
+            }
+
+            if (randomItem) {
+                await tx.inventoryItem.upsert({
+                    where: {
+                        userId_itemId: { userId: req.userId!, itemId: randomItem.id },
+                    },
+                    create: { userId: req.userId!, itemId: randomItem.id, quantity: 1 },
+                    update: { quantity: { increment: 1 } },
+                });
+            }
+
+            return { streak, milestoneItem };
         });
-
-        await tx.wallet.upsert({
-            where: { userId: req.userId! },
-            create: { userId: req.userId!, coins: 50 },
-            update: { coins: { increment: 50 } },
-        });
-
-        let milestoneItem = null;
-
-        if (gift.streak === 7 || gift.streak === 14 || gift.streak === 21) {
-            milestoneItem = await tx.item.findFirst({
-                where: { rarity: "Rare" },
-                orderBy: { id: "asc" },
-            });
-        } else if (gift.streak >= 28 && gift.streak % 28 === 0) {
-            milestoneItem = await tx.item.findFirst({
-                where: { rarity: "Legacy" },
-                orderBy: { id: "asc" },
-            });
+        streak = result.streak;
+        milestoneItem = result.milestoneItem;
+    } catch (err) {
+        const code = (err as { code?: string }).code;
+        if ((err instanceof Error && err.message === "GIFT_ALREADY_CLAIMED") || code === "P2002") {
+            res.status(400).json({ message: "Gift already claimed today" });
+            return;
         }
-
-        if (milestoneItem) {
-            await tx.inventoryItem.upsert({
-                where: {
-                    userId_itemId: { userId: req.userId!, itemId: milestoneItem.id },
-                },
-                create: { userId: req.userId!, itemId: milestoneItem.id, quantity: 1 },
-                update: { quantity: { increment: 1 } },
-            });
-        }
-
-        if (randomItem) {
-            await tx.inventoryItem.upsert({
-                where: {
-                    userId_itemId: { userId: req.userId!, itemId: randomItem.id },
-                },
-                create: { userId: req.userId!, itemId: randomItem.id, quantity: 1 },
-                update: { quantity: { increment: 1 } },
-            });
-        }
-
-        return [gift, milestoneItem] as const;
-    });
+        throw err;
+    }
 
     res.json({
         coins: 50,
         item: randomItem ? { id: randomItem.id, name: randomItem.name } : null,
         milestone: milestoneItem ? { id: milestoneItem.id, name: milestoneItem.name, rarity: milestoneItem.rarity } : null,
-        streak: gift.streak,
+        streak,
     });
 });
 

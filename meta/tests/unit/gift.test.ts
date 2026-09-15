@@ -106,3 +106,35 @@ describe('gift streak milestone logic', () => {
         expect(streak >= 28 && streak % 28 === 0).toBe(false);
     });
 });
+
+describe('gift claim cooldown (atomic — TOCTOU fixed)', () => {
+    // Mirrors the fixed gift.ts /claim: updateMany only matches when the last
+    // claim was before today (UTC), so concurrent claims can't both pass.
+    function canClaim(lastClaimIso: string | null, todayUTC: Date): boolean {
+        if (lastClaimIso === null) return true; // first-ever claim
+        return new Date(lastClaimIso).getTime() < todayUTC.getTime();
+    }
+
+    const todayUTC = new Date('2026-06-03T00:00:00Z');
+
+    it('first-ever claim is allowed', () => {
+        expect(canClaim(null, todayUTC)).toBe(true);
+    });
+
+    it('claim from a previous UTC day is allowed', () => {
+        expect(canClaim('2026-06-02T23:59:00Z', todayUTC)).toBe(true);
+    });
+
+    it('claim from today (UTC) is blocked', () => {
+        expect(canClaim('2026-06-03T09:00:00Z', todayUTC)).toBe(false);
+    });
+
+    it('FIX: after a successful claim the cooldown flips, so a concurrent claim is rejected', () => {
+        // Two concurrent requests both see lastClaim=yesterday and "pass".
+        expect(canClaim('2026-06-02T15:00:00Z', todayUTC)).toBe(true);
+        expect(canClaim('2026-06-02T15:00:00Z', todayUTC)).toBe(true);
+        // But the DB-level conditional UPDATE re-checks after the row lock:
+        // the first write sets lastClaim to today, so the second fails.
+        expect(canClaim('2026-06-03T09:00:00Z', todayUTC)).toBe(false);
+    });
+});

@@ -14,7 +14,8 @@ import client from "@repo/db/client";
 export const adminPanelRouter = Router();
 adminPanelRouter.use(userMiddleware, requirePlatformAdmin);
 
-const VALID_STATUS = new Set(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"]);
+type SubStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "CANCELED" | "EXPIRED";
+const VALID_STATUS: ReadonlySet<SubStatus> = new Set(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"]);
 
 // Revenue + system snapshot: MRR, counts by tier/status, live room usage.
 adminPanelRouter.get("/panel/summary", async (req, res) => {
@@ -94,7 +95,7 @@ adminPanelRouter.get("/panel/users", async (req, res) => {
 // Subscriptions: filter by status, newest updated first.
 adminPanelRouter.get("/panel/subscriptions", async (req, res) => {
     const status = typeof req.query.status === "string" ? req.query.status : "";
-    const where = status && VALID_STATUS.has(status) ? { status } : {};
+    const where = status && VALID_STATUS.has(status as SubStatus) ? { status: status as SubStatus } : {};
     const subscriptions = await client.subscription.findMany({
         where,
         include: {
@@ -121,7 +122,7 @@ adminPanelRouter.post("/panel/subscriptions/:id/override", async (req, res) => {
         res.status(400).json({ message: "Provide planId and/or status" });
         return;
     }
-    if (status !== undefined && !VALID_STATUS.has(status)) {
+    if (status !== undefined && !VALID_STATUS.has(status as SubStatus)) {
         res.status(400).json({ message: `status must be one of ${[...VALID_STATUS].join(", ")}` });
         return;
     }
@@ -139,9 +140,9 @@ adminPanelRouter.post("/panel/subscriptions/:id/override", async (req, res) => {
         return;
     }
 
-    const data: { planId?: string; status?: string } = {};
+    const data: { planId?: string; status?: SubStatus } = {};
     if (planId !== undefined) data.planId = planId;
-    if (status !== undefined) data.status = status;
+    if (status !== undefined) data.status = status as SubStatus;
 
     const updated = await client.$transaction(async (tx) => {
         const s = await tx.subscription.update({ where: { id: sub.id }, data });
@@ -183,7 +184,7 @@ adminPanelRouter.get("/panel/spaces", async (req, res) => {
             creator: { select: { name: true, username: true } },
             _count: { select: { members: true, elements: true, placedItems: true, npcs: true } },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { id: "desc" }, // Space has no createdAt — cuid ids sort roughly by creation
         take: 100,
     });
     res.json({ spaces });

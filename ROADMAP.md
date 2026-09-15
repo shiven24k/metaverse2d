@@ -197,6 +197,23 @@ Players have a daily reason to log in (gift + streak), a weekly reason (quests +
 - [ ] Uptime monitoring: alert if any service is down > 2 minutes
 - [ ] Deployment: Dockerfile for each app, docker-compose for local, Fly.io or Railway for prod
 
+### 5.7 Correctness & Security Hardening ✅ (Sept 2026)
+- [x] **Movement bounds** (`ws/User.ts`) — `processMove` now rejects non-integer / negative / out-of-bounds coords (was: adjacency-only, players could reach `x=-1`)
+- [x] **Concurrent join race** (`ws/User.ts`) — `isJoining` flag serialises joins; an overlapping join is rejected instead of double-adding a ghost user
+- [x] **Shop TOCTOU** (`shop.ts`) — balance now checked via an atomic conditional `wallet.updateMany({ where: { coins: { gte: price } } })`; concurrent buys can't go negative
+- [x] **Gift TOCTOU** (`gift.ts`) — claim now uses an atomic conditional `dailyGift.updateMany({ where: { lastClaim: { lt: todayUTC } } })`; concurrent claims can't double-grant
+- [x] **Guest read-only enforcement** (`ws/User.ts`) — `chat-message` (persisted), editor relays, `gift`, and `avatar-changed` are ignored for guests server-side
+- [x] Tests updated to assert the fixed behaviour (`movement`, `shop`, `gift` unit tests + `gift` integration test) — 134 passing
+- [x] **http typecheck clean** — fixed the pre-existing `tsc` errors in `apps/http` (`index.ts` rawBody/originalUrl, `adminPanel.ts` status types + the Space `createdAt` ordering bug, `space.ts` jwt decode). `npx tsc --noEmit` now passes.
+
+### 5.8 Still missing (not started)
+- [ ] Mobile / touch controls (D-pad, pinch-zoom, PWA)
+- [ ] Marketplace + user item submissions (models, routes, 20% cut)
+- [ ] PgBouncer connection pooling
+- [ ] Redis TTL cache for shop rotation / season / public spaces
+- [ ] WS idle-disconnect (5 min) + keepalive on the standalone `ws` process
+- [ ] Monitoring (Grafana/Sentry), automated DB backups, Docker
+
 ---
 
 ## Environment Variables Reference

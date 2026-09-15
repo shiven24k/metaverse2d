@@ -27,9 +27,9 @@ meta/apps/ws/src/
 
 ### `join` processing (`User.ts` `case "join"`)
 
-1. **Re-join guard**: if the socket already had a `spaceId`, remove it from the old room first (prevents ghosts).
+1. **Re-join guard**: if the socket already had a `spaceId`, remove it from the old room first (prevents ghosts). Joins are also serialised — a second `join` while the first is still awaiting auth/DB gets `failWith("forbidden")` (an `isJoining` flag cleared in `finally`), so concurrent joins can't double-add a user.
 2. **Identity**:
-   - No token → guest identity: `userId = guest-<id>`, username `Guest-XXXX`, avatar `avatar-intern`.
+   - No token → guest identity: `userId = guest-<id>`, username `Guest-XXXX`, avatar `avatar-intern`. Guests are **read-only server-side**: `chat-message` (DB-persisted), editor relays (`element-*`/`item-*`), `gift`, and `avatar-changed` are ignored for guests; ephemeral actions (move/emote/chat-bubble) are still allowed.
    - Token → `auth.api.getSession({ authorization: Bearer <token> })`; invalid/expired → `failWith("unauthorized")` then close (client stops reconnecting and shows the error).
 3. **Ban check** — `BannedUser.findUnique` → `failWith("banned")`.
 4. **Access check** — if `space.visibility !== 'PUBLIC'`, the user must be an existing `SpaceMember` (re-checked on **every** join/reconnect), else `failWith("forbidden")`. Guests are always forbidden on non-PUBLIC spaces. PUBLIC spaces allow anyone (guests included) to join without a membership row.
@@ -88,6 +88,7 @@ const yDisp = Math.abs(this.y - moveY);
 ```
 
 If adjacent:
+0. **Boundary check** — non-integer, negative, or out-of-bounds target coords (`moveX < 0 || moveY < 0 || moveX >= spaceWidth || moveY >= spaceHeight`, where `spaceWidth/Height` are stored on the `User` at join) → `movement-rejected` (previously missing — players could reach `x=-1`).
 1. Check the **blocking cache** (`getBlockingCells(spaceId)`) — if the target cell is blocked → `movement-rejected`.
 2. Update `this.x/y`, bump `lastActivityAt`, clear the `afk` emote if present.
 3. Broadcast `movement` (with `userId`) to the room.
@@ -103,7 +104,7 @@ this.lastMove = this.lastMove.then(() => this.processMove(x, y)).catch(() => {})
 
 This prevents two concurrent moves from racing against the async `getBlockingCells` call and reading stale `x/y`.
 
-> ⚠️ Known gap (documented in AGENTS.md): **no space-boundary check** — a user could move to negative coordinates or beyond `width/height` (the blocking cache only covers cells with blocking tiles, and empty cells beyond the map edge are not in it). The fix is a `newX/y` bounds check.
+> **Join serialisation**: a second `join` arriving while the first is still awaiting auth/DB (before `spaceId` is set) previously skipped the re-join guard and double-added the user. Now guarded by an `isJoining` flag set at join start and cleared in `finally` — an overlapping join gets `failWith('forbidden')`.
 
 ---
 
