@@ -451,7 +451,7 @@ const ArenaInner = () => {
     const [avatars, setAvatars] = useState<{ id: string; imageUrl: string; name: string }[]>([]);
     const [savingAvatar, setSavingAvatar] = useState(false);
     const [showSpaceSettings, setShowSpaceSettings] = useState(false);
-    const [spaceIsPrivate, setSpaceIsPrivate] = useState(false);
+    const [spaceVisibility, setSpaceVisibility] = useState<'PUBLIC' | 'INVITE_ONLY' | 'PRIVATE'>('PRIVATE');
 
     // ── Interactable objects ──────────────────────────────────────────────────
     const [interactionPopup, setInteractionPopup] = useState<{
@@ -1684,7 +1684,7 @@ const ArenaInner = () => {
             setPortals(data.portals || []);
             if (data.name) setSpaceName(data.name);
             if (data.creatorId) { setSpaceOwnerId(data.creatorId); spaceOwnerIdRef.current = data.creatorId; }
-            if (typeof data.isPrivate === 'boolean') setSpaceIsPrivate(data.isPrivate);
+            if (data.visibility === 'PUBLIC' || data.visibility === 'INVITE_ONLY' || data.visibility === 'PRIVATE') setSpaceVisibility(data.visibility);
             if (data.dimensions) {
                 const parts = data.dimensions.split('x');
                 setSpaceDims({ width: parseInt(parts[0]), height: parseInt(parts[1]) });
@@ -1890,6 +1890,24 @@ const ArenaInner = () => {
             setCreatingMap(false);
         }
     }, [newMapName, newMapDims, newMapTemplate, authHeaders, navigate]);
+
+    const handleDeleteSpace = useCallback(async () => {
+        try {
+            const res = await fetch(`${API}/api/v1/space/${spaceId}`, {
+                method: 'DELETE',
+                headers: authHeaders,
+            });
+            if (res.ok) {
+                addToast('Space deleted', 'success');
+                navigate('/lobby', { replace: true });
+            } else {
+                const d = await res.json();
+                addToast(d.message || 'Failed to delete space', 'warning');
+            }
+        } catch {
+            addToast('Network error deleting space', 'warning');
+        }
+    }, [spaceId, authHeaders, addToast, navigate]);
 
 
     useEffect(() => {
@@ -5197,12 +5215,13 @@ const ArenaInner = () => {
                     <SpaceSettingsModal
                         spaceId={spaceId}
                         spaceName={spaceName}
-                        isPrivate={spaceIsPrivate}
+                        visibility={spaceVisibility}
                         isOwner={!!currentUser && currentUser.userId === spaceOwnerId}
                         authHeaders={authHeaders}
                         onClose={() => setShowSpaceSettings(false)}
                         onNameChange={(n) => { setSpaceName(n); }}
-                        onPrivacyChange={(v) => { setSpaceIsPrivate(v); }}
+                        onVisibilityChange={(v) => { setSpaceVisibility(v); }}
+                        onDelete={handleDeleteSpace}
                     />
                 )}
 

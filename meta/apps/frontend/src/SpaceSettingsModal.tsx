@@ -4,6 +4,8 @@ import { Copy, RefreshCw, Trash2, X } from "lucide-react";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const INVITE_BASE = `${window.location.origin}/join`;
 
+export type SpaceVisibility = "PUBLIC" | "INVITE_ONLY" | "PRIVATE";
+
 interface Member {
     id: string;
     userId: string;
@@ -16,17 +18,24 @@ interface Member {
 interface Props {
     spaceId: string;
     spaceName: string;
-    isPrivate: boolean;
+    visibility: SpaceVisibility;
     isOwner: boolean;
     authHeaders: Record<string, string>;
     onClose: () => void;
     onNameChange: (name: string) => void;
-    onPrivacyChange?: (isPrivate: boolean) => void;
+    onVisibilityChange?: (v: SpaceVisibility) => void;
+    onDelete?: () => void;
 }
 
-export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, authHeaders, onClose, onNameChange, onPrivacyChange }: Props) {
+const VISIBILITY_OPTIONS: { value: SpaceVisibility; label: string; icon: string; hint: string }[] = [
+    { value: "PUBLIC", label: "Public", icon: "🌐", hint: "Anyone can discover and join this space." },
+    { value: "INVITE_ONLY", label: "Invite only", icon: "🔑", hint: "Discoverable, but joining requires an invite." },
+    { value: "PRIVATE", label: "Private", icon: "🔒", hint: "Hidden — only invited members can enter." },
+];
+
+export function SpaceSettingsModal({ spaceId, spaceName, visibility, isOwner, authHeaders, onClose, onNameChange, onVisibilityChange, onDelete }: Props) {
     const [name, setName] = useState(spaceName);
-    const [privacy, setPrivacy] = useState(isPrivate);
+    const [vis, setVis] = useState<SpaceVisibility>(visibility);
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState("");
 
@@ -39,6 +48,9 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
     const [copied, setCopied] = useState(false);
     const [membersError, setMembersError] = useState("");
     const [removeError, setRemoveError] = useState("");
+
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     const fetchMembers = useCallback(async () => {
         if (!isOwner) return;
@@ -59,12 +71,12 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
             const r = await fetch(`${API}/api/v1/space/${spaceId}`, {
                 method: "PUT",
                 headers: authHeaders,
-                body: JSON.stringify({ name: name.trim() || spaceName, isPrivate: privacy }),
+                body: JSON.stringify({ name: name.trim() || spaceName, visibility: vis }),
             });
             if (r.ok) {
                 const d = await r.json();
                 onNameChange(d.name);
-                onPrivacyChange?.(d.isPrivate);
+                onVisibilityChange?.(d.visibility);
                 setSaveMsg("Saved!");
                 setTimeout(() => setSaveMsg(""), 2000);
             } else {
@@ -112,7 +124,19 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
         } catch { setRemoveError("Network error"); }
     };
 
+    const handleDelete = async () => {
+        if (!onDelete) return;
+        if (!confirmDelete) {
+            setConfirmDelete(true);
+            setTimeout(() => setConfirmDelete(false), 5000);
+            return;
+        }
+        setDeleting(true);
+        await onDelete();
+    };
+
     const inviteLink = inviteToken ? `${INVITE_BASE}/${inviteToken}` : null;
+    const showInvite = vis !== "PUBLIC";
 
     return (
         <>
@@ -137,23 +161,23 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
                     />
                 </div>
 
-                {/* Privacy toggle */}
+                {/* Privacy toggle (3-way: public / invite-only / private) */}
                 <div style={{ marginBottom: 24 }}>
                     <label style={{ fontSize: 11, fontWeight: 700, color: "#7c6f9c", letterSpacing: ".05em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Privacy</label>
-                    <div style={{ display: "flex", gap: 8 }}>
-                        {(["public", "private"] as const).map(opt => {
-                            const active = opt === "private" ? privacy : !privacy;
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {VISIBILITY_OPTIONS.map(opt => {
+                            const active = vis === opt.value;
                             return (
-                                <button key={opt} onClick={() => isOwner && setPrivacy(opt === "private")} disabled={!isOwner}
-                                    style={{ flex: 1, padding: "9px", borderRadius: 9, border: `1.5px solid ${active ? "#7c3aed" : "#e3e1ee"}`, background: active ? "#f4f0fe" : "#fff", color: active ? "#5b21b6" : "#6f6b82", fontSize: 13, fontWeight: active ? 700 : 500, cursor: isOwner ? "pointer" : "default" }}>
-                                    {opt === "public" ? "🌐 Public" : "🔒 Private"}
+                                <button key={opt.value} onClick={() => isOwner && setVis(opt.value)} disabled={!isOwner}
+                                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${active ? "#7c3aed" : "#e3e1ee"}`, background: active ? "#f4f0fe" : "#fff", color: active ? "#5b21b6" : "#6f6b82", fontSize: 13, fontWeight: active ? 700 : 500, cursor: isOwner ? "pointer" : "default", textAlign: "left" }}>
+                                    <span style={{ fontSize: 15 }}>{opt.icon}</span>
+                                    <span style={{ flex: 1 }}>{opt.label}</span>
+                                    {active && <span style={{ fontSize: 11, color: "#7c3aed", fontWeight: 700 }}>✓</span>}
+                                    <span style={{ flexBasis: "60%", fontSize: 11, color: "#a3a0b3", fontWeight: 500, lineHeight: 1.4 }}>{opt.hint}</span>
                                 </button>
                             );
                         })}
                     </div>
-                    <p style={{ margin: "6px 0 0", fontSize: 12, color: "#a3a0b3" }}>
-                        {privacy ? "Only invited members can enter this space." : "Anyone can discover and join this space."}
-                    </p>
                 </div>
 
                 {/* Save button */}
@@ -167,8 +191,8 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
                     </div>
                 )}
 
-                {/* Invite link (private spaces only, owner only) */}
-                {isOwner && privacy && (
+                {/* Invite link (invite-only & private spaces, owner only) */}
+                {isOwner && showInvite && (
                     <>
                         <div style={{ height: 1, background: "#ecebf3", marginBottom: 20 }} />
                         <div style={{ marginBottom: 20 }}>
@@ -232,6 +256,21 @@ export function SpaceSettingsModal({ spaceId, spaceName, isPrivate, isOwner, aut
                                 ))}
                             </div>
                         )}
+                    </>
+                )}
+
+                {/* Danger zone — delete space (owner only) */}
+                {isOwner && onDelete && (
+                    <>
+                        <div style={{ height: 1, background: "#ecebf3", margin: "20px 0" }} />
+                        <div style={{ border: "1px solid #fecaca", borderRadius: 12, background: "#fff5f5", padding: "14px 16px" }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#dc2626", marginBottom: 4 }}>Danger zone</div>
+                            <p style={{ margin: "0 0 12px", fontSize: 12, color: "#b25e09", lineHeight: 1.5 }}>Deleting this space permanently removes all elements, items, NPCs, portals, and kanban data. This cannot be undone.</p>
+                            <button onClick={handleDelete} disabled={deleting}
+                                style={{ padding: "9px 18px", borderRadius: 9, border: "1px solid #fecaca", background: confirmDelete ? "#dc2626" : "#fff", color: confirmDelete ? "#fff" : "#dc2626", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                                {deleting ? "Deleting…" : confirmDelete ? "Click again to confirm delete" : "Delete Space"}
+                            </button>
+                        </div>
                     </>
                 )}
             </div>
